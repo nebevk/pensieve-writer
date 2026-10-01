@@ -1,0 +1,10 @@
+---
+description: Conventions for the Tauri v2 Rust backend and capabilities
+globs: src-tauri/**
+alwaysApply: false
+---
+- Keep Rust thin: file I/O, snapshots/backups, window control. Application logic lives in TypeScript.
+- Expose functionality as small, typed `#[tauri::command]` functions; return `Result<T, String>` (or a serializable error type), never panic.
+- Use Tauri v2 capabilities/permissions with least privilege; only allow the file-system scopes the app needs.
+- Windows installer: NSIS; bundle the WebView2 bootstrapper so Windows 10 machines need nothing extra.
+- Check docs via Context7 before using a plugin API; Tauri v2 APIs differ from v1.

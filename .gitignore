@@ -1,0 +1,17 @@
+node_modules/
+dist/
+build/
+.svelte-kit/
+src-tauri/target/
+src-tauri/gen/
+*.log
+.DS_Store
+Thumbs.db
+# Tauri updater signing keys: NEVER commit
+*.key
+*.key.pub.bak
+.env
+.env.*
+!.env.example
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*

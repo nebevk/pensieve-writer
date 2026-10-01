@@ -1,0 +1,13 @@
+---
+description: Autosave, atomic writes, snapshots, and storage rules; protects the user's writing from loss
+globs: src-tauri/**,src/lib/storage/**,src/lib/save/**
+alwaysApply: false
+---
+- Autosave a few seconds after the last change (debounced) and on window close/blur; show a subtle saved/saving indicator.
+- Writes must be crash-safe: SQLite transactions (WAL mode) or write temp file then atomic rename. Never write in place.
+- Store chapter content as TipTap/ProseMirror JSON plus a derived plain-text copy for search/word count. Include a schema version and migrations.
+- Local snapshots: rolling (e.g. hourly + daily), restorable from the UI. Restore must be tested.
+- The live project file stays on local disk. Backups are snapshot files written to a user-chosen folder (e.g. inside Google Drive for desktop), never the live database.
+- All persistence goes through a storage interface (`save`, `load`, `listSnapshots`, `restore`) so a Drive API backend can be added later.
+- Surface save failures clearly and keep the unsaved text in memory; never swallow errors.
+- Never delete user data without a confirmation and a recoverable snapshot.

@@ -1,0 +1,36 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Steps are skipped until the Tauri project has been scaffolded (Phase 0).
+      - uses: actions/setup-node@v4
+        if: hashFiles('package.json') != ''
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        if: hashFiles('package.json') != ''
+      - uses: swatinem/rust-cache@v2
+        if: hashFiles('package.json') != ''
+        with:
+          workspaces: src-tauri
+      - name: Install dependencies
+        if: hashFiles('package.json') != ''
+        run: npm ci
+      - name: Type-check
+        if: hashFiles('package.json') != ''
+        run: npm run check --if-present
+      - name: Tests
+        if: hashFiles('package.json') != ''
+        run: npm test --if-present
+      - name: Cargo check
+        if: hashFiles('package.json') != ''
+        run: cargo check
+        working-directory: src-tauri

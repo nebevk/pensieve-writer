@@ -1,0 +1,13 @@
+---
+description: Animation, ambience, and performance budget for the cozy UI on an older Windows laptop
+globs: src/**/*.svelte,src/**/*.css,src/**/*.ts
+alwaysApply: false
+---
+- Animate only `opacity` and `transform`. Never animate blur, box-shadow, width/height, or layout properties.
+- Avoid `backdrop-filter` and large CSS filters; if used, keep them off in Gentle mode.
+- Transitions are short (150-300 ms) with soft easing; honor `prefers-reduced-motion` and the in-app "Gentle mode" toggle.
+- Particles/canvas ambience: throttle to about 30 fps, pause when the window is hidden or in Gentle mode, run separately from the editor.
+- Ambient audio: small looped files, fade in/out, volume control, default off.
+- Do not re-render the whole editor on UI state changes; keep editor state isolated from panels, sidebar, and ambience.
+- Bundle fonts locally (serif writing fonts); no network requests at runtime.
+- Themes use CSS variables defined once (paper, sepia, dark, candlelit).

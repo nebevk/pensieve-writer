@@ -1,0 +1,9 @@
+---
+description: English and Slovenian text, spell check, and per-language behavior in the editor
+globs: src/**/editor/**,src/**/*spell*,src/**/*i18n*
+alwaysApply: false
+---
+- Content language is stored per project/chapter and can be set per selection (en, sl).
+- Spell check: first verify whether the WebView2 built-in spell checker supports Slovenian on the target laptop. If not, use bundled Hunspell dictionaries (en, sl) via a small JS library; keep it off the main thread where possible.
+- Personal dictionary persists per user and survives updates.
+- Typography: use proper quotes per language; do not auto-replace characters in a way that breaks Slovenian letters.
