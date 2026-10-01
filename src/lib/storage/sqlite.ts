@@ -100,6 +100,10 @@ async function writeProject(db: Database, project: Project): Promise<void> {
     [project.id, project.title, project.createdAt, updatedAt],
   );
 
+  if (project.chapters.length === 0) {
+    throw new Error("A project needs at least one chapter");
+  }
+
   for (const chapter of project.chapters) {
     await db.execute(
       `INSERT INTO chapters (
@@ -123,6 +127,13 @@ async function writeProject(db: Database, project: Project): Promise<void> {
     );
   }
 
+  const ids = project.chapters.map((chapter) => chapter.id);
+  const placeholders = ids.map((_, index) => `$${index + 2}`).join(", ");
+  await db.execute(
+    `DELETE FROM chapters WHERE project_id = $1 AND id NOT IN (${placeholders})`,
+    [project.id, ...ids],
+  );
+
   await maybeSnapshot(db, project);
 }
 
@@ -135,7 +146,10 @@ async function maybeSnapshot(db: Database, project: Project): Promise<void> {
     [project.id],
   );
   if (!shouldTakeSnapshot(latest[0]?.created_at ?? null, new Date())) return;
+  await insertSnapshot(db, project);
+}
 
+async function insertSnapshot(db: Database, project: Project): Promise<void> {
   const payload: SnapshotPayload = {
     title: project.title,
     chapters: project.chapters,
@@ -211,6 +225,12 @@ function toChapter(row: ChapterRow): Chapter {
     plainText: row.plain_text ?? "",
     updatedAt: row.updated_at,
   };
+}
+
+export function keepSnapshot(project: Project): Promise<void> {
+  return enqueue(async () => {
+    await insertSnapshot(await database(), project);
+  });
 }
 
 export const sqliteStorage: Storage = {

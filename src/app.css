@@ -1,4 +1,5 @@
-:root {
+:root,
+:root[data-theme="paper"] {
   --desk: #e6dfd2;
   --sidebar: #efe7d8;
   --paper: #fbf6ec;
@@ -9,7 +10,44 @@
   --danger: #8c3a32;
   --font-ui: "Segoe UI", sans-serif;
   --font-writing: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --column: 44rem;
   color-scheme: light;
+}
+
+:root[data-theme="sepia"] {
+  --desk: #e4d3b4;
+  --sidebar: #eadcc4;
+  --paper: #f6e7c8;
+  --ink: #3a2a16;
+  --muted: #7a6244;
+  --line: #d9c4a0;
+  --accent: #7a5430;
+  --danger: #8c3a32;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --desk: #1c1916;
+  --sidebar: #26221d;
+  --paper: #2e2924;
+  --ink: #f3eadc;
+  --muted: #b3a594;
+  --line: #433c34;
+  --accent: #e4c89a;
+  --danger: #e08a80;
+  color-scheme: dark;
+}
+
+:root[data-theme="candlelit"] {
+  --desk: #2a1810;
+  --sidebar: #3a2418;
+  --paper: #4a2e1c;
+  --ink: #f8e2c4;
+  --muted: #d7b48a;
+  --line: #6a4630;
+  --accent: #f0c27a;
+  --danger: #e08a80;
+  color-scheme: dark;
 }
 
 * {
@@ -51,6 +89,7 @@ a:focus-visible {
   *,
   *::before,
   *::after {
+    animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
 }

@@ -2,29 +2,43 @@
   import { onDestroy, onMount } from "svelte";
   import { Editor, type JSONContent } from "@tiptap/core";
   import StarterKit from "@tiptap/starter-kit";
+  import TextAlign from "@tiptap/extension-text-align";
   import type { DocumentJson } from "$lib/model";
 
   let {
     initialContent,
     onChange,
+    onEditor,
+    onActivity,
   }: {
     initialContent: DocumentJson;
     onChange: (json: DocumentJson, text: string) => void;
+    onEditor: (editor: Editor | null) => void;
+    onActivity: () => void;
   } = $props();
 
   let host: HTMLDivElement | undefined = $state();
   let editor: Editor | null = null;
   let publish: (json: DocumentJson, text: string) => void = () => {};
+  let notify = () => {};
 
   $effect(() => {
     publish = onChange;
+    notify = onActivity;
   });
 
   onMount(() => {
     if (!host) return;
+    publish = onChange;
+    notify = onActivity;
     editor = new Editor({
       element: host,
-      extensions: [StarterKit],
+      extensions: [
+        StarterKit,
+        TextAlign.configure({
+          types: ["heading", "paragraph"],
+        }),
+      ],
       content: initialContent as JSONContent,
       autofocus: "end",
       editorProps: {
@@ -37,10 +51,15 @@
       onUpdate: ({ editor: current }) => {
         publish(current.getJSON() as DocumentJson, current.getText());
       },
+      onSelectionUpdate: () => {
+        notify();
+      },
     });
+    onEditor(editor);
   });
 
   onDestroy(() => {
+    onEditor(null);
     editor?.destroy();
     editor = null;
   });
@@ -86,5 +105,13 @@
   .editor-host :global(.ProseMirror ol) {
     margin: 0 0 0.85em;
     padding-left: 1.4rem;
+  }
+
+  .editor-host :global(.ProseMirror u) {
+    text-decoration: underline;
+  }
+
+  .editor-host :global(.ProseMirror s) {
+    text-decoration: line-through;
   }
 </style>

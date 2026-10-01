@@ -11,7 +11,7 @@ use windows::Win32::System::Com::{
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct WordResult {
+pub struct WordResult {
     word: String,
     flagged: bool,
     expect_flagged: bool,
@@ -20,7 +20,7 @@ struct WordResult {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct LanguageProbe {
+pub struct LanguageProbe {
     tag: String,
     supported: bool,
     samples: Vec<WordResult>,
