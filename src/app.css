@@ -38,6 +38,14 @@
   color-scheme: dark;
 }
 
+:root[data-gentle="true"],
+:root[data-gentle="true"] *,
+:root[data-gentle="true"] *::before,
+:root[data-gentle="true"] *::after {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+}
+
 :root[data-theme="candlelit"] {
   --desk: #2a1810;
   --sidebar: #3a2418;

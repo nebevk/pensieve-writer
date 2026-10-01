@@ -1,3 +1,4 @@
+mod backup;
 mod spellcheck;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -20,12 +21,16 @@ pub fn run() {
     ];
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:pensieve.db", migrations)
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![spellcheck::probe_spellcheck])
+        .invoke_handler(tauri::generate_handler![
+            backup::write_backup,
+            spellcheck::probe_spellcheck
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

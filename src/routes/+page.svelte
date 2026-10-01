@@ -9,8 +9,12 @@
   import { createChapter, createProject, type Chapter, type DocumentJson, type Project } from "$lib/model";
   import { createAutosave, errorMessage, type SaveStatus } from "$lib/save/autosave";
   import { blocksToDocument, chaptersToDocx, downloadBlob, htmlToChapters } from "$lib/export/document";
-  import Dashboard from "$lib/views/Dashboard.svelte";
+  import { createAmbience } from "$lib/ambience";
+  import { chooseBackupFolder, writeBackup } from "$lib/storage/backup";
+  import Settings from "$lib/views/Settings.svelte";
+  import Particles from "$lib/views/Particles.svelte";
   import Book from "$lib/views/Book.svelte";
+  import Dashboard from "$lib/views/Dashboard.svelte";
   import Notes from "$lib/views/Notes.svelte";
   import Outline from "$lib/views/Outline.svelte";
   import Todos from "$lib/views/Todos.svelte";
@@ -31,7 +35,9 @@
   let findInput = $state<HTMLInputElement | undefined>(undefined);
   let prefs = $state(loadPrefs());
   let zen = $state(false);
-  let view = $state<"write" | "home" | "notes" | "todos" | "outline" | "book">("write");
+  let view = $state<"write" | "home" | "notes" | "todos" | "outline" | "book" | "settings">("write");
+  let backupMessage = $state("");
+  const ambience = createAmbience();
 
   const autosave = createAutosave({
     delayMs: 2000,
@@ -66,6 +72,15 @@
     if (prefs.gentle) document.documentElement.dataset.gentle = "true";
     else delete document.documentElement.dataset.gentle;
     savePrefs(prefs);
+  });
+
+  $effect(() => {
+    if (prefs.gentle || prefs.ambience === "off") {
+      ambience.stop();
+      return;
+    }
+    ambience.start(prefs.ambience, prefs.ambienceVolume);
+    return () => ambience.stop();
   });
 
   onMount(() => {
@@ -117,6 +132,7 @@
 
     return () => {
       disposed = true;
+      ambience.stop();
       unlistenClose?.();
       unlistenFocus?.();
     };
@@ -329,6 +345,25 @@
     }
   }
 
+  async function pickBackupFolder() {
+    try {
+      const folder = await chooseBackupFolder();
+      if (folder) prefs = { ...prefs, backupFolder: folder };
+    } catch (error) {
+      backupMessage = errorMessage(error);
+    }
+  }
+
+  async function backupNow() {
+    if (!project || !prefs.backupFolder) return;
+    try {
+      const path = await writeBackup(prefs.backupFolder, project);
+      backupMessage = `Saved ${path}`;
+    } catch (error) {
+      backupMessage = errorMessage(error);
+    }
+  }
+
   function statusText(status: SaveStatus): string {
     if (status.state === "saving") return "Saving…";
     if (status.state === "unsaved") return "Unsaved";
@@ -339,6 +374,7 @@
 
 <svelte:window onkeydown={onKeydown} />
 
+<Particles active={prefs.theme === "candlelit" && !prefs.gentle} />
 <div class="app" class:zen>
   <nav class="views" aria-label="Views">
     <button type="button" class:active={view === "write"} onclick={() => (view = "write")}>Write</button>
@@ -347,6 +383,7 @@
     <button type="button" class:active={view === "todos"} onclick={() => (view = "todos")}>Todos</button>
     <button type="button" class:active={view === "outline"} onclick={() => (view = "outline")}>Outline</button>
     <button type="button" class:active={view === "book"} onclick={() => (view = "book")}>Book</button>
+    <button type="button" class:active={view === "settings"} onclick={() => (view = "settings")}>Settings</button>
   </nav>
   {#if view === "write"}
 <div class="shell" class:collapsed class:zen>
@@ -476,8 +513,16 @@
         <Todos projectId={project.id} />
       {:else if view === "outline"}
         <Outline {chapters} onUpdate={updateChapterMeta} />
-      {:else}
+      {:else if view === "book"}
         <Book {chapters} />
+      {:else}
+        <Settings
+          {prefs}
+          {backupMessage}
+          onChange={(patch) => (prefs = { ...prefs, ...patch })}
+          onChooseFolder={() => void pickBackupFolder()}
+          onBackup={() => void backupNow()}
+        />
       {/if}
     </div>
   {/if}
@@ -485,6 +530,8 @@
 
 <style>
   .app {
+    position: relative;
+    z-index: 1;
     height: 100vh;
     display: flex;
     flex-direction: column;

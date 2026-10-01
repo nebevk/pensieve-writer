@@ -7,4 +7,4 @@ A cozy, minimalist desktop writing app: chapters, notes with todos, book view, z
 - First Cursor prompt: [docs/phase-0-prompt.md](docs/phase-0-prompt.md)
 - Agent instructions: [AGENTS.md](AGENTS.md)
 
-Status: Phase 0 scaffold is in the repo (editor, SQLite autosave, chapter sidebar, spell-check spike). Run `npm run tauri dev` after the Visual Studio C++ workload is installed. Spell-check findings: [docs/spellcheck-spike.md](docs/spellcheck-spike.md).
+Status: Phases 0–5 are in the app: writing, organization, book view and Word export, folder backups, and settings. Run `npm run tauri dev`. Spell-check findings: [docs/spellcheck-spike.md](docs/spellcheck-spike.md).
