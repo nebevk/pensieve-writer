@@ -3,6 +3,8 @@ export type DocumentJson = {
   content?: unknown[];
 };
 
+export type ChapterStatus = "draft" | "revised" | "final";
+
 export type Chapter = {
   id: string;
   projectId: string;
@@ -10,6 +12,8 @@ export type Chapter = {
   position: number;
   contentJson: DocumentJson;
   plainText: string;
+  synopsis: string;
+  status: ChapterStatus;
   updatedAt: string;
 };
 
@@ -56,6 +60,8 @@ export function createChapter(
     position,
     contentJson: emptyDocument(),
     plainText: "",
+    synopsis: "",
+    status: "draft",
     updatedAt: now,
   };
 }

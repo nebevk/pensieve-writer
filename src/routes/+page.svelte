@@ -8,6 +8,9 @@
   import { findNext } from "$lib/editor/find";
   import { createChapter, createProject, type DocumentJson, type Project } from "$lib/model";
   import { createAutosave, errorMessage, type SaveStatus } from "$lib/save/autosave";
+  import Dashboard from "$lib/views/Dashboard.svelte";
+  import Notes from "$lib/views/Notes.svelte";
+  import Todos from "$lib/views/Todos.svelte";
   import { loadPrefs, savePrefs, type ThemeName } from "$lib/prefs";
   import { keepSnapshot, sqliteStorage } from "$lib/storage/sqlite";
   import type { Editor as TiptapEditor } from "@tiptap/core";
@@ -25,6 +28,7 @@
   let findInput = $state<HTMLInputElement | undefined>(undefined);
   let prefs = $state(loadPrefs());
   let zen = $state(false);
+  let view = $state<"write" | "home" | "notes" | "todos">("write");
 
   const autosave = createAutosave({
     delayMs: 2000,
@@ -237,6 +241,8 @@
     const copy = createChapter(project.id, `${source.title} copy`, source.position + 1);
     copy.contentJson = structuredClone(source.contentJson);
     copy.plainText = source.plainText;
+    copy.synopsis = source.synopsis;
+    copy.status = source.status;
     const chapters = project.chapters.map((chapter) =>
       chapter.position > source.position ? { ...chapter, position: chapter.position + 1 } : chapter,
     );
@@ -283,6 +289,14 @@
 
 <svelte:window onkeydown={onKeydown} />
 
+<div class="app" class:zen>
+  <nav class="views" aria-label="Views">
+    <button type="button" class:active={view === "write"} onclick={() => (view = "write")}>Write</button>
+    <button type="button" class:active={view === "home"} onclick={() => (view = "home")}>Dashboard</button>
+    <button type="button" class:active={view === "notes"} onclick={() => (view = "notes")}>Notes</button>
+    <button type="button" class:active={view === "todos"} onclick={() => (view = "todos")}>Todos</button>
+  </nav>
+  {#if view === "write"}
 <div class="shell" class:collapsed class:zen>
   <Sidebar
     {chapters}
@@ -389,12 +403,70 @@
     {/if}
   </section>
 </div>
+  {:else if project}
+    <div class="alt">
+      {#if view === "home"}
+        <Dashboard
+          {project}
+          {prefs}
+          onContinue={() => (view = "write")}
+          onRestored={(restored) => {
+            project = restored;
+            activeId = restored.chapters[0]?.id ?? null;
+            view = "write";
+          }}
+        />
+      {:else if view === "notes"}
+        <Notes projectId={project.id} {chapters} />
+      {:else}
+        <Todos projectId={project.id} />
+      {/if}
+    </div>
+  {/if}
+</div>
 
 <style>
+  .app {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .views {
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.35rem 0.7rem;
+    background: var(--sidebar);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .views button {
+    border: 0;
+    background: transparent;
+    border-radius: 6px;
+    padding: 0.25rem 0.55rem;
+    color: var(--muted);
+  }
+
+  .views button.active {
+    background: var(--paper);
+    color: var(--ink);
+  }
+
+  .app.zen .views {
+    display: none;
+  }
+
+  .alt {
+    flex: 1;
+    min-height: 0;
+  }
+
   .shell {
     display: grid;
     grid-template-columns: 15rem 1fr;
-    height: 100vh;
+    flex: 1;
+    min-height: 0;
   }
 
   .shell.collapsed,
@@ -426,7 +498,8 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: 100%;
+    min-height: 0;
   }
 
   .topbar {

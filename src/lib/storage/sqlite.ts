@@ -9,7 +9,7 @@ import {
 import type { Storage } from "./types";
 
 const DB_URL = "sqlite:pensieve.db";
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const SNAPSHOT_INTERVAL_MS = 60 * 60 * 1000;
 const SNAPSHOT_LIMIT = 48;
 
@@ -27,6 +27,8 @@ type ChapterRow = {
   position: number;
   content_json: string;
   plain_text: string;
+  synopsis?: string;
+  status?: string;
   updated_at: string;
 };
 
@@ -107,13 +109,15 @@ async function writeProject(db: Database, project: Project): Promise<void> {
   for (const chapter of project.chapters) {
     await db.execute(
       `INSERT INTO chapters (
-         id, project_id, title, position, content_json, plain_text, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+         id, project_id, title, position, content_json, plain_text, synopsis, status, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT(id) DO UPDATE SET
          title = excluded.title,
          position = excluded.position,
          content_json = excluded.content_json,
          plain_text = excluded.plain_text,
+         synopsis = excluded.synopsis,
+         status = excluded.status,
          updated_at = excluded.updated_at`,
       [
         chapter.id,
@@ -122,6 +126,8 @@ async function writeProject(db: Database, project: Project): Promise<void> {
         chapter.position,
         JSON.stringify(chapter.contentJson),
         chapter.plainText,
+        chapter.synopsis ?? "",
+        chapter.status ?? "draft",
         chapter.updatedAt,
       ],
     );
@@ -185,7 +191,7 @@ async function readProject(db: Database, projectId?: string): Promise<Project | 
   if (!row) return null;
 
   const chapters = await db.select<ChapterRow[]>(
-    `SELECT id, project_id, title, position, content_json, plain_text, updated_at
+    `SELECT id, project_id, title, position, content_json, plain_text, synopsis, status, updated_at
      FROM chapters
      WHERE project_id = $1
      ORDER BY position ASC, title ASC`,
@@ -223,8 +229,14 @@ function toChapter(row: ChapterRow): Chapter {
     position: Number(row.position),
     contentJson,
     plainText: row.plain_text ?? "",
+    synopsis: row.synopsis ?? "",
+    status: row.status === "revised" || row.status === "final" ? row.status : "draft",
     updatedAt: row.updated_at,
   };
+}
+
+export function withDb<T>(work: (db: Database) => Promise<T>): Promise<T> {
+  return enqueue(async () => work(await database()));
 }
 
 export function keepSnapshot(project: Project): Promise<void> {
@@ -256,6 +268,8 @@ export const sqliteStorage: Storage = {
             position: 0,
             contentJson: { type: "doc", content: [{ type: "paragraph" }] },
             plainText: "",
+            synopsis: "",
+            status: "draft",
             updatedAt: now,
           },
         ];
