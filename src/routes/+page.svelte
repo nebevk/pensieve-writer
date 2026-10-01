@@ -6,10 +6,13 @@
   import Toolbar from "$lib/editor/Toolbar.svelte";
   import { countWords, formatCount } from "$lib/editor/counts";
   import { findNext } from "$lib/editor/find";
-  import { createChapter, createProject, type DocumentJson, type Project } from "$lib/model";
+  import { createChapter, createProject, type Chapter, type DocumentJson, type Project } from "$lib/model";
   import { createAutosave, errorMessage, type SaveStatus } from "$lib/save/autosave";
+  import { blocksToDocument, chaptersToDocx, downloadBlob, htmlToChapters } from "$lib/export/document";
   import Dashboard from "$lib/views/Dashboard.svelte";
+  import Book from "$lib/views/Book.svelte";
   import Notes from "$lib/views/Notes.svelte";
+  import Outline from "$lib/views/Outline.svelte";
   import Todos from "$lib/views/Todos.svelte";
   import { loadPrefs, savePrefs, type ThemeName } from "$lib/prefs";
   import { keepSnapshot, sqliteStorage } from "$lib/storage/sqlite";
@@ -28,7 +31,7 @@
   let findInput = $state<HTMLInputElement | undefined>(undefined);
   let prefs = $state(loadPrefs());
   let zen = $state(false);
-  let view = $state<"write" | "home" | "notes" | "todos">("write");
+  let view = $state<"write" | "home" | "notes" | "todos" | "outline" | "book">("write");
 
   const autosave = createAutosave({
     delayMs: 2000,
@@ -279,6 +282,53 @@
     }
   }
 
+  function updateChapterMeta(id: string, patch: Partial<Chapter>) {
+    if (!project) return;
+    project = {
+      ...project,
+      chapters: project.chapters.map((chapter) =>
+        chapter.id === id ? { ...chapter, ...patch, updatedAt: new Date().toISOString() } : chapter,
+      ),
+    };
+    autosave.schedule();
+    void autosave.flush().catch(() => undefined);
+  }
+
+  async function exportWord() {
+    if (!project) return;
+    try {
+      const blob = await chaptersToDocx(project.title || "Pensieve", project.chapters);
+      downloadBlob(blob, `${project.title || "pensieve"}.docx`);
+    } catch (error) {
+      saveStatus = { state: "error", message: errorMessage(error) };
+    }
+  }
+
+  async function importWord(file: File) {
+    if (!project) return;
+    try {
+      const mammoth = await import("mammoth");
+      const result = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
+      const imported = htmlToChapters(result.value);
+      if (imported.length === 0) throw new Error("That Word file had no text to import");
+      let position = project.chapters.reduce((max, chapter) => Math.max(max, chapter.position), -1);
+      const added = imported.map((chapter) => {
+        position += 1;
+        const created = createChapter(project!.id, chapter.title, position);
+        created.contentJson = blocksToDocument(chapter.blocks);
+        created.plainText = chapter.blocks.map((block) => block.inlines.map((inline) => inline.text).join("")).join("\n");
+        return created;
+      });
+      project = { ...project, chapters: [...project.chapters, ...added] };
+      activeId = added[0]?.id ?? activeId;
+      view = "write";
+      autosave.schedule();
+      await autosave.flush();
+    } catch (error) {
+      saveStatus = { state: "error", message: errorMessage(error) };
+    }
+  }
+
   function statusText(status: SaveStatus): string {
     if (status.state === "saving") return "Saving…";
     if (status.state === "unsaved") return "Unsaved";
@@ -295,6 +345,8 @@
     <button type="button" class:active={view === "home"} onclick={() => (view = "home")}>Dashboard</button>
     <button type="button" class:active={view === "notes"} onclick={() => (view = "notes")}>Notes</button>
     <button type="button" class:active={view === "todos"} onclick={() => (view = "todos")}>Todos</button>
+    <button type="button" class:active={view === "outline"} onclick={() => (view = "outline")}>Outline</button>
+    <button type="button" class:active={view === "book"} onclick={() => (view = "book")}>Book</button>
   </nav>
   {#if view === "write"}
 <div class="shell" class:collapsed class:zen>
@@ -415,11 +467,17 @@
             activeId = restored.chapters[0]?.id ?? null;
             view = "write";
           }}
+          onExport={() => void exportWord()}
+          onImport={(file) => void importWord(file)}
         />
       {:else if view === "notes"}
         <Notes projectId={project.id} {chapters} />
-      {:else}
+      {:else if view === "todos"}
         <Todos projectId={project.id} />
+      {:else if view === "outline"}
+        <Outline {chapters} onUpdate={updateChapterMeta} />
+      {:else}
+        <Book {chapters} />
       {/if}
     </div>
   {/if}

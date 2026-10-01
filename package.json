@@ -20,7 +20,9 @@
     "@tiptap/core": "^3",
     "@tiptap/extension-text-align": "^3.31.4",
     "@tiptap/pm": "^3",
-    "@tiptap/starter-kit": "^3"
+    "@tiptap/starter-kit": "^3",
+    "docx": "^9.5.1",
+    "mammoth": "^1.11.0"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.10",

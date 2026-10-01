@@ -11,11 +11,15 @@
     prefs,
     onContinue,
     onRestored,
+    onExport,
+    onImport,
   }: {
     project: Project;
     prefs: Prefs;
     onContinue: () => void;
     onRestored: (project: Project) => void;
+    onExport: () => void;
+    onImport: (file: File) => void;
   } = $props();
 
   let snapshots = $state<SnapshotInfo[]>([]);
@@ -62,6 +66,21 @@
     <p class="lead">Daily goal: {Math.min(words, prefs.dailyGoal)} / {prefs.dailyGoal} words.</p>
   {/if}
   <button type="button" class="primary" onclick={onContinue}>Continue writing</button>
+  <div class="actions">
+    <button type="button" onclick={onExport}>Export Word</button>
+    <label class="file">
+      Import Word
+      <input
+        type="file"
+        accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        onchange={(event) => {
+          const file = (event.currentTarget as HTMLInputElement).files?.[0];
+          if (file) onImport(file);
+          (event.currentTarget as HTMLInputElement).value = "";
+        }}
+      />
+    </label>
+  </div>
 
   <h2>Recently edited</h2>
   <ul>
@@ -120,11 +139,23 @@
   }
 
   .primary,
-  button {
+  button,
+  .file {
     border: 1px solid var(--line);
     background: var(--paper);
     border-radius: 6px;
     padding: 0.35rem 0.7rem;
+  }
+
+  .actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.8rem;
+  }
+
+  .file input {
+    display: block;
+    margin-top: 0.25rem;
   }
 
   ul {
