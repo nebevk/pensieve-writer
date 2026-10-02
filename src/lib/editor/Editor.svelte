@@ -12,6 +12,9 @@
     onChange,
     onEditor,
     onActivity,
+    onEdit,
+    onText,
+    live = true,
     language = "en",
     typewriter = false,
   }: {
@@ -19,11 +22,19 @@
     onChange: (json: DocumentJson, text: string) => void;
     onEditor: (editor: Editor | null) => void;
     onActivity: () => void;
+    onEdit?: () => void;
+    onText?: (text: string) => void;
+    /** When false, the chapter JSON is read at save time instead of on every keystroke. */
+    live?: boolean;
     language?: WritingLanguage;
     typewriter?: boolean;
   } = $props();
 
   let typewriterOn = false;
+  let liveOn = true;
+  let reportText: ((text: string) => void) | undefined;
+  let markEdited: (() => void) | undefined;
+  let countTimer: ReturnType<typeof setTimeout> | null = null;
 
   let host: HTMLDivElement | undefined = $state();
   let editor = $state<Editor | null>(null);
@@ -35,6 +46,9 @@
     notify = onActivity;
     const lang = language === "sl" ? "sl" : "en";
     typewriterOn = typewriter;
+    liveOn = live;
+    reportText = onText;
+    markEdited = onEdit;
     if (editor && !editor.isDestroyed) editor.view.dom.setAttribute("lang", lang);
   });
 
@@ -45,7 +59,7 @@
     editor = new Editor({
       element: host,
       extensions: [
-        StarterKit,
+        StarterKit.configure({ link: false }),
         TextAlign.configure({
           types: ["heading", "paragraph"],
         }),
@@ -67,7 +81,12 @@
         },
       },
       onUpdate: ({ editor: current }) => {
-        publish(current.getJSON() as DocumentJson, current.getText());
+        if (liveOn) publish(current.getJSON() as DocumentJson, current.getText());
+        else markEdited?.();
+        if (countTimer) clearTimeout(countTimer);
+        countTimer = setTimeout(() => {
+          reportText?.(current.getText());
+        }, 400);
         if (!typewriterOn || !host) return;
         const scroller = host.closest(".stage");
         if (!(scroller instanceof HTMLElement)) return;
@@ -83,6 +102,8 @@
   });
 
   onDestroy(() => {
+    if (countTimer) clearTimeout(countTimer);
+    if (editor && !editor.isDestroyed) publish(editor.getJSON() as DocumentJson, editor.getText());
     onEditor(null);
     editor?.destroy();
     editor = null;
@@ -93,11 +114,11 @@
 
 <style>
   .editor-host {
-    min-height: 70vh;
+    min-height: 8rem;
   }
 
   .editor-host :global(.ProseMirror) {
-    min-height: 70vh;
+    min-height: 8rem;
     padding: 0;
     outline: none;
     font-family: var(--pv-writing-font, var(--pv-font-manuscript));

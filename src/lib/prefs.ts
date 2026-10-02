@@ -1,7 +1,12 @@
 export type ThemeName = "daylight" | "candlelit" | "moonlit" | "sunset";
-export type AmbienceName = "off" | "rain" | "fire";
+export type AmbienceName = "off" | "rain" | "fire" | "cafe" | "piano";
 export type ManuscriptFont = "literata" | "garamond" | "typewriter";
 export type PageWidth = "narrow" | "book" | "wide";
+
+export type KnownProject = {
+  path: string;
+  title: string;
+};
 
 export type Prefs = {
   theme: ThemeName;
@@ -20,8 +25,10 @@ export type Prefs = {
   typewriter: boolean;
   writingDay: string;
   dayStartWords: number;
-  streak: number;
-  lastWriteDay: string;
+  uiLanguage: "en" | "sl";
+  knownProjects: KnownProject[];
+  lastBackupAt: string;
+  lastBackupError: string;
 };
 
 const KEY = "pensieve-prefs";
@@ -67,21 +74,60 @@ export const defaultPrefs = (): Prefs => ({
   typewriter: false,
   writingDay: "",
   dayStartWords: 0,
-  streak: 0,
-  lastWriteDay: "",
+  uiLanguage: "en",
+  knownProjects: [],
+  lastBackupAt: "",
+  lastBackupError: "",
 });
 
 export function loadPrefs(): Prefs {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return defaultPrefs();
-    const stored = JSON.parse(raw) as Partial<Prefs> & { theme?: string };
-    return { ...defaultPrefs(), ...stored, theme: normalizeTheme(stored.theme) };
+    const stored = JSON.parse(raw) as Partial<Prefs> & {
+      theme?: string;
+      streak?: number;
+      lastWriteDay?: string;
+    };
+    const { streak: _streak, lastWriteDay: _lastWriteDay, ...rest } = stored;
+    return { ...defaultPrefs(), ...rest, theme: normalizeTheme(stored.theme), uiLanguage: stored.uiLanguage === "sl" ? "sl" : "en" };
   } catch {
     return defaultPrefs();
   }
 }
 
 export function savePrefs(prefs: Prefs): void {
-  localStorage.setItem(KEY, JSON.stringify(prefs));
+  const contents = JSON.stringify(prefs);
+  localStorage.setItem(KEY, contents);
+  fileWrite = fileWrite.then(() => writePrefsFile(contents)).catch(() => undefined);
+}
+
+let fileWrite: Promise<void> = Promise.resolve();
+
+export function flushPrefs(): Promise<void> {
+  return fileWrite;
+}
+
+export async function loadPrefsFile(): Promise<Prefs | null> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const raw = await invoke<string>("read_prefs");
+  if (!raw.trim()) return null;
+  const stored = JSON.parse(raw) as Partial<Prefs> & {
+    theme?: string;
+    streak?: number;
+    lastWriteDay?: string;
+  };
+  const { streak: _streak, lastWriteDay: _lastWriteDay, ...rest } = stored;
+  return {
+    ...defaultPrefs(),
+    ...rest,
+    theme: normalizeTheme(stored.theme),
+    uiLanguage: stored.uiLanguage === "sl" ? "sl" : "en",
+  };
+}
+
+async function writePrefsFile(contents: string): Promise<void> {
+  if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("write_prefs", { contents });
 }

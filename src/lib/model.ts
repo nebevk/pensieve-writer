@@ -7,6 +7,8 @@ export type ChapterStatus = "draft" | "revised" | "final";
 
 export type WritingLanguage = "en" | "sl";
 
+export type ProjectKind = "novel" | "stories" | "article";
+
 export type Chapter = {
   id: string;
   projectId: string;
@@ -18,6 +20,9 @@ export type Chapter = {
   status: ChapterStatus;
   /** Empty means “use the project language”. */
   language: "" | WritingLanguage;
+  wordGoal: number;
+  /** Empty means the chapter sits outside a part. */
+  part: string;
   updatedAt: string;
 };
 
@@ -27,6 +32,7 @@ export type Project = {
   createdAt: string;
   updatedAt: string;
   language: WritingLanguage;
+  kind: ProjectKind;
   chapters: Chapter[];
 };
 
@@ -34,7 +40,7 @@ export type SnapshotInfo = {
   id: string;
   projectId: string;
   createdAt: string;
-  kind: "hourly" | "daily" | "manual";
+  kind: "hourly" | "daily" | "manual" | "before-restore";
 };
 
 export function effectiveLanguage(project: Project, chapter: Chapter | null): WritingLanguage {
@@ -53,6 +59,7 @@ export function createProject(): Project {
     id: projectId,
     title: "Untitled",
     language: "en",
+    kind: "novel",
     createdAt: now,
     updatedAt: now,
     chapters: [createChapter(projectId, "Chapter 1", 0, now)],
@@ -75,6 +82,8 @@ export function createChapter(
     synopsis: "",
     status: "draft",
     language: "",
+    wordGoal: 0,
+    part: "",
     updatedAt: now,
   };
 }

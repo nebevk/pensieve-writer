@@ -9,6 +9,7 @@ import {
 } from "$lib/model";
 import { loadPrefs, savePrefs } from "$lib/prefs";
 import type { Storage } from "./types";
+import { normalizeChapter, projectFromSnapshot, withRestoredChapter } from "./restore";
 
 const DEFAULT_DB_URL = "sqlite:pensieve.db";
 const SCHEMA_VERSION = 3;
@@ -22,6 +23,7 @@ type ProjectRow = {
   created_at: string;
   updated_at: string;
   language?: string;
+  kind?: string;
 };
 
 type ChapterRow = {
@@ -34,6 +36,8 @@ type ChapterRow = {
   synopsis?: string;
   status?: string;
   language?: string;
+  word_goal?: number;
+  part?: string;
   updated_at: string;
 };
 
@@ -104,7 +108,89 @@ async function columnExists(db: Database, table: string, column: string): Promis
   return rows.some((row) => row.name === column);
 }
 
+const BOOTSTRAP = [
+  `CREATE TABLE IF NOT EXISTS schema_version (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    version INTEGER NOT NULL
+  )`,
+  `INSERT OR IGNORE INTO schema_version (id, version) VALUES (1, 3)`,
+  `CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY NOT NULL,
+    title TEXT NOT NULL,
+    language TEXT NOT NULL DEFAULT 'en',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS chapters (
+    id TEXT PRIMARY KEY NOT NULL,
+    project_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    content_json TEXT NOT NULL,
+    plain_text TEXT NOT NULL,
+    synopsis TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'draft',
+    language TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_chapters_project_position ON chapters (project_id, position)`,
+  `CREATE TABLE IF NOT EXISTS snapshots (
+    id TEXT PRIMARY KEY NOT NULL,
+    project_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'hourly',
+    payload TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_snapshots_project_created ON snapshots (project_id, created_at)`,
+  `CREATE TABLE IF NOT EXISTS notes (
+    id TEXT PRIMARY KEY NOT NULL,
+    project_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    content_json TEXT NOT NULL,
+    plain_text TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'ideas',
+    tags TEXT NOT NULL DEFAULT '',
+    todo_state TEXT,
+    fields_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS note_chapters (
+    note_id TEXT NOT NULL,
+    chapter_id TEXT NOT NULL,
+    PRIMARY KEY (note_id, chapter_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY NOT NULL,
+    project_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    todo_state TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    chapter_id TEXT NOT NULL DEFAULT '',
+    note_id TEXT NOT NULL DEFAULT ''
+  )`,
+  `CREATE TABLE IF NOT EXISTS personal_words (
+    language TEXT NOT NULL,
+    word TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (language, word)
+  )`,
+];
+
+async function tableExists(db: Database, name: string): Promise<boolean> {
+  const rows = await db.select<{ name: string }[]>(
+    `SELECT name FROM sqlite_master WHERE type = 'table' AND name = $1`,
+    [name],
+  );
+  return rows.length > 0;
+}
+
 async function ensureSchema(db: Database): Promise<void> {
+  if (!(await tableExists(db, "schema_version"))) {
+    for (const statement of BOOTSTRAP) {
+      await db.execute(statement);
+    }
+  }
   if (!(await columnExists(db, "projects", "language"))) {
     await db.execute("ALTER TABLE projects ADD COLUMN language TEXT NOT NULL DEFAULT 'en'");
   }
@@ -122,6 +208,15 @@ async function ensureSchema(db: Database): Promise<void> {
   }
   if (!(await columnExists(db, "tasks", "note_id"))) {
     await db.execute("ALTER TABLE tasks ADD COLUMN note_id TEXT NOT NULL DEFAULT ''");
+  }
+  if (!(await columnExists(db, "chapters", "word_goal"))) {
+    await db.execute("ALTER TABLE chapters ADD COLUMN word_goal INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!(await columnExists(db, "chapters", "part"))) {
+    await db.execute("ALTER TABLE chapters ADD COLUMN part TEXT NOT NULL DEFAULT ''");
+  }
+  if (!(await columnExists(db, "projects", "kind"))) {
+    await db.execute("ALTER TABLE projects ADD COLUMN kind TEXT NOT NULL DEFAULT 'novel'");
   }
   await db.execute(
     `CREATE TABLE IF NOT EXISTS personal_words (
@@ -150,13 +245,21 @@ function localDay(iso: string): string {
 async function writeProject(db: Database, project: Project): Promise<void> {
   const updatedAt = new Date().toISOString();
   await db.execute(
-    `INSERT INTO projects (id, title, language, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO projects (id, title, language, kind, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT(id) DO UPDATE SET
        title = excluded.title,
        language = excluded.language,
+       kind = excluded.kind,
        updated_at = excluded.updated_at`,
-    [project.id, project.title, project.language === "sl" ? "sl" : "en", project.createdAt, updatedAt],
+    [
+      project.id,
+      project.title,
+      project.language === "sl" ? "sl" : "en",
+      project.kind === "stories" || project.kind === "article" ? project.kind : "novel",
+      project.createdAt,
+      updatedAt,
+    ],
   );
 
   if (project.chapters.length === 0) {
@@ -166,8 +269,8 @@ async function writeProject(db: Database, project: Project): Promise<void> {
   for (const chapter of project.chapters) {
     await db.execute(
       `INSERT INTO chapters (
-         id, project_id, title, position, content_json, plain_text, synopsis, status, language, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         id, project_id, title, position, content_json, plain_text, synopsis, status, language, word_goal, part, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        ON CONFLICT(id) DO UPDATE SET
          title = excluded.title,
          position = excluded.position,
@@ -176,6 +279,8 @@ async function writeProject(db: Database, project: Project): Promise<void> {
          synopsis = excluded.synopsis,
          status = excluded.status,
          language = excluded.language,
+         word_goal = excluded.word_goal,
+         part = excluded.part,
          updated_at = excluded.updated_at`,
       [
         chapter.id,
@@ -187,6 +292,8 @@ async function writeProject(db: Database, project: Project): Promise<void> {
         chapter.synopsis ?? "",
         chapter.status ?? "draft",
         chapter.language === "en" || chapter.language === "sl" ? chapter.language : "",
+        Number.isFinite(chapter.wordGoal) ? chapter.wordGoal : 0,
+        chapter.part ?? "",
         chapter.updatedAt,
       ],
     );
@@ -237,7 +344,7 @@ async function insertSnapshot(db: Database, project: Project, kind: SnapshotKind
      VALUES ($1, $2, $3, $4, $5)`,
     [crypto.randomUUID(), project.id, new Date().toISOString(), kind, JSON.stringify(payload)],
   );
-  const limit = kind === "daily" ? DAILY_LIMIT : kind === "manual" ? MANUAL_LIMIT : HOURLY_LIMIT;
+  const limit = kind === "daily" ? DAILY_LIMIT : kind === "hourly" ? HOURLY_LIMIT : MANUAL_LIMIT;
   await db.execute(
     `DELETE FROM snapshots
      WHERE project_id = $1
@@ -255,17 +362,17 @@ async function insertSnapshot(db: Database, project: Project, kind: SnapshotKind
 async function readProject(db: Database, projectId?: string): Promise<Project | null> {
   const projects = projectId
     ? await db.select<ProjectRow[]>(
-        `SELECT id, title, language, created_at, updated_at FROM projects WHERE id = $1`,
+        `SELECT id, title, language, kind, created_at, updated_at FROM projects WHERE id = $1`,
         [projectId],
       )
     : await db.select<ProjectRow[]>(
-        `SELECT id, title, language, created_at, updated_at FROM projects ORDER BY created_at LIMIT 1`,
+        `SELECT id, title, language, kind, created_at, updated_at FROM projects ORDER BY created_at LIMIT 1`,
       );
   const row = projects[0];
   if (!row) return null;
 
   const chapters = await db.select<ChapterRow[]>(
-    `SELECT id, project_id, title, position, content_json, plain_text, synopsis, status, language, updated_at
+    `SELECT id, project_id, title, position, content_json, plain_text, synopsis, status, language, word_goal, part, updated_at
      FROM chapters
      WHERE project_id = $1
      ORDER BY position ASC, title ASC`,
@@ -276,6 +383,7 @@ async function readProject(db: Database, projectId?: string): Promise<Project | 
     id: row.id,
     title: row.title,
     language: row.language === "sl" ? "sl" : "en",
+    kind: row.kind === "stories" || row.kind === "article" ? row.kind : "novel",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     chapters: chapters.map(toChapter),
@@ -307,6 +415,8 @@ function toChapter(row: ChapterRow): Chapter {
     synopsis: row.synopsis ?? "",
     status: row.status === "revised" || row.status === "final" ? row.status : "draft",
     language: row.language === "en" || row.language === "sl" ? row.language : "",
+    wordGoal: Number(row.word_goal) || 0,
+    part: row.part ?? "",
     updatedAt: row.updated_at,
   };
 }
@@ -353,6 +463,56 @@ export function listPersonalWords(): Promise<{ language: WritingLanguage; word: 
   });
 }
 
+export function forgetPersonalWord(language: WritingLanguage, word: string): Promise<void> {
+  return enqueue(async () => {
+    await (
+      await database()
+    ).execute(`DELETE FROM personal_words WHERE language = $1 AND word = $2`, [language, word.trim()]);
+  });
+}
+
+async function readSnapshotPayload(
+  db: Database,
+  snapshotId: string,
+): Promise<{ projectId: string; payload: SnapshotPayload }> {
+  const rows = await db.select<SnapshotRow[]>(
+    `SELECT id, project_id, created_at, payload FROM snapshots WHERE id = $1`,
+    [snapshotId],
+  );
+  const row = rows[0];
+  if (!row?.payload) throw new Error("That snapshot could not be found");
+  try {
+    const payload = JSON.parse(row.payload) as SnapshotPayload;
+    if (!payload.chapters?.length) throw new Error("That snapshot has no chapters");
+    return { projectId: row.project_id, payload };
+  } catch (error) {
+    if (error instanceof Error && error.message === "That snapshot has no chapters") throw error;
+    throw new Error("That snapshot is unreadable");
+  }
+}
+
+export function readSnapshotChapters(snapshotId: string): Promise<Chapter[]> {
+  return enqueue(async () => {
+    const { payload } = await readSnapshotPayload(await database(), snapshotId);
+    return payload.chapters.map(normalizeChapter);
+  });
+}
+
+export function restoreChapter(snapshotId: string, chapterId: string): Promise<Project> {
+  return enqueue(async () => {
+    const db = await database();
+    const { projectId, payload } = await readSnapshotPayload(db, snapshotId);
+    const older = payload.chapters.find((chapter) => chapter.id === chapterId);
+    if (!older) throw new Error("That chapter is not in this snapshot");
+    const current = await readProject(db, projectId);
+    if (!current) throw new Error("The project for that snapshot is missing");
+    await insertSnapshot(db, current, "before-restore");
+    const restored = withRestoredChapter(current, older);
+    await writeProject(db, restored);
+    return restored;
+  });
+}
+
 export function rememberPersonalWord(language: WritingLanguage, word: string): Promise<void> {
   const cleaned = word.trim();
   return enqueue(async () => {
@@ -392,6 +552,8 @@ export const sqliteStorage: Storage = {
             synopsis: "",
             status: "draft",
             language: "",
+            wordGoal: 0,
+            part: "",
             updatedAt: now,
           },
         ];
@@ -416,7 +578,10 @@ export const sqliteStorage: Storage = {
           id: row.id,
           projectId: row.project_id,
           createdAt: row.created_at,
-          kind: row.kind === "daily" || row.kind === "manual" ? row.kind : "hourly",
+          kind:
+            row.kind === "daily" || row.kind === "manual" || row.kind === "before-restore"
+              ? row.kind
+              : "hourly",
         }),
       );
     });
@@ -443,19 +608,8 @@ export const sqliteStorage: Storage = {
       const current = await readProject(db, row.project_id);
       if (!current) throw new Error("The project for that snapshot is missing");
 
-      const restored: Project = {
-        ...current,
-        title: payload.title || current.title,
-        language: payload.language === "sl" ? "sl" : current.language,
-        updatedAt: new Date().toISOString(),
-        chapters: payload.chapters.map((chapter) => ({
-          ...chapter,
-          synopsis: chapter.synopsis ?? "",
-          status:
-            chapter.status === "revised" || chapter.status === "final" ? chapter.status : "draft",
-          language: chapter.language === "en" || chapter.language === "sl" ? chapter.language : "",
-        })),
-      };
+      await insertSnapshot(db, current, "before-restore");
+      const restored = projectFromSnapshot(current, payload);
       await writeProject(db, restored);
 
       const keep = restored.chapters.map((chapter) => chapter.id);

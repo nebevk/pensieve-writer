@@ -190,6 +190,62 @@ export async function chaptersToDocx(title: string, chapters: Chapter[]): Promis
   return Packer.toBlob(document);
 }
 
+function inlineMarkdown(inlines: Inline[]): string {
+  return inlines
+    .map((inline) => {
+      let text = inline.text;
+      if (inline.bold) text = `**${text}**`;
+      if (inline.italic) text = `*${text}*`;
+      if (inline.strike) text = `~~${text}~~`;
+      return text;
+    })
+    .join("");
+}
+
+export function blocksToMarkdown(blocks: Block[]): string {
+  return blocks
+    .map((block) => {
+      const inner = inlineMarkdown(block.inlines);
+      if (block.kind === "h1") return `# ${inner}`;
+      if (block.kind === "h2") return `## ${inner}`;
+      if (block.kind === "h3") return `### ${inner}`;
+      if (block.kind === "quote") return `> ${inner}`;
+      if (block.kind === "bullet") return `- ${inner}`;
+      if (block.kind === "number") return `1. ${inner}`;
+      return inner;
+    })
+    .join("\n\n");
+}
+
+export function blocksToPlain(blocks: Block[]): string {
+  return blocks.map((block) => block.inlines.map((inline) => inline.text).join("")).join("\n\n");
+}
+
+export function chaptersToMarkdown(title: string, chapters: Chapter[]): string {
+  const body = chapters
+    .map((chapter) => `## ${chapter.title}\n\n${blocksToMarkdown(documentToBlocks(chapter.contentJson))}`)
+    .join("\n\n");
+  return `# ${title}\n\n${body}\n`;
+}
+
+export function chaptersToPlain(title: string, chapters: Chapter[]): string {
+  const body = chapters
+    .map((chapter) => `${chapter.title}\n\n${blocksToPlain(documentToBlocks(chapter.contentJson))}`)
+    .join("\n\n");
+  return `${title}\n\n${body}\n`;
+}
+
+export function chaptersToHtml(title: string, chapters: Chapter[]): string {
+  const body = chapters
+    .map((chapter) => `<h2>${escapeHtml(chapter.title)}</h2>${blocksToHtml(documentToBlocks(chapter.contentJson))}`)
+    .join("");
+  return `<article><h1>${escapeHtml(title)}</h1>${body}</article>`;
+}
+
+export function downloadText(text: string, filename: string, type: string) {
+  downloadBlob(new Blob([text], { type }), filename);
+}
+
 export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");

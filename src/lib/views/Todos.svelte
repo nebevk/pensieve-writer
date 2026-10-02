@@ -6,6 +6,7 @@
     listTasks,
     saveNote,
     saveTask,
+    deleteTask,
     type Note,
     type Task,
     type TodoState,
@@ -17,12 +18,16 @@
     compact = false,
     onShowNotes,
     focusRequest = 0,
+    attachChapterId = "",
+    onSaveError,
   }: {
     projectId: string;
     chapters?: Chapter[];
     compact?: boolean;
     onShowNotes?: () => void;
     focusRequest?: number;
+    attachChapterId?: string;
+    onSaveError?: (message: string) => void;
   } = $props();
 
   let notes = $state<Note[]>([]);
@@ -32,6 +37,10 @@
   let filter = $state<string>("open");
   let addInput = $state<HTMLInputElement | undefined>(undefined);
   let seenFocus = 0;
+  let editing = $state<string | null>(null);
+  let editTitle = $state("");
+  let editChapter = $state("");
+  let editNote = $state("");
 
   const ordered = $derived([...chapters].sort((a, b) => a.position - b.position));
   const columns: { id: TodoState; label: string }[] = [
@@ -124,6 +133,59 @@
       }
     } catch (error) {
       message = error instanceof Error ? error.message : "Could not update that to-do";
+      onSaveError?.(message);
+    }
+  }
+
+  function beginEdit(card: (typeof cards)[number], event: MouseEvent) {
+    event.stopPropagation();
+    editing = `${card.kind}:${card.id}`;
+    editTitle = card.title;
+    editChapter = card.chapterId;
+    editNote = card.kind === "note" ? "" : card.noteId;
+  }
+
+  async function saveEdit(card: (typeof cards)[number]) {
+    const title = editTitle.trim();
+    if (!title) return;
+    const updatedAt = new Date().toISOString();
+    try {
+      if (card.kind === "note") {
+        const note = notes.find((item) => item.id === card.id);
+        if (!note) return;
+        const next = { ...note, title, updatedAt };
+        notes = notes.map((item) => (item.id === card.id ? next : item));
+        await saveNote(next);
+      } else {
+        const task = tasks.find((item) => item.id === card.id);
+        if (!task) return;
+        const next = { ...task, title, chapterId: editChapter, noteId: editNote, updatedAt };
+        tasks = tasks.map((item) => (item.id === card.id ? next : item));
+        await saveTask(next);
+      }
+      editing = null;
+    } catch (error) {
+      message = error instanceof Error ? error.message : "Could not update that to-do";
+      onSaveError?.(message);
+    }
+  }
+
+  async function removeCard(card: (typeof cards)[number]) {
+    try {
+      if (card.kind === "note") {
+        const note = notes.find((item) => item.id === card.id);
+        if (!note) return;
+        const next = { ...note, todoState: null, updatedAt: new Date().toISOString() };
+        notes = notes.map((item) => (item.id === card.id ? next : item));
+        await saveNote(next);
+      } else {
+        tasks = tasks.filter((item) => item.id !== card.id);
+        await deleteTask(card.id);
+      }
+      editing = null;
+    } catch (error) {
+      message = error instanceof Error ? error.message : "Could not remove that to-do";
+      onSaveError?.(message);
     }
   }
 
@@ -136,7 +198,9 @@
       title,
       todoState: "todo",
       updatedAt: new Date().toISOString(),
-      chapterId: filter !== "open" && filter !== "notes" && filter !== "book" ? filter : "",
+      chapterId:
+        attachChapterId ||
+        (filter !== "open" && filter !== "notes" && filter !== "book" ? filter : ""),
       noteId: "",
     };
     draft = "";
@@ -145,6 +209,7 @@
       await saveTask(task);
     } catch (error) {
       message = error instanceof Error ? error.message : "Could not add that to-do";
+      onSaveError?.(message);
     }
   }
 </script>
@@ -196,8 +261,8 @@
         <section>
           <h2>{column.label} <span>{items.length}</span></h2>
           {#each items as card (card.kind + card.id)}
-            <button type="button" class="slip" class:done={column.id === "done"} onclick={() => void cycle(card.id, card.kind)}>
-              <span>{card.title}</span>
+            <article class="slip" class:done={column.id === "done"}>
+              <button type="button" class="title" onclick={() => void cycle(card.id, card.kind)}>{card.title}</button>
               <span class="tags">
                 {#if card.kind === "task"}
                   <span class="tag">{chapterLabel(card.chapterId)}</span>
@@ -208,7 +273,35 @@
                   <span class="tag note">{card.noteTitle}</span>
                 {/if}
               </span>
-            </button>
+              <button type="button" class="quiet" onclick={(event) => beginEdit(card, event)}>Edit</button>
+              {#if editing === `${card.kind}:${card.id}`}
+                <form
+                  class="edit"
+                  onsubmit={(event) => {
+                    event.preventDefault();
+                    void saveEdit(card);
+                  }}
+                >
+                  <input bind:value={editTitle} aria-label="To-do title" />
+                  {#if card.kind === "task"}
+                    <select bind:value={editChapter} aria-label="Chapter">
+                      <option value="">Whole book</option>
+                      {#each ordered as chapter, index (chapter.id)}
+                        <option value={chapter.id}>{index + 1} · {chapter.title}</option>
+                      {/each}
+                    </select>
+                    <select bind:value={editNote} aria-label="Note">
+                      <option value="">No note</option>
+                      {#each notes as note (note.id)}
+                        <option value={note.id}>{note.title}</option>
+                      {/each}
+                    </select>
+                  {/if}
+                  <button type="submit">Save</button>
+                  <button type="button" onclick={() => void removeCard(card)}>Delete</button>
+                </form>
+              {/if}
+            </article>
           {/each}
         </section>
       {/each}
@@ -366,6 +459,30 @@
     color: var(--pv-text-faint);
     font-family: var(--pv-font-ui);
     font-size: var(--pv-text-sm);
+  }
+
+  .slip button.title,
+  .slip button.quiet {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    padding: 0;
+    font: inherit;
+  }
+
+  .slip .edit {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .slip .edit input,
+  .slip .edit select {
+    font: inherit;
+    color: var(--pv-ink);
+    background: var(--pv-field);
+    border: 1px solid var(--pv-line-strong);
   }
 
   .slip {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { countWords } from "$lib/editor/counts";
+  import { wordsFor } from "$lib/editor/counts";
   import type { Chapter, ChapterStatus } from "$lib/model";
 
   let {
@@ -15,7 +15,24 @@
   {#each chapters as chapter (chapter.id)}
     <article>
       <h2>{chapter.title}</h2>
-      <p>{countWords(chapter.plainText)} words</p>
+      <p>{wordsFor(chapter.id, chapter.plainText)} words{chapter.wordGoal > 0 ? ` / ${chapter.wordGoal}` : ""}</p>
+      <label>
+        Part
+        <input
+          value={chapter.part}
+          onchange={(event) => onUpdate(chapter.id, { part: (event.currentTarget as HTMLInputElement).value })}
+        />
+      </label>
+      <label>
+        Word goal
+        <input
+          type="number"
+          min="0"
+          value={chapter.wordGoal}
+          onchange={(event) =>
+            onUpdate(chapter.id, { wordGoal: Number((event.currentTarget as HTMLInputElement).value) || 0 })}
+        />
+      </label>
       <label>
         Status
         <select

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { t, type UiLanguage } from "$lib/i18n";
+
   type ViewId = "write" | "notes" | "todos" | "outline" | "book" | "home" | "settings";
 
   let {
@@ -7,37 +9,43 @@
     saveLabel,
     saveState = "saved",
     language = "EN",
+    uiLanguage = "en",
     error = "",
     onView,
     onLanguage,
     onHome,
     onSettings,
     settingsOpen = false,
+    appearance = "daylight",
   }: {
     project?: string;
     view: ViewId;
     saveLabel: string;
     saveState?: "saved" | "saving" | "unsaved" | "error";
     language?: string;
+    uiLanguage?: UiLanguage;
     error?: string;
     onView: (view: ViewId) => void;
     onLanguage: () => void;
     onHome: () => void;
     onSettings: () => void;
     settingsOpen?: boolean;
+    appearance?: "daylight" | "candlelit" | "moonlit";
   } = $props();
 
-  const tabs: { id: ViewId; label: string }[] = [
-    { id: "write", label: "Write" },
-    { id: "notes", label: "Notes" },
-    { id: "todos", label: "To-dos" },
-    { id: "outline", label: "Outline" },
-    { id: "book", label: "Book" },
-  ];
+  const tabs = $derived([
+    { id: "write" as const, label: t(uiLanguage, "write") },
+    { id: "notes" as const, label: t(uiLanguage, "notes") },
+    { id: "todos" as const, label: t(uiLanguage, "todos") },
+    { id: "outline" as const, label: t(uiLanguage, "outline") },
+    { id: "book" as const, label: t(uiLanguage, "book") },
+  ]);
 </script>
 
 <header class="titlebar">
-  <button type="button" class="mark" title="Home" onclick={onHome}>P</button>
+  <button type="button" class="mark" title={t(uiLanguage, "home")} onclick={onHome}>
+    <img src="/brand/{appearance}.png" alt="" width="22" height="22" />
+  </button>
   <span class="project">{project}</span>
   <div class="tabs" role="tablist" aria-label="Views">
     {#each tabs as tab (tab.id)}
@@ -63,7 +71,7 @@
     {/if}
     {saveLabel}
   </p>
-  <button type="button" class="lang" title="Chapter language" onclick={onLanguage}>{language}</button>
+  <button type="button" class="lang" title="Language. Select text first to mark just that passage." onclick={onLanguage}>{language}</button>
   <button type="button" class="gear" title="Settings" aria-pressed={settingsOpen} onclick={onSettings}>
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <circle cx="8" cy="8" r="2.1" fill="none" stroke="currentColor" stroke-width="1.4" />
@@ -93,16 +101,19 @@
   }
 
   .mark {
-    width: 18px;
-    height: 18px;
+    width: 22px;
+    height: 22px;
     border: 0;
     border-radius: var(--pv-radius-xs);
-    background: var(--pv-mark-bg);
-    color: var(--pv-mark-fg);
-    font-family: var(--pv-font-heading);
-    font-size: 12px;
-    line-height: 1;
+    background: transparent;
     padding: 0;
+  }
+
+  .mark img {
+    display: block;
+    width: 22px;
+    height: 22px;
+    border-radius: var(--pv-radius-xs);
   }
 
   .project {

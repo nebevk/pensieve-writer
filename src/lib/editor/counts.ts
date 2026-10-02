@@ -4,6 +4,17 @@ export function countWords(text: string): number {
   return trimmed.split(/\s+/).length;
 }
 
+const wordMemory = new Map<string, { text: string; words: number }>();
+
+/** Recount a chapter only when its text has actually changed. */
+export function wordsFor(id: string, text: string): number {
+  const remembered = wordMemory.get(id);
+  if (remembered && remembered.text === text) return remembered.words;
+  const words = countWords(text);
+  wordMemory.set(id, { text, words });
+  return words;
+}
+
 export function compactWords(words: number): string {
   if (words < 1000) return String(words);
   const thousands = words / 1000;

@@ -19,9 +19,30 @@ pub fn write_backup(folder: String, filename: String, contents: String) -> Resul
     }
 
     let path = dir.join(&filename);
-    fs::write(&path, contents).map_err(|error| error.to_string())?;
+    let temporary = dir.join(format!("{filename}.writing"));
+    fs::write(&temporary, contents).map_err(|error| error.to_string())?;
+    if path.exists() {
+        let _ = fs::remove_file(&temporary);
+        return Err("That backup already exists".into());
+    }
+    if let Err(error) = fs::rename(&temporary, &path) {
+        let _ = fs::remove_file(&temporary);
+        return Err(error.to_string());
+    }
+    remove_partial_backups(dir)?;
     prune_old_backups(dir)?;
     Ok(path.display().to_string())
+}
+
+fn remove_partial_backups(dir: &Path) -> Result<(), String> {
+    for entry in fs::read_dir(dir).map_err(|error| error.to_string())?.filter_map(Result::ok) {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("pensieve-") && name.ends_with(".json.writing") {
+            fs::remove_file(entry.path()).map_err(|error| error.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 fn prune_old_backups(dir: &Path) -> Result<(), String> {

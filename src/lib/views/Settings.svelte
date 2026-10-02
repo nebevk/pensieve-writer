@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ManuscriptFont, PageWidth, Prefs, ThemeName } from "$lib/prefs";
   import type { WritingLanguage } from "$lib/model";
+  import { t, type UiKey } from "$lib/i18n";
 
   let {
     prefs,
@@ -8,13 +9,18 @@
     projectLocation,
     projectLanguage,
     dictionary,
+    startSection = "Appearance",
     onChange,
     onChooseFolder,
     onBackup,
     onMoveProject,
     onProjectLanguage,
     onAddWord,
+    onRemoveWord,
     onExport,
+    onExportText,
+    onCopyHtml,
+    onPrint,
     onImport,
     onClose,
   }: {
@@ -23,31 +29,33 @@
     projectLocation: string;
     projectLanguage: WritingLanguage;
     dictionary: { language: WritingLanguage; word: string }[];
+    startSection?: Section;
     onChange: (patch: Partial<Prefs>) => void;
     onChooseFolder: () => void;
     onBackup: () => void;
     onMoveProject: () => void;
     onProjectLanguage: (language: WritingLanguage) => void;
     onAddWord: (language: WritingLanguage, word: string) => void;
+    onRemoveWord: (language: WritingLanguage, word: string) => void;
     onExport: () => void;
+    onExportText: (kind: "markdown" | "plain") => void;
+    onCopyHtml: () => void;
+    onPrint: () => void;
     onImport: (file: File) => void;
     onClose: () => void;
   } = $props();
 
-  type Section = "General" | "Writing & goals" | "Appearance" | "Ambience" | "Backup & export" | "Language";
+  type Section = "General" | "Writing & goals" | "Appearance" | "Ambience" | "Backup & export" | "Language" | "Shortcuts";
 
-  const sections: Section[] = [
-    "General",
-    "Writing & goals",
-    "Appearance",
-    "Ambience",
-    "Backup & export",
-    "Language",
+  const sections: { id: Section; key: UiKey }[] = [
+    { id: "General", key: "general" },
+    { id: "Writing & goals", key: "goals" },
+    { id: "Appearance", key: "appearance" },
+    { id: "Ambience", key: "ambience" },
+    { id: "Backup & export", key: "backup" },
+    { id: "Language", key: "language" },
+    { id: "Shortcuts", key: "shortcuts" },
   ];
-
-  let section = $state<Section>("Appearance");
-  let dictionaryDraft = $state("");
-  let dictionaryLanguage = $state<WritingLanguage>("en");
 
   const themes: { id: ThemeName; label: string }[] = [
     { id: "daylight", label: "Daylight" },
@@ -69,6 +77,34 @@
     if (width === "wide") return "Wide";
     return "Book";
   }
+
+  let section = $state<Section>("Appearance");
+  let panel = $state<HTMLDivElement | undefined>(undefined);
+  let dictionaryDraft = $state("");
+  let dictionaryLanguage = $state<WritingLanguage>("en");
+
+  $effect(() => {
+    section = startSection;
+    panel?.querySelector<HTMLElement>("button, input, select, textarea")?.focus();
+  });
+
+  function trap(event: KeyboardEvent) {
+    event.stopPropagation();
+    if (event.key !== "Tab" || !panel) return;
+    const items = [...panel.querySelectorAll<HTMLElement>("button, input, select, textarea")].filter(
+      (item) => !item.hasAttribute("disabled") && item.tabIndex !== -1,
+    );
+    if (items.length === 0) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
 </script>
 
 <div
@@ -81,8 +117,9 @@
     role="dialog"
     aria-labelledby="settings-title"
     tabindex="-1"
+    bind:this={panel}
     onclick={(event) => event.stopPropagation()}
-    onkeydown={(event) => event.stopPropagation()}
+    onkeydown={trap}
   >
     <header>
       <span id="settings-title">Settings</span>
@@ -90,8 +127,8 @@
     </header>
     <div class="body">
       <nav>
-        {#each sections as item (item)}
-          <button type="button" class:active={section === item} onclick={() => (section = item)}>{item}</button>
+        {#each sections as item (item.id)}
+          <button type="button" class:active={section === item.id} onclick={() => (section = item.id)}>{t(prefs.uiLanguage, item.key)}</button>
         {/each}
         <span class="blob one" aria-hidden="true"></span>
         <span class="blob two" aria-hidden="true"></span>
@@ -200,6 +237,11 @@
               </button>
             </div>
           </div>
+          <p class="lab">Interface language</p>
+          <div class="segment" role="radiogroup" aria-label="Interface language">
+            <button type="button" class:on={prefs.uiLanguage === "en"} onclick={() => onChange({ uiLanguage: "en" })}>English</button>
+            <button type="button" class:on={prefs.uiLanguage === "sl"} onclick={() => onChange({ uiLanguage: "sl" })}>Slovenščina</button>
+          </div>
         {:else if section === "Writing & goals"}
           <h2>Writing & goals</h2>
           <label class="field">
@@ -224,7 +266,9 @@
             >
               <option value="off">Off</option>
               <option value="rain">Rain</option>
-              <option value="fire">Fire</option>
+              <option value="fire">Fireplace</option>
+              <option value="cafe">Café</option>
+              <option value="piano">Piano</option>
             </select>
           </label>
           <label class="slider">
@@ -247,6 +291,10 @@
           <div class="actions">
             <button type="button" onclick={onMoveProject}>Move project…</button>
             <button type="button" onclick={onExport}>Export Word</button>
+            <button type="button" onclick={() => onExportText("markdown")}>Markdown</button>
+            <button type="button" onclick={() => onExportText("plain")}>Plain text</button>
+            <button type="button" onclick={onCopyHtml}>Copy HTML</button>
+            <button type="button" onclick={onPrint}>Print / PDF</button>
             <label class="file">
               Import Word
               <input
@@ -268,7 +316,7 @@
           {#if backupMessage}
             <p class="hint">{backupMessage}</p>
           {/if}
-        {:else}
+        {:else if section === "Language"}
           <h2>Language</h2>
           <p class="lab">Project language</p>
           <div class="segment" role="radiogroup" aria-label="Project language">
@@ -294,8 +342,25 @@
           </form>
           <ul>
             {#each dictionary as entry (`${entry.language}:${entry.word}`)}
-              <li>{entry.language === "sl" ? "Slovenian" : "English"} · {entry.word}</li>
+              <li>
+                {entry.language === "sl" ? "Slovenian" : "English"} · {entry.word}
+                <button type="button" onclick={() => onRemoveWord(entry.language, entry.word)}>Remove</button>
+              </li>
             {/each}
+          </ul>
+          <p class="hint">Removing a word forgets it in Pensieve. Windows may still remember it until the spell checker is reset.</p>
+        {:else if section === "Shortcuts"}
+          <h2>Shortcuts</h2>
+          <ul class="keys">
+            <li><kbd>Ctrl</kbd> + <kbd>B</kbd> Bold</li>
+            <li><kbd>Ctrl</kbd> + <kbd>I</kbd> Italic</li>
+            <li><kbd>Ctrl</kbd> + <kbd>U</kbd> Underline</li>
+            <li><kbd>Ctrl</kbd> + <kbd>Z</kbd> Undo</li>
+            <li><kbd>Ctrl</kbd> + <kbd>Y</kbd> Redo</li>
+            <li><kbd>Ctrl</kbd> + <kbd>S</kbd> Save</li>
+            <li><kbd>Ctrl</kbd> + <kbd>F</kbd> Find</li>
+            <li><kbd>Ctrl</kbd> + <kbd>/</kbd> This list</li>
+            <li><kbd>Esc</kbd> Close settings, find, or Zen</li>
           </ul>
         {/if}
       </div>

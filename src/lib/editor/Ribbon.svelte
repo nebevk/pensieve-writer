@@ -1,6 +1,9 @@
 <script lang="ts">
+  import { invoke } from "@tauri-apps/api/core";
   import type { Editor } from "@tiptap/core";
   import type { ManuscriptFont } from "$lib/prefs";
+  import { chooseImageFile } from "$lib/storage/backup";
+  import { shrinkImage } from "./imageSize";
   import Icon from "./Icon.svelte";
 
   let {
@@ -13,9 +16,6 @@
     onToggleNotes,
     onToggleTodos,
     onFind,
-    language,
-    onChapterLanguage,
-    onSelectionLanguage,
     manuscriptFont,
     manuscriptSize,
     onFont,
@@ -33,9 +33,6 @@
     onToggleNotes: () => void;
     onToggleTodos: () => void;
     onFind: () => void;
-    language: "en" | "sl";
-    onChapterLanguage: (language: "en" | "sl") => void;
-    onSelectionLanguage: (language: "en" | "sl") => void;
     manuscriptFont: ManuscriptFont;
     manuscriptSize: number;
     onFont: (font: ManuscriptFont) => void;
@@ -46,6 +43,8 @@
   } = $props();
 
   let expanded = $state(false);
+  let linkOpen = $state(false);
+  let linkDraft = $state("https://");
 
   type Tool = {
     icon?: string;
@@ -144,21 +143,30 @@
     current.chain().focus().updateAttributes(type, { indent: Math.max(0, Math.min(6, indent + delta)) }).run();
   }
 
-  function askLink() {
+  function applyLink() {
     const current = ready();
-    if (!current) return;
-    const href = window.prompt("Link address", "https://");
-    if (!href) return;
+    const href = linkDraft.trim();
+    if (!current || !href) return;
     if (current.state.selection.empty) {
       current.chain().focus().insertContent({ type: "text", text: href, marks: [{ type: "link", attrs: { href } }] }).run();
     } else {
       current.chain().focus().setMark("link", { href }).run();
     }
+    linkOpen = false;
   }
 
-  function askImage() {
-    const src = window.prompt("Image address", "https://");
-    if (!src) return;
+  async function askImage() {
+    const path = await chooseImageFile();
+    if (!path) return;
+    const bytes = await invoke<number[]>("read_image_file", { path });
+    const blob = new Blob([new Uint8Array(bytes)]);
+    const original = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+    const src = await shrinkImage(original);
     ready()?.chain().focus().insertContent({ type: "image", attrs: { src, alt: "" } }).run();
   }
 
@@ -249,10 +257,20 @@
       <div class="tools">
         <button type="button" class="tool serif" title="Block quote" onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleBlockquote().run()}>“</button>
         <button type="button" class="tool scene" title="Scene break" onmousedown={(event) => event.preventDefault()} onclick={sceneBreak}>* *</button>
-        <button type="button" class="tool" title="Image" onmousedown={(event) => event.preventDefault()} onclick={askImage}><Icon name="notes" /></button>
-        <button type="button" class="tool" title="Link" onmousedown={(event) => event.preventDefault()} onclick={askLink}><Icon name="find" /></button>
-        <button type="button" class="tool serif" title="Footnote" onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().insertContent({ type: "text", marks: [{ type: "superscript" }], text: "1" }).run()}>¹</button>
-        <button type="button" class="tool" title="Comment" onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleMark("highlight").run()}><Icon name="notes" /></button>
+        <button type="button" class="tool" title="Image" onmousedown={(event) => event.preventDefault()} onclick={() => void askImage()}>Img</button>
+        <button type="button" class="tool" title="Link" onmousedown={(event) => event.preventDefault()} onclick={() => (linkOpen = !linkOpen)}>Link</button>
+        {#if linkOpen}
+          <form
+            class="link-form"
+            onsubmit={(event) => {
+              event.preventDefault();
+              applyLink();
+            }}
+          >
+            <input bind:value={linkDraft} aria-label="Link address" />
+            <button type="submit" class="tool text wide">Add</button>
+          </form>
+        {/if}
       </div>
       <p>Insert</p>
     </section>
@@ -260,13 +278,8 @@
       <div class="tools">
         <button type="button" class="tool" title="New note" onclick={onNewNote}><Icon name="notes" /></button>
         <button type="button" class="tool" title="Add to-do" onclick={onAddTodo}><Icon name="todos" /></button>
-        <button type="button" class="tool scene" title="Link a note" onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().insertContent("[[ ]]").run()}>[[ ]]</button>
         <button type="button" class="tool" class:active={notesOpen} title="Notes panel" aria-pressed={notesOpen} onclick={onToggleNotes}><Icon name="notes" /></button>
         <button type="button" class="tool" class:active={todosOpen} title="To-dos panel" aria-pressed={todosOpen} onclick={onToggleTodos}><Icon name="todos" /></button>
-        <button type="button" class="tool text" class:active={language === "en"} title="Chapter language: English" onclick={() => onChapterLanguage("en")}>EN</button>
-        <button type="button" class="tool text" class:active={language === "sl"} title="Chapter language: Slovenian" onclick={() => onChapterLanguage("sl")}>SL</button>
-        <button type="button" class="tool text wide" title="Spellcheck the selection in English" onmousedown={(event) => event.preventDefault()} onclick={() => onSelectionLanguage("en")}>Sel EN</button>
-        <button type="button" class="tool text wide" title="Spellcheck the selection in Slovenian" onmousedown={(event) => event.preventDefault()} onclick={() => onSelectionLanguage("sl")}>Sel SL</button>
       </div>
       <p>Pensieve</p>
     </section>
@@ -448,6 +461,22 @@
   .tool.wide {
     width: auto;
     padding: 0 6px;
+  }
+
+  .link-form {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .link-form input {
+    width: 12rem;
+    height: var(--pv-tool-h);
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-xs);
+    background: var(--pv-field);
+    color: var(--pv-text);
+    padding: 0 8px;
   }
 
   .tool:hover:not(:disabled),

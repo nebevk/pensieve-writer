@@ -1,0 +1,66 @@
+export type UiLanguage = "en" | "sl";
+
+const STRINGS = {
+  en: {
+    write: "Write",
+    notes: "Notes",
+    todos: "To-dos",
+    outline: "Outline",
+    book: "Book",
+    home: "Home",
+    chapters: "Chapters",
+    newChapter: "New",
+    morning: "Good morning",
+    afternoon: "Good afternoon",
+    evening: "Good evening",
+    projects: "Projects",
+    start: "Start something new",
+    open: "Open another project…",
+    continue: "Continue writing",
+    snapshots: "Snapshots",
+    general: "General",
+    goals: "Writing & goals",
+    appearance: "Appearance",
+    ambience: "Ambience",
+    backup: "Backup & export",
+    language: "Language",
+    shortcuts: "Shortcuts",
+    novel: "Novel",
+    stories: "Short stories",
+    article: "Article",
+  },
+  sl: {
+    write: "Piši",
+    notes: "Zapiski",
+    todos: "Opravila",
+    outline: "Oris",
+    book: "Knjiga",
+    home: "Domov",
+    chapters: "Poglavja",
+    newChapter: "Novo",
+    morning: "Dobro jutro",
+    afternoon: "Dober dan",
+    evening: "Dober večer",
+    projects: "Projekti",
+    start: "Začni nekaj novega",
+    open: "Odpri drug projekt…",
+    continue: "Nadaljuj s pisanjem",
+    snapshots: "Posnetki",
+    general: "Splošno",
+    goals: "Pisanje in cilji",
+    appearance: "Videz",
+    ambience: "Ozadje",
+    backup: "Varnostne kopije",
+    language: "Jezik",
+    shortcuts: "Bližnjice",
+    novel: "Roman",
+    stories: "Kratke zgodbe",
+    article: "Članek",
+  },
+} as const;
+
+export type UiKey = keyof (typeof STRINGS)["en"];
+
+export function t(language: UiLanguage, key: UiKey): string {
+  return STRINGS[language][key];
+}

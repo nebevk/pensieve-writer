@@ -1,27 +1,36 @@
 <script lang="ts">
   import type { Chapter } from "$lib/model";
-  import { compactWords, countWords } from "$lib/editor/counts";
+  import { compactWords, wordsFor } from "$lib/editor/counts";
+  import { t, type UiLanguage } from "$lib/i18n";
 
   let {
     chapters,
     activeId,
     collapsed,
+    hidden = false,
+    uiLanguage = "en",
     onSelect,
     onCreate,
     onRename,
     onDuplicate,
     onDelete,
     onReorder,
+    onPatch,
+    onHistory,
   }: {
     chapters: Chapter[];
     activeId: string | null;
     collapsed: boolean;
+    hidden?: boolean;
+    uiLanguage?: UiLanguage;
     onSelect: (id: string) => void;
     onCreate: () => void;
     onRename: (id: string, title: string) => void;
     onDuplicate: (id: string) => void;
     onDelete: (id: string) => void;
     onReorder: (draggedId: string, targetId: string) => void;
+    onPatch: (id: string, patch: Partial<Chapter>) => void;
+    onHistory: () => void;
   } = $props();
 
   let editingId = $state<string | null>(null);
@@ -34,6 +43,16 @@
   let previousActiveId = $state<string | null | undefined>(undefined);
 
   const active = $derived(chapters.find((chapter) => chapter.id === activeId) ?? null);
+  const rows = $derived.by(() => {
+    const ordered = [...chapters].sort((a, b) => a.position - b.position);
+    let lastPart = "";
+    return ordered.map((chapter, index) => {
+      const part = chapter.part.trim();
+      const showPart = part.length > 0 && part !== lastPart;
+      lastPart = part;
+      return { chapter, index, showPart, part };
+    });
+  });
 
   $effect(() => {
     if (previousActiveId === undefined) {
@@ -79,14 +98,20 @@
   }
 </script>
 
+{#if !hidden}
 <aside class="sidebar" inert={collapsed}>
   <div class="sidebar-inner">
     <div class="sidebar-head">
-      <h2>Chapters</h2>
-      <button type="button" onclick={onCreate}>New</button>
+      <h2>{t(uiLanguage, "chapters")}</h2>
+      <button type="button" onclick={onCreate}>{t(uiLanguage, "newChapter")}</button>
     </div>
     <ul>
-      {#each chapters as chapter, index (chapter.id)}
+      {#each rows as row (row.chapter.id)}
+        {@const chapter = row.chapter}
+        {@const words = wordsFor(chapter.id, chapter.plainText)}
+        {#if row.showPart}
+          <li class="part">{row.part}</li>
+        {/if}
         <li
           class:drop-target={dropTargetId === chapter.id}
           ondragover={(event) => {
@@ -120,19 +145,41 @@
                 dropTargetId = null;
               }}
             >
-              <span class="num">{index + 1}</span>
+              <span class="num">{row.index + 1}</span>
               <span class="name">{chapter.title}</span>
               <span class="dot" class:final={chapter.status === "final"} class:revised={chapter.status === "revised"} class:empty={!chapter.plainText.trim()} aria-label={chapter.status}></span>
-              <span class="count">{compactWords(countWords(chapter.plainText))}</span>
+              <span class="count">{compactWords(words)}{chapter.wordGoal > 0 ? `/${compactWords(chapter.wordGoal)}` : ""}</span>
             </button>
           {/if}
         </li>
       {/each}
     </ul>
     <div class="chapter-actions">
+      <label>
+        Part
+        <input
+          value={active?.part ?? ""}
+          disabled={!active}
+          aria-label="Part"
+          onchange={(event) => active && onPatch(active.id, { part: event.currentTarget.value })}
+        />
+      </label>
+      <label>
+        Goal
+        <input
+          type="number"
+          min="0"
+          value={active?.wordGoal ?? 0}
+          disabled={!active}
+          aria-label="Chapter word goal"
+          onchange={(event) =>
+            active && onPatch(active.id, { wordGoal: Number(event.currentTarget.value) || 0 })}
+        />
+      </label>
       <button type="button" disabled={!active} onclick={() => active && onDuplicate(active.id)}>
         Duplicate
       </button>
+      <button type="button" disabled={!active} onclick={onHistory}>Earlier versions</button>
       <button
         type="button"
         disabled={!active || chapters.length < 2}
@@ -149,9 +196,9 @@
         <button type="button" onclick={() => (confirmDelete = false)}>Cancel</button>
       </div>
     {/if}
-    <a class="spike" href="/spellcheck">Spell check test</a>
   </div>
 </aside>
+{/if}
 
 <style>
   .sidebar {
@@ -286,15 +333,33 @@
     color: var(--pv-text);
   }
 
-  .spike {
-    margin: 0.5rem 0.75rem 0.85rem;
+  .chapter-actions label {
+    display: flex;
+    flex-direction: column;
+    font-size: 0.7rem;
     color: var(--muted);
-    font-size: 0.8rem;
+    flex: 1;
+  }
+
+  .chapter-actions input {
+    width: 100%;
+    background: var(--pv-field);
+    border: 1px solid var(--pv-line-strong);
+    color: var(--pv-text);
+  }
+
+  li.part {
+    padding: 0.45rem 0.2rem 0.1rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
   }
 
   .chapter-actions,
   .confirm {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.35rem;
     padding: 0.35rem 0.75rem 0;
   }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Sidebar from "$lib/chapters/Sidebar.svelte";
@@ -7,13 +7,13 @@
   import Ribbon from "$lib/editor/Ribbon.svelte";
   import StatusBar from "$lib/editor/StatusBar.svelte";
   import TitleBar from "$lib/editor/TitleBar.svelte";
-  import { countWords } from "$lib/editor/counts";
-  import { findNext, replaceAll, replaceNext } from "$lib/editor/find";
-  import { createChapter, createProject, effectiveLanguage, type Chapter, type DocumentJson, type Project, type WritingLanguage } from "$lib/model";
+  import { wordsFor } from "$lib/editor/counts";
+  import { replaceInDocument, searchChapters, findNext, replaceAll, replaceNext } from "$lib/editor/find";
+  import { createChapter, createProject, effectiveLanguage, type Chapter, type DocumentJson, type Project, type ProjectKind, type SnapshotInfo, type WritingLanguage } from "$lib/model";
   import { createAutosave, errorMessage, type SaveStatus } from "$lib/save/autosave";
-  import { blocksToDocument, chaptersToDocx, downloadBlob, htmlToChapters } from "$lib/export/document";
+  import { blocksToDocument, chaptersToDocx, chaptersToHtml, chaptersToMarkdown, chaptersToPlain, downloadBlob, downloadText, htmlToChapters } from "$lib/export/document";
   import { createAmbience } from "$lib/ambience";
-  import { chooseBackupFolder, writeBackup } from "$lib/storage/backup";
+  import { chooseBackupFolder, chooseProjectFile, writeBackup } from "$lib/storage/backup";
   import Settings from "$lib/views/Settings.svelte";
   import Particles from "$lib/views/Particles.svelte";
   import Book from "$lib/views/Book.svelte";
@@ -21,8 +21,11 @@
   import Notes from "$lib/views/Notes.svelte";
   import Outline from "$lib/views/Outline.svelte";
   import Todos from "$lib/views/Todos.svelte";
-  import { loadPrefs, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs } from "$lib/prefs";
-  import { checkpointDatabase, keepSnapshot, listPersonalWords, rememberPersonalWord, sqliteStorage, switchProjectFile } from "$lib/storage/sqlite";
+  import { flushPrefs, loadPrefs, loadPrefsFile, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs } from "$lib/prefs";
+  import { duplicateChapterProject, patchChapter, removeChapter, renameChapterProject, reorderChapterList, setChapterText } from "$lib/chapters/mutate";
+  import { nextTitle, openingTitle, welcomeDocument, welcomePlain } from "$lib/chapters/welcome";
+  import { flushNoteSave } from "$lib/storage/organize";
+  import { checkpointDatabase, forgetPersonalWord, keepSnapshot, listPersonalWords, readSnapshotChapters, rememberPersonalWord, restoreChapter, sqliteStorage, switchProjectFile } from "$lib/storage/sqlite";
   import type { Editor as TiptapEditor } from "@tiptap/core";
 
   let project = $state<Project | null>(null);
@@ -37,6 +40,14 @@
   let replaceQuery = $state("");
   let findMissing = $state(false);
   let replaceMode = $state(false);
+  let findScope = $state<"chapter" | "book">("chapter");
+  let historyOpen = $state(false);
+  let historyList = $state<SnapshotInfo[]>([]);
+  let historyPreview = $state("");
+  let historySnapshotId = $state("");
+  let historyChapterId = $state("");
+  let settingsSection = $state<"Appearance" | "Shortcuts">("Appearance");
+  let settingsReturn: HTMLElement | null = null;
   let noteRequest = $state(0);
   let todoRequest = $state(0);
   let findInput = $state<HTMLInputElement | undefined>(undefined);
@@ -54,6 +65,7 @@
   const autosave = createAutosave({
     delayMs: 2000,
     save: async () => {
+      captureEditor();
       if (!project) return;
       await sqliteStorage.save(project);
     },
@@ -66,10 +78,9 @@
     project ? [...project.chapters].sort((a, b) => a.position - b.position) : [],
   );
   const activeChapter = $derived(chapters.find((chapter) => chapter.id === activeId) ?? null);
-  const chapterWords = $derived(countWords(activeChapter?.plainText ?? ""));
-  const projectWords = $derived(
-    chapters.reduce((sum, chapter) => sum + countWords(chapter.plainText), 0),
-  );
+  const chapterWords = $derived(activeChapter ? wordsFor(activeChapter.id, activeChapter.plainText) : 0);
+  const projectWords = $derived(chapters.reduce((sum, chapter) => sum + wordsFor(chapter.id, chapter.plainText), 0));
+  const bookHits = $derived(findScope === "book" ? searchChapters(chapters, findQuery) : []);
   const wordsToday = $derived(
     prefs.writingDay === dayKey(new Date()) ? Math.max(0, projectWords - prefs.dayStartWords) : 0,
   );
@@ -122,23 +133,8 @@
     if (!project) return;
     const words = projectWords;
     const today = dayKey(new Date());
-    const yesterday = dayKey(new Date(Date.now() - 86_400_000));
     if (prefs.writingDay !== today) {
-      const missed = prefs.lastWriteDay !== yesterday && prefs.lastWriteDay !== today;
-      prefs = {
-        ...prefs,
-        writingDay: today,
-        dayStartWords: words,
-        streak: missed ? 0 : prefs.streak,
-      };
-      return;
-    }
-    if (words > prefs.dayStartWords && prefs.lastWriteDay !== today) {
-      prefs = {
-        ...prefs,
-        lastWriteDay: today,
-        streak: prefs.lastWriteDay === yesterday ? prefs.streak + 1 : 1,
-      };
+      prefs = { ...prefs, writingDay: today, dayStartWords: words };
     }
   });
 
@@ -159,12 +155,20 @@
 
     void (async () => {
       try {
+        try {
+          const stored = await loadPrefsFile();
+          if (!disposed && stored) prefs = stored;
+          else if (!disposed) savePrefs(prefs);
+        } catch {
+          // Keep the settings already in this window if the file cannot be read.
+        }
         const loaded = await sqliteStorage.load();
         if (disposed) return;
         project = loaded;
         activeId = loaded.chapters[0]?.id ?? null;
         saveStatus = { state: "saved" };
         await refreshWritingExtras();
+        rememberBook(loadPrefs().projectPath || projectLocation, loaded.title);
       } catch (error) {
         if (disposed) return;
         loadError = errorMessage(error);
@@ -181,14 +185,25 @@
           event.preventDefault();
           closing = true;
           try {
+            await flushNoteSave();
             await autosave.flush();
+            await flushPrefs();
+            try {
+              await runDriveBackup(false);
+            } catch {
+              // The live book is already saved. Home shows the backup failure.
+            }
             await win.destroy();
           } catch {
             closing = false;
           }
         });
         unlistenFocus = await win.onFocusChanged(({ payload: focused }) => {
-          if (!focused) void autosave.flush().catch(() => undefined);
+          if (!focused) {
+            void flushNoteSave()
+              .then(() => autosave.flush())
+              .catch(() => undefined);
+          }
         });
         if (disposed) {
           unlistenClose();
@@ -203,9 +218,17 @@
       clock = Date.now();
     }, 60_000);
 
+    const backupTimer = window.setInterval(() => {
+      if (!prefs.backupFolder || !project) return;
+      const last = Date.parse(prefs.lastBackupAt);
+      if (!Number.isNaN(last) && Date.now() - last < 60 * 60 * 1000) return;
+      void runDriveBackup(false);
+    }, 60_000);
+
     return () => {
       disposed = true;
       window.clearInterval(clockTimer);
+      window.clearInterval(backupTimer);
       ambience.stop();
       unlistenClose?.();
       unlistenFocus?.();
@@ -222,9 +245,17 @@
       findOpen = true;
       findMissing = false;
     }
+    if ((event.ctrlKey || event.metaKey) && event.key === "/") {
+      event.preventDefault();
+      settingsSection = "Shortcuts";
+      settingsReturn = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      settingsOpen = true;
+      return;
+    }
     if (event.key === "Escape" && settingsOpen) {
       event.preventDefault();
       settingsOpen = false;
+      settingsReturn?.focus();
       return;
     }
     if (event.key === "Escape" && zen) {
@@ -249,17 +280,10 @@
   }
 
   function reorderChapters(draggedId: string, targetId: string) {
-    if (!project || draggedId === targetId) return;
-    const ordered = [...chapters];
-    const from = ordered.findIndex((chapter) => chapter.id === draggedId);
-    const to = ordered.findIndex((chapter) => chapter.id === targetId);
-    if (from < 0 || to < 0) return;
-    const [moved] = ordered.splice(from, 1);
-    ordered.splice(to, 0, moved);
-    project = {
-      ...project,
-      chapters: ordered.map((chapter, index) => ({ ...chapter, position: index })),
-    };
+    if (!project) return;
+    const next = reorderChapterList(project, draggedId, targetId);
+    if (!next) return;
+    project = next;
     autosave.schedule();
     void autosave.flush().catch(() => undefined);
   }
@@ -269,21 +293,63 @@
     findMissing = !findNext(textEditor, findQuery);
   }
 
+  async function openHit(id: string) {
+    findScope = "chapter";
+    if (id !== activeId) await selectChapter(id);
+    await tick();
+    runFind();
+  }
+
   function runReplace() {
     if (!textEditor || textEditor.isDestroyed) return;
     findMissing = !replaceNext(textEditor, findQuery, replaceQuery);
   }
 
   function runReplaceAll() {
+    if (findScope === "book" && project && findQuery) {
+      let total = 0;
+      const now = new Date().toISOString();
+      const chapters = project.chapters.map((chapter) => {
+        if (chapter.id === activeId && textEditor && !textEditor.isDestroyed) return chapter;
+        const next = replaceInDocument(chapter.contentJson, chapter.plainText, findQuery, replaceQuery);
+        total += next.count;
+        return next.count > 0
+          ? { ...chapter, contentJson: next.contentJson, plainText: next.plainText, updatedAt: now }
+          : chapter;
+      });
+      project = { ...project, chapters };
+      if (textEditor && !textEditor.isDestroyed) total += replaceAll(textEditor, findQuery, replaceQuery);
+      findMissing = total === 0;
+      if (total > 0) {
+        autosave.schedule();
+        void autosave.flush().catch(() => undefined);
+      }
+      return;
+    }
     if (!textEditor || textEditor.isDestroyed) return;
     const count = replaceAll(textEditor, findQuery, replaceQuery);
     findMissing = count === 0;
   }
 
   function cycleAmbience() {
-    const order = ["off", "rain", "fire"] as const;
+    const order = ["off", "rain", "fire", "cafe", "piano"] as const;
     const index = order.indexOf(prefs.ambience);
     prefs = { ...prefs, ambience: order[(index + 1) % order.length] };
+  }
+
+  function captureEditor() {
+    const editor = textEditor;
+    const id = activeId;
+    if (!editor || editor.isDestroyed || !id || !project) return;
+    const contentJson = editor.getJSON() as DocumentJson;
+    const plainText = editor.getText();
+    const updatedAt = new Date().toISOString();
+    project = {
+      ...project,
+      chapters: project.chapters.map((chapter) =>
+        chapter.id === id ? { ...chapter, contentJson, plainText, updatedAt } : chapter,
+      ),
+    };
   }
 
   function updateChapter(id: string, contentJson: DocumentJson, plainText: string) {
@@ -296,6 +362,11 @@
       ),
     };
     autosave.schedule();
+  }
+
+  function updateChapterText(id: string, plainText: string) {
+    if (!project) return;
+    project = setChapterText(project, id, plainText);
   }
 
   async function selectChapter(id: string) {
@@ -330,12 +401,7 @@
 
   async function renameChapter(id: string, title: string) {
     if (!project) return;
-    project = {
-      ...project,
-      chapters: project.chapters.map((chapter) =>
-        chapter.id === id ? { ...chapter, title, updatedAt: new Date().toISOString() } : chapter,
-      ),
-    };
+    project = renameChapterProject(project, id, title);
     autosave.schedule();
     try {
       await autosave.flush();
@@ -351,20 +417,10 @@
     } catch {
       // Keep going with the text that is already in memory.
     }
-    const source = project.chapters.find((chapter) => chapter.id === id);
-    if (!source) return;
-    const copy = createChapter(project.id, `${source.title} copy`, source.position + 1);
-    copy.contentJson = structuredClone(source.contentJson);
-    copy.plainText = source.plainText;
-    copy.synopsis = source.synopsis;
-    copy.language = source.language;
-    copy.status = source.status;
-    const chapters = project.chapters.map((chapter) =>
-      chapter.position > source.position ? { ...chapter, position: chapter.position + 1 } : chapter,
-    );
-    chapters.push(copy);
-    project = { ...project, chapters };
-    activeId = copy.id;
+    const copied = duplicateChapterProject(project, id);
+    if (!copied) return;
+    project = copied.project;
+    activeId = copied.activeId;
     autosave.schedule();
     try {
       await autosave.flush();
@@ -381,12 +437,10 @@
       saveStatus = { state: "error", message: errorMessage(error) };
       return;
     }
-    const chapters = project.chapters
-      .filter((chapter) => chapter.id !== id)
-      .sort((a, b) => a.position - b.position)
-      .map((chapter, index) => ({ ...chapter, position: index }));
-    project = { ...project, chapters };
-    if (activeId === id) activeId = chapters[0]?.id ?? null;
+    const removed = removeChapter(project, id);
+    if (!removed) return;
+    project = removed.project;
+    if (activeId === id) activeId = removed.activeId;
     autosave.schedule();
     try {
       await autosave.flush();
@@ -397,12 +451,7 @@
 
   function updateChapterMeta(id: string, patch: Partial<Chapter>) {
     if (!project) return;
-    project = {
-      ...project,
-      chapters: project.chapters.map((chapter) =>
-        chapter.id === id ? { ...chapter, ...patch, updatedAt: new Date().toISOString() } : chapter,
-      ),
-    };
+    project = patchChapter(project, id, patch);
     autosave.schedule();
     void autosave.flush().catch(() => undefined);
   }
@@ -410,11 +459,93 @@
   async function exportWord() {
     if (!project) return;
     try {
+      await autosave.flush();
       const blob = await chaptersToDocx(project.title || "Pensieve", project.chapters);
-      downloadBlob(blob, `${project.title || "pensieve"}.docx`);
+      downloadBlob(blob, `${safeName(project.title)}.docx`);
     } catch (error) {
       saveStatus = { state: "error", message: errorMessage(error) };
     }
+  }
+
+  function safeName(title: string): string {
+    const cleaned = title.trim().replace(/[<>:"/\\|?*]/g, "") || "pensieve";
+    return cleaned;
+  }
+
+  async function exportText(kind: "markdown" | "plain") {
+    if (!project) return;
+    try {
+      await autosave.flush();
+      const title = project.title || "Pensieve";
+      if (kind === "markdown") {
+        downloadText(chaptersToMarkdown(title, project.chapters), `${safeName(title)}.md`, "text/markdown");
+      } else {
+        downloadText(chaptersToPlain(title, project.chapters), `${safeName(title)}.txt`, "text/plain");
+      }
+    } catch (error) {
+      saveStatus = { state: "error", message: errorMessage(error) };
+    }
+  }
+
+  async function copyHtml() {
+    if (!project) return;
+    try {
+      await autosave.flush();
+      await navigator.clipboard.writeText(chaptersToHtml(project.title || "Pensieve", project.chapters));
+      backupMessage = "Copied clean HTML";
+    } catch (error) {
+      saveStatus = { state: "error", message: errorMessage(error) };
+    }
+  }
+
+  function printPages() {
+    window.print();
+  }
+
+  async function openHistory() {
+    if (!project) return;
+    historyOpen = true;
+    historyPreview = "";
+    historyChapterId = "";
+    try {
+      historyList = await sqliteStorage.listSnapshots(project.id);
+    } catch (error) {
+      saveStatus = { state: "error", message: errorMessage(error) };
+    }
+  }
+
+  async function previewHistory(id: string) {
+    historySnapshotId = id;
+    try {
+      const older = await readSnapshotChapters(id);
+      const match = older.find((chapter) => chapter.id === activeId);
+      if (!match) {
+        historyChapterId = "";
+        historyPreview = "This snapshot does not include the open chapter.";
+        return;
+      }
+      historyChapterId = match.id;
+      historyPreview = `${match.title}\n\n${match.plainText}`;
+    } catch (error) {
+      saveStatus = { state: "error", message: errorMessage(error) };
+    }
+  }
+
+  async function restoreHistoryChapter() {
+    if (!historySnapshotId || !historyChapterId) return;
+    try {
+      await autosave.flush();
+      const restored = await restoreChapter(historySnapshotId, historyChapterId);
+      project = restored;
+      activeId = historyChapterId;
+      historyOpen = false;
+    } catch (error) {
+      saveStatus = { state: "error", message: errorMessage(error) };
+    }
+  }
+
+  function reportSaveError(message: string) {
+    saveStatus = { state: "error", message };
   }
 
   async function importWord(file: File) {
@@ -467,6 +598,94 @@
     textEditor?.chain().focus().setMark("textLanguage", { lang: language }).run();
   }
 
+  function onLanguageBadge() {
+    const editor = textEditor;
+    const current = project && activeChapter ? effectiveLanguage(project, activeChapter) : "en";
+    const next = current === "sl" ? "en" : "sl";
+    if (editor && !editor.isDestroyed && !editor.state.selection.empty) {
+      setSelectionLanguage(next);
+      return;
+    }
+    setChapterLanguage(next);
+  }
+
+  function rememberBook(path: string, title: string) {
+    const bookPath = path.trim();
+    if (!bookPath) return;
+    const knownProjects = [
+      { path: bookPath, title: title.trim() || "Untitled" },
+      ...prefs.knownProjects.filter((book) => book.path !== bookPath),
+    ].slice(0, 8);
+    prefs = { ...prefs, knownProjects };
+  }
+
+  function renameProject(title: string) {
+    if (!project) return;
+    const nextTitle = title.trim() || "Untitled";
+    project = { ...project, title: nextTitle };
+    rememberBook(projectLocation || prefs.projectPath, nextTitle);
+    autosave.schedule();
+  }
+
+  async function useProjectFile(path: string) {
+    await autosave.flush();
+    await switchProjectFile(path);
+    prefs = { ...loadPrefs(), writingDay: "" };
+    const loaded = await sqliteStorage.load();
+    project = loaded;
+    activeId = loaded.chapters[0]?.id ?? null;
+    projectLocation = path;
+    rememberBook(path, loaded.title);
+    view = "write";
+  }
+
+  async function openAnotherProject() {
+    try {
+      const path = await chooseProjectFile();
+      if (!path) return;
+      await useProjectFile(path);
+    } catch (error) {
+      saveStatus = { state: "error", message: errorMessage(error) };
+    }
+  }
+
+  async function startNewProject(kind: ProjectKind = "novel") {
+    try {
+      const folder = await chooseBackupFolder();
+      if (!folder) return;
+      const backup = prefs.backupFolder.replace(/[\\/]+$/, "").toLowerCase();
+      const chosen = folder.replace(/[\\/]+$/, "").toLowerCase();
+      if (backup && (chosen === backup || chosen.startsWith(`${backup}\\`) || chosen.startsWith(`${backup}/`))) {
+        saveStatus = { state: "error", message: "Keep the live book outside the backup folder." };
+        return;
+      }
+      const path = await invoke<string>("reserve_project_path", { folder });
+      await useProjectFile(path);
+      const folderName = folder.split(/[/\\]/).filter(Boolean).pop() || "New book";
+      if (!project) return;
+      const welcome = project.chapters[0];
+      const opening = welcome
+        ? {
+            ...welcome,
+            title: openingTitle(kind, folderName),
+            contentJson: welcomeDocument(kind !== "article"),
+            plainText: welcomePlain(kind !== "article"),
+          }
+        : createChapter(project.id, openingTitle(kind, folderName), 0);
+      const chapters = [opening];
+      if (kind !== "article") {
+        chapters.push(createChapter(project.id, nextTitle(kind), 1));
+      }
+      project = { ...project, title: folderName, kind, chapters };
+      activeId = opening.id;
+      rememberBook(path, folderName);
+      autosave.schedule();
+      await autosave.flush();
+    } catch (error) {
+      saveStatus = { state: "error", message: errorMessage(error) };
+    }
+  }
+
   function setProjectLanguage(language: WritingLanguage) {
     if (!project) return;
     project = { ...project, language };
@@ -486,6 +705,15 @@
     }
   }
 
+  async function removeDictionaryWord(language: WritingLanguage, word: string) {
+    try {
+      await forgetPersonalWord(language, word);
+      dictionary = await listPersonalWords();
+    } catch (error) {
+      backupMessage = errorMessage(error);
+    }
+  }
+
   async function moveProject() {
     if (!project) return;
     try {
@@ -496,6 +724,7 @@
       const destination = await invoke<string>("relocate_project", { source, folder });
       await switchProjectFile(destination);
       projectLocation = destination;
+      rememberBook(destination, project.title);
       backupMessage = `Project file moved to ${destination}`;
     } catch (error) {
       backupMessage = errorMessage(error);
@@ -510,13 +739,37 @@
     }
   }
 
+  let driveBackup: Promise<void> | null = null;
+
+  function runDriveBackup(announce: boolean): Promise<void> {
+    if (!project || !prefs.backupFolder) return Promise.resolve();
+    if (driveBackup) return driveBackup;
+    const folder = prefs.backupFolder;
+    const book = project;
+    driveBackup = (async () => {
+      try {
+        await autosave.flush();
+        const path = await writeBackup(folder, book);
+        prefs = { ...prefs, lastBackupAt: new Date().toISOString(), lastBackupError: "" };
+        if (announce) backupMessage = `Saved ${path}`;
+      } catch (error) {
+        const message = errorMessage(error);
+        prefs = { ...prefs, lastBackupError: message };
+        if (announce) backupMessage = message;
+        else saveStatus = { state: "error", message: `Backup failed. ${message}` };
+        throw error;
+      } finally {
+        driveBackup = null;
+      }
+    })();
+    return driveBackup;
+  }
+
   async function backupNow() {
-    if (!project || !prefs.backupFolder) return;
     try {
-      const path = await writeBackup(prefs.backupFolder, project);
-      backupMessage = `Saved ${path}`;
-    } catch (error) {
-      backupMessage = errorMessage(error);
+      await runDriveBackup(true);
+    } catch {
+      // The message is already on screen.
     }
   }
 
@@ -543,17 +796,18 @@
       if (zen) void setZen(false);
       view = next;
     }}
-    onLanguage={() => {
-      const current = project && activeChapter ? effectiveLanguage(project, activeChapter) : "en";
-      setChapterLanguage(current === "sl" ? "en" : "sl");
-    }}
+    onLanguage={onLanguageBadge}
     onHome={() => {
       if (zen) void setZen(false);
       view = "home";
     }}
     {settingsOpen}
+    appearance={resolvedTheme(prefs.theme, new Date(clock))}
+    uiLanguage={prefs.uiLanguage}
     onSettings={() => {
       if (zen) void setZen(false);
+      settingsSection = "Appearance";
+      settingsReturn = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       settingsOpen = true;
     }}
   />
@@ -573,19 +827,18 @@
       findMissing = false;
       view = "write";
     }}
-    language={project && activeChapter ? effectiveLanguage(project, activeChapter) : project?.language ?? "en"}
-    onChapterLanguage={setChapterLanguage}
-    onSelectionLanguage={setSelectionLanguage}
     manuscriptFont={prefs.manuscriptFont}
     manuscriptSize={prefs.manuscriptSize}
     onFont={(font) => (prefs.manuscriptFont = font)}
     onSize={(size) => (prefs.manuscriptSize = size)}
     onNewNote={() => {
-      view = "notes";
+      view = "write";
+      dock = "notes";
       noteRequest += 1;
     }}
     onAddTodo={() => {
-      view = "todos";
+      view = "write";
+      dock = "todos";
       todoRequest += 1;
     }}
     onReplace={() => {
@@ -597,17 +850,21 @@
   />
   {/if}
   {#if view === "write"}
-<div class="shell" class:collapsed class:zen class:docked={dock !== null}>
+<div class="shell" class:collapsed class:zen class:docked={dock !== null} class:article={project?.kind === "article"}>
   <Sidebar
     {chapters}
     {activeId}
     {collapsed}
+    hidden={project?.kind === "article"}
+    uiLanguage={prefs.uiLanguage}
     onSelect={selectChapter}
     onCreate={addChapter}
     onRename={renameChapter}
     onDuplicate={duplicateChapter}
     onDelete={deleteChapter}
     onReorder={reorderChapters}
+    onPatch={updateChapterMeta}
+    onHistory={() => void openHistory()}
   />
   <section class="writing">
     {#if findOpen}
@@ -621,10 +878,13 @@
         <input
           bind:this={findInput}
           bind:value={findQuery}
-          aria-label="Find in chapter"
-          placeholder="Find in chapter"
+          aria-label={findScope === "book" ? "Find in book" : "Find in chapter"}
+          placeholder={findScope === "book" ? "Find in book" : "Find in chapter"}
           oninput={() => (findMissing = false)}
         />
+        <button type="button" onclick={() => (findScope = findScope === "book" ? "chapter" : "book")}>
+          {findScope === "book" ? "Whole book" : "This chapter"}
+        </button>
         <button type="submit">Find</button>
         {#if replaceMode}
           <input bind:value={replaceQuery} aria-label="Replace with" placeholder="Replace with" />
@@ -635,6 +895,38 @@
           <span>Not found</span>
         {/if}
       </form>
+      {#if findScope === "book" && findQuery.trim()}
+        <ul class="hits">
+          {#each bookHits as hit (hit.chapterId)}
+            <li>
+              <button type="button" onclick={() => void openHit(hit.chapterId)}>
+                {hit.title} · {hit.count}
+              </button>
+            </li>
+          {:else}
+            <li>Not found</li>
+          {/each}
+        </ul>
+      {/if}
+    {/if}
+    {#if historyOpen}
+      <div class="history">
+        <p>Earlier versions of this chapter</p>
+        {#each historyList as snap (snap.id)}
+          <button type="button" onclick={() => void previewHistory(snap.id)}>
+            {snap.kind} · {snap.createdAt.slice(0, 16).replace("T", " ")}
+          </button>
+        {:else}
+          <p>No snapshots yet.</p>
+        {/each}
+        {#if historyPreview}
+          <pre>{historyPreview}</pre>
+          {#if historyChapterId}
+            <button type="button" onclick={() => void restoreHistoryChapter()}>Restore this chapter</button>
+          {/if}
+        {/if}
+        <button type="button" onclick={() => (historyOpen = false)}>Close</button>
+      </div>
     {/if}
     <div class="stage">
       {#if activeChapter}
@@ -653,7 +945,10 @@
                 initialContent={chapter.contentJson}
                 language={project ? effectiveLanguage(project, chapter) : "en"}
                 typewriter={prefs.typewriter}
+                live={false}
                 onChange={(json, text) => updateChapter(chapter.id, json, text)}
+                onEdit={() => autosave.schedule()}
+                onText={(text) => updateChapterText(chapter.id, text)}
                 onEditor={(next) => (textEditor = next)}
                 onActivity={() => (editorRevision += 1)}
               />
@@ -677,6 +972,8 @@
         today={wordsToday}
         goal={prefs.dailyGoal}
         onAmbience={cycleAmbience}
+        theme={prefs.theme}
+        onTheme={(theme) => (prefs.theme = theme)}
       />
     </div>
     {#if zen}
@@ -710,10 +1007,21 @@
           projectId={project.id}
           {chapters}
           language={project.language}
+          focusChapterId={activeId ?? ""}
+          onSaveError={reportSaveError}
           onShowTodos={() => (dock = "todos")}
+          createRequest={noteRequest}
         />
       {:else}
-        <Todos compact projectId={project.id} {chapters} onShowNotes={() => (dock = "notes")} />
+        <Todos
+          compact
+          projectId={project.id}
+          {chapters}
+          focusRequest={todoRequest}
+          attachChapterId={activeId ?? ""}
+          onSaveError={reportSaveError}
+          onShowNotes={() => (dock = "notes")}
+        />
       {/if}
     </aside>
   {/if}
@@ -726,7 +1034,16 @@
           {prefs}
           saveLabel={statusText(saveStatus)}
           {wordsToday}
-          onContinue={() => (view = "write")}
+          onContinue={(chapterId) => {
+            if (chapterId) activeId = chapterId;
+            view = "write";
+          }}
+          onRename={renameProject}
+          onOpenProject={() => void openAnotherProject()}
+          onStartProject={(kind) => void startNewProject(kind)}
+          onOpenBook={(path) => void useProjectFile(path).catch((error) => {
+            saveStatus = { state: "error", message: errorMessage(error) };
+          })}
           onRestored={(restored) => {
             project = restored;
             activeId = restored.chapters[0]?.id ?? null;
@@ -739,6 +1056,7 @@
           {chapters}
           language={project.language}
           createRequest={noteRequest}
+          onSaveError={reportSaveError}
           onShowTodos={() => (view = "todos")}
         />
       {:else if view === "todos"}
@@ -746,6 +1064,7 @@
           projectId={project.id}
           {chapters}
           focusRequest={todoRequest}
+          onSaveError={reportSaveError}
           onShowNotes={() => (view = "notes")}
         />
       {:else if view === "outline"}
@@ -768,9 +1087,17 @@
       onMoveProject={() => void moveProject()}
       onProjectLanguage={setProjectLanguage}
       onAddWord={(language, word) => void addDictionaryWord(language, word)}
+      onRemoveWord={(language, word) => void removeDictionaryWord(language, word)}
       onExport={() => void exportWord()}
+      onExportText={(kind) => void exportText(kind)}
+      onCopyHtml={() => void copyHtml()}
+      onPrint={printPages}
       onImport={(file) => void importWord(file)}
-      onClose={() => (settingsOpen = false)}
+      startSection={settingsSection}
+      onClose={() => {
+        settingsOpen = false;
+        settingsReturn?.focus();
+      }}
     />
   {/if}
 </div>
@@ -779,7 +1106,8 @@
   .app {
     position: relative;
     z-index: 1;
-    height: 100vh;
+    height: 100%;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
   }
@@ -851,7 +1179,7 @@
     position: relative;
     flex: 1;
     min-height: 0;
-    overflow: auto;
+    overflow: hidden;
     background: var(--pv-desk);
   }
 
@@ -924,6 +1252,10 @@
     grid-template-columns: 0 minmax(0, 1fr);
   }
 
+  .shell.article {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .shell.zen :global(.sidebar) {
     opacity: 0;
     pointer-events: none;
@@ -971,6 +1303,55 @@
     padding: 0.3rem 0.5rem;
   }
 
+  .hits,
+  .history {
+    margin: 0 0.9rem 0.6rem;
+    padding: 0;
+    list-style: none;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  .history {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    align-items: flex-start;
+    max-height: 16rem;
+    overflow: auto;
+  }
+
+  .history pre {
+    white-space: pre-wrap;
+    margin: 0;
+    max-width: 40rem;
+    color: var(--pv-text);
+  }
+
+  @media print {
+    :global(.titlebar),
+    :global(.ribbon),
+    :global(.sidebar),
+    :global(.statusbar),
+    .dock,
+    .find,
+    .hits,
+    .history {
+      display: none !important;
+    }
+
+    .app,
+    .shell,
+    .writing,
+    .stage,
+    .sheet,
+    .paper {
+      overflow: visible !important;
+      height: auto !important;
+      box-shadow: none !important;
+    }
+  }
+
   .find button {
     border: 0;
     background: transparent;
@@ -986,11 +1367,17 @@
     position: relative;
     overflow: auto;
     flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     padding: 30px 24px 72px;
   }
 
   .sheet {
     position: relative;
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
     width: min(var(--sheet, var(--pv-sheet-book)), calc(100% - 12px));
     margin: 0 auto;
   }
@@ -1005,7 +1392,7 @@
 
   .paper {
     position: relative;
-    min-height: calc(100vh - 180px);
+    flex: 1;
     padding: var(--pv-sheet-pad-y) var(--pv-sheet-pad-x);
     background-color: var(--pv-paper);
     background-image: var(--pv-vignette);

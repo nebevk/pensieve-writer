@@ -207,6 +207,40 @@ export function saveTask(task: Task): Promise<void> {
   });
 }
 
+let pendingNote: Note | null = null;
+let noteTimer: ReturnType<typeof setTimeout> | null = null;
+let noteSaveError: ((message: string) => void) | null = null;
+
+export function watchNoteSaves(onError: (message: string) => void): void {
+  noteSaveError = onError;
+}
+
+export function scheduleNoteSave(note: Note): void {
+  pendingNote = note;
+  if (noteTimer) clearTimeout(noteTimer);
+  noteTimer = setTimeout(() => {
+    void flushNoteSave().catch(() => undefined);
+  }, 800);
+}
+
+export async function flushNoteSave(): Promise<void> {
+  if (noteTimer) {
+    clearTimeout(noteTimer);
+    noteTimer = null;
+  }
+  const note = pendingNote;
+  if (!note) return;
+  pendingNote = null;
+  try {
+    await saveNote(note);
+  } catch (error) {
+    if (!pendingNote) pendingNote = note;
+    const message = error instanceof Error ? error.message : "Could not save the note";
+    noteSaveError?.(message);
+    throw error;
+  }
+}
+
 export function deleteTask(id: string): Promise<void> {
   return withDb(async (db) => {
     await db.execute(`DELETE FROM tasks WHERE id = $1`, [id]);

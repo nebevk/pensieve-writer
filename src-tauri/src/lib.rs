@@ -2,6 +2,7 @@ mod backup;
 mod project;
 mod spellcheck;
 
+use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -38,9 +39,20 @@ pub fn run() {
             backup::write_backup,
             project::default_project_path,
             project::relocate_project,
+            project::reserve_project_path,
+            project::read_image_file,
+            project::read_prefs,
+            project::write_prefs,
             spellcheck::probe_spellcheck,
             spellcheck::add_personal_word
         ])
+        .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/128x128.png"))?;
+                window.set_icon(icon)?;
+            }
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

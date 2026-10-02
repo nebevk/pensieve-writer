@@ -5,10 +5,13 @@
   import { emptyDocument } from "$lib/model";
   import {
     deleteNote,
+    flushNoteSave,
     listNotes,
     listTasks,
     saveNote,
     saveTask,
+    scheduleNoteSave,
+    watchNoteSaves,
     type Note,
     type NoteCategory,
     type NoteField,
@@ -21,6 +24,8 @@
     chapters,
     compact = false,
     language = "en",
+    focusChapterId = "",
+    onSaveError,
     onShowTodos,
     createRequest = 0,
   }: {
@@ -28,6 +33,8 @@
     chapters: Chapter[];
     compact?: boolean;
     language?: "en" | "sl";
+    focusChapterId?: string;
+    onSaveError?: (message: string) => void;
     onShowTodos?: () => void;
     createRequest?: number;
   } = $props();
@@ -38,7 +45,6 @@
   let query = $state("");
   let message = $state("");
   let seenRequest = 0;
-  let timer: ReturnType<typeof setTimeout> | null = null;
 
   const orderedChapters = $derived([...chapters].sort((a, b) => a.position - b.position));
   const active = $derived(notes.find((note) => note.id === activeId) ?? null);
@@ -118,8 +124,25 @@
     });
   });
 
+  const backlinks = $derived.by(() => {
+    if (!active) return [];
+    const title = active.title.trim().toLowerCase();
+    if (title.length < 2) return [];
+    return notes.filter((note) => {
+      if (note.id === active.id) return false;
+      return [...note.plainText.matchAll(/\[\[(.+?)\]\]/g)].some((match) => match[1].trim().toLowerCase() === title);
+    });
+  });
+
   onMount(() => {
+    watchNoteSaves((text) => {
+      message = text;
+      onSaveError?.(text);
+    });
     void refresh();
+    return () => {
+      void flushNoteSave().catch(() => undefined);
+    };
   });
 
   $effect(() => {
@@ -139,12 +162,7 @@
   }
 
   function schedule(note: Note) {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => {
-      void saveNote(note).catch((error) => {
-        message = error instanceof Error ? error.message : "Could not save the note";
-      });
-    }, 800);
+    scheduleNoteSave(note);
   }
 
   function updateActive(patch: Partial<Note>) {
@@ -249,12 +267,22 @@
     <input class="search" placeholder="Search notes" aria-label="Search notes" bind:value={query} />
     <div class="list">
       {#each groups as group (group.id)}
-        {@const items = notes.filter((note) => note.category === group.id && matches(note))}
+        {@const items = notes
+          .filter((note) => note.category === group.id && matches(note))
+          .sort((a, b) => {
+            if (!focusChapterId) return 0;
+            const aHit = a.chapterIds.includes(focusChapterId) ? 0 : 1;
+            const bHit = b.chapterIds.includes(focusChapterId) ? 0 : 1;
+            return aHit - bHit;
+          })}
         {#if items.length > 0}
           <p class="eyebrow">{group.label}</p>
           {#each items as note (note.id)}
             <button type="button" class="row" class:active={note.id === activeId} onclick={() => (activeId = note.id)}>
               <span class="name">{note.title}</span>
+              {#if focusChapterId && note.chapterIds.includes(focusChapterId)}
+                <span class="sub">This chapter</span>
+              {/if}
               {#if subtitle(note)}
                 <span class="sub">{subtitle(note)}</span>
               {/if}
@@ -380,6 +408,16 @@
         <p class="eyebrow">Linked notes</p>
         <ul>
           {#each linkedNotes as link (link.id)}
+            <li>
+              <button type="button" onclick={() => (activeId = link.id)}>{link.title}</button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      {#if backlinks.length > 0}
+        <p class="eyebrow">Linked from</p>
+        <ul>
+          {#each backlinks as link (link.id)}
             <li>
               <button type="button" onclick={() => (activeId = link.id)}>{link.title}</button>
             </li>

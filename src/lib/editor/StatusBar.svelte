@@ -11,6 +11,8 @@
     today = 0,
     goal = 0,
     onAmbience,
+    theme = "daylight",
+    onTheme,
   }: {
     words: number;
     projectWords: number;
@@ -19,17 +21,64 @@
     error?: string;
     zen?: boolean;
     onZen: () => void;
-    ambience?: "off" | "rain" | "fire";
+    ambience?: "off" | "rain" | "fire" | "cafe" | "piano";
     today?: number;
     goal?: number;
     onAmbience: () => void;
+    theme?: "daylight" | "candlelit" | "moonlit" | "sunset";
+    onTheme: (theme: "daylight" | "candlelit" | "moonlit" | "sunset") => void;
   } = $props();
 
-  const ambienceLabel = $derived(ambience === "rain" ? "Rain" : ambience === "fire" ? "Fire" : "Quiet");
+  let themesOpen = $state(false);
+
+  const themes = [
+    { id: "daylight", label: "Daylight" },
+    { id: "candlelit", label: "Candlelit" },
+    { id: "moonlit", label: "Moonlit" },
+    { id: "sunset", label: "Follow sunset" },
+  ] as const;
+
+  const themeLabel = $derived(themes.find((item) => item.id === theme)?.label ?? "Daylight");
+
+  const ambienceLabel = $derived(
+    ambience === "rain"
+      ? "Rain"
+      : ambience === "fire"
+        ? "Fire"
+        : ambience === "cafe"
+          ? "Café"
+          : ambience === "piano"
+            ? "Piano"
+            : "Quiet",
+  );
   const progress = $derived(goal > 0 ? Math.max(0, Math.min(1, today / goal)) : 0);
 </script>
 
 <div class="float statusbar" class:problem={error.length > 0}>
+  <div class="menu-wrap">
+    <button type="button" class="quiet" aria-expanded={themesOpen} onclick={() => (themesOpen = !themesOpen)}>
+      {themeLabel}
+    </button>
+    {#if themesOpen}
+      <div class="menu" role="menu">
+        {#each themes as item (item.id)}
+          <button
+            type="button"
+            class="quiet"
+            class:chosen={theme === item.id}
+            role="menuitem"
+            onclick={() => {
+              onTheme(item.id);
+              themesOpen = false;
+            }}
+          >
+            {item.label}
+          </button>
+        {/each}
+      </div>
+    {/if}
+  </div>
+  <span class="rule"></span>
   <button type="button" class="quiet" onclick={onAmbience}>{ambienceLabel}</button>
   <span class="rule"></span>
   <span>{words.toLocaleString("en")} words</span>
@@ -79,11 +128,47 @@
   }
 
   .quiet {
+    height: auto;
     border: 0;
     background: transparent;
     color: var(--pv-bar-ambient);
     padding: 0;
     font-size: inherit;
+    font-weight: 400;
+  }
+
+  .quiet.chosen {
+    color: var(--pv-bar-text);
+    font-weight: 600;
+  }
+
+  .menu-wrap {
+    position: relative;
+  }
+
+  .menu {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 8px);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 9rem;
+    padding: 6px;
+    background: var(--pv-bar-bg);
+    border: 1px solid var(--pv-bar-border);
+    border-radius: var(--pv-radius-sm);
+    box-shadow: var(--pv-shadow-bar);
+  }
+
+  .menu .quiet {
+    text-align: left;
+    padding: 4px 6px;
+    border-radius: var(--pv-radius-xs);
+  }
+
+  .menu .quiet:hover {
+    background: var(--pv-bar-line);
   }
 
   .today {
