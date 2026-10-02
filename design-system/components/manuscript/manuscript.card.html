@@ -1,0 +1,27 @@
+<!-- @dsCard group="Components" viewport="700x380" name="Manuscript" -->
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Manuscript</title>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="../../ds-loader.js"></script>
+<style>body{background:var(--pv-chrome);padding:20px;box-sizing:border-box}.lbl{font:600 10.5px/1 var(--pv-font-ui);letter-spacing:.14em;text-transform:uppercase;color:var(--pv-text-faint);margin:0 0 10px}</style>
+</head><body><div id="root"></div>
+<script type="text/babel">
+PensieveDS.ready.then((P) => {
+const {Desk, Sheet, Paragraph} = P;
+
+function Page() { return (
+  <Sheet project="The Lantern House" folio="III" chapterLabel="Chapter Three" title="Grandmother's Keys" height={840}>
+    <Paragraph dropCap>The keys hung on a nail behind the pantry door, eleven of them on a ring of brass gone soft and brown with handling. Nobody in the family could say what half of them opened.</Paragraph>
+    <Paragraph>Ana took them down the morning after the funeral. They were heavier than she expected, and colder, as if they had been waiting in the dark for someone to remember them.</Paragraph>
+    <Paragraph caret>"Start with the attic," her mother said from the kitchen, without turning around.</Paragraph>
+  </Sheet>); }
+function App() { return (<div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', margin: -20, width: 700, height: 380 }}>
+  {['daylight', 'candlelit', 'moonlit'].map((t) => (<div key={t} data-theme={t} style={{ display: 'flex', overflow: 'hidden' }}>
+    <Desk padding="18px 0 0"><div style={{ zoom: 0.36 }}><Page /></div></Desk></div>))}
+</div>); }
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+});
+</script></body></html>

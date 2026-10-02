@@ -1,0 +1,40 @@
+<!-- @dsCard group="Components" viewport="700x400" name="Forms" -->
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Forms</title>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="../../ds-loader.js"></script>
+<style>body{background:var(--pv-chrome);padding:20px;box-sizing:border-box}.lbl{font:600 10.5px/1 var(--pv-font-ui);letter-spacing:.14em;text-transform:uppercase;color:var(--pv-text-faint);margin:0 0 10px}</style>
+</head><body><div id="root"></div>
+<script type="text/babel">
+PensieveDS.ready.then((P) => {
+const {Segmented, Toggle, Slider, Checkbox, FontChoice, ThemeSwatch, SettingRow} = P;
+
+function App() {
+  const [t, setT] = React.useState('daylight'); const [f, setF] = React.useState('Literata'); const [s, setS] = React.useState(17); const [w, setW] = React.useState('Book');
+  const [g, setG] = React.useState(true); const [ty, setTy] = React.useState(false); const [c, setC] = React.useState(['open', 'doing', 'done']);
+  const next = { open: 'doing', doing: 'done', done: 'open' };
+  return (<div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ display: 'flex', gap: 14, transform: 'scale(.98)', transformOrigin: '0 0' }}>
+      {[['daylight', 'Daylight'], ['candlelit', 'Candlelit'], ['moonlit', 'Moonlit'], ['sunset', 'Follow sunset']].map(([k, l]) => <ThemeSwatch key={k} theme={k} label={l} selected={t === k} onClick={() => setT(k)} />)}
+    </div>
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      {[['var(--pv-font-manuscript)', 'Literata', 20], ['var(--pv-font-garamond)', 'Garamond', 21], ['var(--pv-font-typewriter)', 'Typewriter', 18]].map(([fam, n, z]) => <FontChoice key={n} family={fam} name={n} sampleSize={z} selected={f === n} onClick={() => setF(n)} />)}
+      <div style={{ flex: 1 }} />
+      <div style={{ display: 'flex', gap: 10, background: 'var(--pv-paper)', padding: '10px 12px' }}>{c.map((st, i) => <Checkbox key={i} state={st} onClick={() => setC(c.map((x, j) => j === i ? next[x] : x))} />)}</div>
+    </div>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 28, alignItems: 'end' }}>
+      <Slider label="Text size" value={s} onChange={setS} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}><div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--pv-text-muted)' }}>Page width</div><Segmented options={['Narrow', 'Book', 'Wide']} value={w} onChange={setW} /></div>
+    </div>
+    <div style={{ borderTop: '1px solid var(--pv-line)' }}>
+      <SettingRow label="Paper grain"><Toggle checked={g} onChange={setG} label="Paper grain" /></SettingRow>
+      <SettingRow label="Typewriter scrolling" hint="keeps the current line centred" last><Toggle checked={ty} onChange={setTy} label="Typewriter scrolling" /></SettingRow>
+    </div>
+  </div>);
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+});
+</script></body></html>

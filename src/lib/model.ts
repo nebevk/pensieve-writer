@@ -5,6 +5,8 @@ export type DocumentJson = {
 
 export type ChapterStatus = "draft" | "revised" | "final";
 
+export type WritingLanguage = "en" | "sl";
+
 export type Chapter = {
   id: string;
   projectId: string;
@@ -14,6 +16,8 @@ export type Chapter = {
   plainText: string;
   synopsis: string;
   status: ChapterStatus;
+  /** Empty means “use the project language”. */
+  language: "" | WritingLanguage;
   updatedAt: string;
 };
 
@@ -22,6 +26,7 @@ export type Project = {
   title: string;
   createdAt: string;
   updatedAt: string;
+  language: WritingLanguage;
   chapters: Chapter[];
 };
 
@@ -29,7 +34,13 @@ export type SnapshotInfo = {
   id: string;
   projectId: string;
   createdAt: string;
+  kind: "hourly" | "daily" | "manual";
 };
+
+export function effectiveLanguage(project: Project, chapter: Chapter | null): WritingLanguage {
+  if (chapter?.language === "en" || chapter?.language === "sl") return chapter.language;
+  return project.language === "sl" ? "sl" : "en";
+}
 
 export function emptyDocument(): DocumentJson {
   return { type: "doc", content: [{ type: "paragraph" }] };
@@ -41,6 +52,7 @@ export function createProject(): Project {
   return {
     id: projectId,
     title: "Untitled",
+    language: "en",
     createdAt: now,
     updatedAt: now,
     chapters: [createChapter(projectId, "Chapter 1", 0, now)],
@@ -62,6 +74,7 @@ export function createChapter(
     plainText: "",
     synopsis: "",
     status: "draft",
+    language: "",
     updatedAt: now,
   };
 }

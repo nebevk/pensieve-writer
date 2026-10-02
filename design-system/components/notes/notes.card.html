@@ -1,0 +1,39 @@
+<!-- @dsCard group="Components" viewport="700x400" name="Notes & To-dos" -->
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Notes & To-dos</title>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="../../ds-loader.js"></script>
+<style>body{background:var(--pv-chrome);padding:20px;box-sizing:border-box}.lbl{font:600 10.5px/1 var(--pv-font-ui);letter-spacing:.14em;text-transform:uppercase;color:var(--pv-text-faint);margin:0 0 10px}</style>
+</head><body><div id="root"></div>
+<script type="text/babel">
+PensieveDS.ready.then((P) => {
+const {Desk, NoteCard, NoteLink, TodoSlip, BoardColumn, QuickAdd} = P;
+
+function App() {
+  const [todos, setTodos] = React.useState([{ text: 'Decide what she does with the letters', state: 'doing', meta: 'Chapter 4' }, { text: 'Give her one habit she hides from Vera', state: 'open' }, { text: 'Settle her age', state: 'done' }]);
+  const next = { open: 'doing', doing: 'done', done: 'open' };
+  return (<div style={{ display: 'flex', margin: -20, width: 700, height: 400 }}>
+    <Desk padding="20px 0 0" style={{ flex: 'none', width: 340 }}>
+      <div style={{ zoom: 0.56 }}>
+        <NoteCard kind="Character" edited="Edited yesterday" title="Ana Novak" fields={[['Age', '34'], ['Lives', 'Ljubljana, alone, above the workshop'], ['Wants', 'To sell the house and be done with it'], ['Fears', 'Becoming her mother']]}
+          todos={todos} onTodoToggle={(i) => setTodos(todos.map((t, j) => j === i ? { ...t, state: next[t.state] } : t))}>
+          Restores furniture for a living, so she notices hinges, locks and old varnish before faces. Has not been back to <NoteLink>The Lantern House</NoteLink> since her father left in 2009.
+        </NoteCard>
+      </div>
+    </Desk>
+    <Desk padding="18px 18px 0" align="flex-start"><div style={{ zoom: 0.72, display: 'flex', flexDirection: 'column', gap: 18, width: '100%' }}>
+      <QuickAdd style={{ width: '100%' }} />
+      <div style={{ display: 'flex', gap: 14, width: '100%' }}>
+        <BoardColumn title="To do" status="todo" count={1}><TodoSlip text="Decide which key opens the trunk" tags={[{ label: "3 · Grandmother's Keys" }]} /></BoardColumn>
+        <BoardColumn title="Doing" status="doing" count={1}><TodoSlip text="Check 1950s Ljubljana tram routes" tags={[{ label: '3 · Keys' }, { label: 'Ljubljana trams', kind: 'note' }]} /></BoardColumn>
+        <BoardColumn title="Done" status="done" count={1}><TodoSlip done text="Rename the mother" tags={[{ label: 'Whole book' }]} /></BoardColumn>
+      </div>
+    </div></Desk>
+  </div>);
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+});
+</script></body></html>

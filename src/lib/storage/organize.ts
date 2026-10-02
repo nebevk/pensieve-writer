@@ -5,6 +5,8 @@ import { withDb } from "./sqlite";
 export type TodoState = "todo" | "doing" | "done";
 export type NoteCategory = "ideas" | "characters" | "places" | "research";
 
+export type NoteField = { key: string; value: string };
+
 export type Note = {
   id: string;
   projectId: string;
@@ -13,6 +15,7 @@ export type Note = {
   plainText: string;
   category: NoteCategory;
   tags: string;
+  fields: NoteField[];
   todoState: TodoState | null;
   chapterIds: string[];
   createdAt: string;
@@ -25,6 +28,10 @@ export type Task = {
   title: string;
   todoState: TodoState;
   updatedAt: string;
+  /** Empty means the to-do belongs to the whole book. */
+  chapterId: string;
+  /** Empty means the to-do was not written on a note. */
+  noteId: string;
 };
 
 type NoteRow = {
@@ -36,9 +43,28 @@ type NoteRow = {
   category: string;
   tags: string;
   todo_state: string | null;
+  fields_json?: string;
   created_at: string;
   updated_at: string;
 };
+
+function parseFields(raw: string | undefined): NoteField[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const field = item as { key?: unknown; value?: unknown };
+      const key = typeof field.key === "string" ? field.key : "";
+      const value = typeof field.value === "string" ? field.value : "";
+      if (!key && !value) return [];
+      return [{ key, value }];
+    });
+  } catch {
+    return [];
+  }
+}
 
 function asCategory(value: string): NoteCategory {
   if (value === "characters" || value === "places" || value === "research") return value;
@@ -63,7 +89,7 @@ function parseDoc(raw: string): DocumentJson {
 export function listNotes(projectId: string): Promise<Note[]> {
   return withDb(async (db) => {
     const rows = await db.select<NoteRow[]>(
-      `SELECT id, project_id, title, content_json, plain_text, category, tags, todo_state, created_at, updated_at
+      `SELECT id, project_id, title, content_json, plain_text, category, tags, todo_state, fields_json, created_at, updated_at
        FROM notes WHERE project_id = $1 ORDER BY updated_at DESC`,
       [projectId],
     );
@@ -80,6 +106,7 @@ export function listNotes(projectId: string): Promise<Note[]> {
       plainText: row.plain_text ?? "",
       category: asCategory(row.category),
       tags: row.tags ?? "",
+      fields: parseFields(row.fields_json),
       todoState: asTodo(row.todo_state),
       chapterIds: links.filter((link) => link.note_id === row.id).map((link) => link.chapter_id),
       createdAt: row.created_at,
@@ -92,8 +119,8 @@ export function saveNote(note: Note): Promise<void> {
   return withDb(async (db) => {
     await db.execute(
       `INSERT INTO notes (
-         id, project_id, title, content_json, plain_text, category, tags, todo_state, created_at, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         id, project_id, title, content_json, plain_text, category, tags, todo_state, fields_json, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT(id) DO UPDATE SET
          title = excluded.title,
          content_json = excluded.content_json,
@@ -101,6 +128,7 @@ export function saveNote(note: Note): Promise<void> {
          category = excluded.category,
          tags = excluded.tags,
          todo_state = excluded.todo_state,
+         fields_json = excluded.fields_json,
          updated_at = excluded.updated_at`,
       [
         note.id,
@@ -111,6 +139,7 @@ export function saveNote(note: Note): Promise<void> {
         note.category,
         note.tags,
         note.todoState,
+        JSON.stringify(note.fields ?? []),
         note.createdAt,
         note.updatedAt,
       ],
@@ -128,6 +157,7 @@ export function saveNote(note: Note): Promise<void> {
 export function deleteNote(id: string): Promise<void> {
   return withDb(async (db) => {
     await db.execute(`DELETE FROM note_chapters WHERE note_id = $1`, [id]);
+    await db.execute(`DELETE FROM tasks WHERE note_id = $1`, [id]);
     await db.execute(`DELETE FROM notes WHERE id = $1`, [id]);
   });
 }
@@ -135,9 +165,17 @@ export function deleteNote(id: string): Promise<void> {
 export function listTasks(projectId: string): Promise<Task[]> {
   return withDb(async (db) => {
     const rows = await db.select<
-      { id: string; project_id: string; title: string; todo_state: string; updated_at: string }[]
+      {
+        id: string;
+        project_id: string;
+        title: string;
+        todo_state: string;
+        updated_at: string;
+        chapter_id: string;
+        note_id: string;
+      }[]
     >(
-      `SELECT id, project_id, title, todo_state, updated_at FROM tasks
+      `SELECT id, project_id, title, todo_state, updated_at, chapter_id, note_id FROM tasks
        WHERE project_id = $1 ORDER BY updated_at DESC`,
       [projectId],
     );
@@ -147,6 +185,8 @@ export function listTasks(projectId: string): Promise<Task[]> {
       title: row.title,
       todoState: asTodo(row.todo_state) ?? "todo",
       updatedAt: row.updated_at,
+      chapterId: row.chapter_id ?? "",
+      noteId: row.note_id ?? "",
     }));
   });
 }
@@ -154,13 +194,15 @@ export function listTasks(projectId: string): Promise<Task[]> {
 export function saveTask(task: Task): Promise<void> {
   return withDb(async (db) => {
     await db.execute(
-      `INSERT INTO tasks (id, project_id, title, todo_state, updated_at)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO tasks (id, project_id, title, todo_state, updated_at, chapter_id, note_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT(id) DO UPDATE SET
          title = excluded.title,
          todo_state = excluded.todo_state,
-         updated_at = excluded.updated_at`,
-      [task.id, task.projectId, task.title, task.todoState, task.updatedAt],
+         updated_at = excluded.updated_at,
+         chapter_id = excluded.chapter_id,
+         note_id = excluded.note_id`,
+      [task.id, task.projectId, task.title, task.todoState, task.updatedAt, task.chapterId, task.noteId],
     );
   });
 }

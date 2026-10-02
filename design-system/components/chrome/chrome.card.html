@@ -1,0 +1,38 @@
+<!-- @dsCard group="Components" viewport="700x360" name="Chrome" -->
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Chrome</title>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="../../ds-loader.js"></script>
+<style>body{background:var(--pv-chrome);padding:20px;box-sizing:border-box}.lbl{font:600 10.5px/1 var(--pv-font-ui);letter-spacing:.14em;text-transform:uppercase;color:var(--pv-text-faint);margin:0 0 10px}</style>
+</head><body><div id="root"></div>
+<script type="text/babel">
+PensieveDS.ready.then((P) => {
+const {TitleBar, Toolbar, FloatingBar, Desk} = P;
+
+function App() {
+  const [view, setView] = React.useState('Write');
+  const [open, setOpen] = React.useState(false);
+  return (<div style={{ margin: -20 }}>
+    <div style={{ width: 1280, transform: 'scale(.547)', transformOrigin: '0 0', height: 0 }}>
+      <TitleBar project="The Lantern House" view={view} onViewChange={setView} />
+      <Toolbar expanded={open} onToggleExpanded={() => setOpen(!open)} active={['bold']} />
+      <div style={{ height: 24 }} />
+      <Toolbar expanded active={['bold', 'alignLeft']} />
+    </div>
+    <div style={{ height: 120 }} />
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', height: 220, width: 700 }}>
+      {['daylight', 'candlelit', 'moonlit'].map((t, i) => (
+        <div key={t} data-theme={t} style={{ display: 'flex' }}>
+          <Desk padding="0" style={{ alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 18 }}>
+            <FloatingBar ambience={[{ icon: 'rain', label: 'Rain' }, { icon: 'flame', label: 'Fireplace' }, { icon: 'rain', label: 'Night rain' }][i]} words={1412} today={340} goal={500} style={{ transform: 'scale(.66)' }} />
+          </Desk>
+        </div>))}
+    </div>
+  </div>);
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+});
+</script></body></html>

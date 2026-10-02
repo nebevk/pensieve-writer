@@ -55,8 +55,10 @@
   }
 
   article {
-    background: var(--paper);
-    border-radius: 10px;
+    background: var(--pv-paper);
+    color: var(--pv-ink);
+    border-radius: 0;
+    box-shadow: var(--pv-shadow-card);
     padding: 0.8rem 0.9rem 1rem;
   }
 

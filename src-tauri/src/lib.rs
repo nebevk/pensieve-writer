@@ -1,4 +1,5 @@
 mod backup;
+mod project;
 mod spellcheck;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -18,6 +19,12 @@ pub fn run() {
             sql: include_str!("../migrations/002_notes_tasks.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 3,
+            description: "language_snapshot_kinds_dictionary",
+            sql: include_str!("../migrations/003_language_snapshots.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -29,7 +36,10 @@ pub fn run() {
         )
         .invoke_handler(tauri::generate_handler![
             backup::write_backup,
-            spellcheck::probe_spellcheck
+            project::default_project_path,
+            project::relocate_project,
+            spellcheck::probe_spellcheck,
+            spellcheck::add_personal_word
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -143,6 +143,52 @@ fn probe_language(
     }
 }
 
+fn add_word(factory: &ISpellCheckerFactory, tag: &str, word: &str) -> bool {
+    let language = HSTRING::from(tag);
+    let supported = unsafe { factory.IsSupported(&language) }
+        .map(|value| value.as_bool())
+        .unwrap_or(false);
+    if !supported {
+        return false;
+    }
+    let checker = match unsafe { factory.CreateSpellChecker(&language) } {
+        Ok(checker) => checker,
+        Err(_) => return false,
+    };
+    unsafe { checker.Add(&HSTRING::from(word)) }.is_ok()
+}
+
+#[command]
+pub fn add_personal_word(language: String, word: String) -> Result<(), String> {
+    let cleaned = word.trim();
+    if cleaned.is_empty() || cleaned.chars().any(char::is_whitespace) {
+        return Err("Enter one word, without spaces".into());
+    }
+    let tags: &[&str] = if language == "sl" {
+        &["sl", "sl-SI"]
+    } else {
+        &["en-US", "en"]
+    };
+
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let factory: ISpellCheckerFactory = CoCreateInstance(
+            &SpellCheckerFactory,
+            None::<&windows::core::IUnknown>,
+            CLSCTX_INPROC_SERVER,
+        )
+        .map_err(|error| error.to_string())?;
+        let added = tags
+            .iter()
+            .any(|tag| add_word(&factory, tag, cleaned));
+        if added {
+            Ok(())
+        } else {
+            Err("Windows has no spell checker for that language".into())
+        }
+    }
+}
+
 fn word_is_flagged(checker: &ISpellChecker, word: &str) -> Result<bool, String> {
     let errors = unsafe { checker.Check(&HSTRING::from(word)) }.map_err(|error| error.to_string())?;
     let mut found: Option<ISpellingError> = None;

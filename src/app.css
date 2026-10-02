@@ -1,41 +1,76 @@
-:root,
-:root[data-theme="paper"] {
-  --desk: #e6dfd2;
-  --sidebar: #efe7d8;
-  --paper: #fbf6ec;
-  --ink: #2a241c;
-  --muted: #7a6f60;
-  --line: #e0d5c3;
-  --accent: #6e5840;
+@import "../design-system/tokens/colors.css";
+@import "../design-system/tokens/typography.css";
+@import "../design-system/tokens/spacing.css";
+
+@font-face {
+  font-family: "Hanken Grotesk";
+  src: url("/fonts/HankenGrotesk-Variable.ttf") format("truetype");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Young Serif";
+  src: url("/fonts/YoungSerif-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Literata";
+  src: url("/fonts/Literata-Variable.ttf") format("truetype");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Literata";
+  src: url("/fonts/Literata-Italic-Variable.ttf") format("truetype");
+  font-weight: 400 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "EB Garamond";
+  src: url("/fonts/EBGaramond.ttf") format("truetype");
+  font-weight: 400 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "EB Garamond";
+  src: url("/fonts/EBGaramond-Italic.ttf") format("truetype");
+  font-weight: 400 800;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Names the existing views already use. Chrome text stays on the window; ink stays on paper. */
+:root {
+  --desk: var(--pv-desk);
+  --sidebar: var(--pv-chrome);
+  --paper: var(--pv-paper);
+  --ink: var(--pv-text);
+  --muted: var(--pv-text-muted);
+  --line: var(--pv-line);
+  --accent: var(--pv-accent);
   --danger: #8c3a32;
-  --font-ui: "Segoe UI", sans-serif;
-  --font-writing: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
-  --column: 44rem;
+  --font-ui: var(--pv-font-ui);
+  --font-writing: var(--pv-font-manuscript);
+  --column: var(--pv-sheet-book);
+  color: var(--pv-text);
   color-scheme: light;
 }
 
-:root[data-theme="sepia"] {
-  --desk: #e4d3b4;
-  --sidebar: #eadcc4;
-  --paper: #f6e7c8;
-  --ink: #3a2a16;
-  --muted: #7a6244;
-  --line: #d9c4a0;
-  --accent: #7a5430;
-  --danger: #8c3a32;
-  color-scheme: light;
-}
-
-:root[data-theme="dark"] {
-  --desk: #1c1916;
-  --sidebar: #26221d;
-  --paper: #2e2924;
-  --ink: #f3eadc;
-  --muted: #b3a594;
-  --line: #433c34;
-  --accent: #e4c89a;
-  --danger: #e08a80;
+:root[data-theme="candlelit"],
+:root[data-theme="moonlit"] {
   color-scheme: dark;
+  --danger: #e08a80;
 }
 
 :root[data-gentle="true"],
@@ -44,18 +79,6 @@
 :root[data-gentle="true"] *::after {
   animation-duration: 0.01ms !important;
   transition-duration: 0.01ms !important;
-}
-
-:root[data-theme="candlelit"] {
-  --desk: #2a1810;
-  --sidebar: #3a2418;
-  --paper: #4a2e1c;
-  --ink: #f8e2c4;
-  --muted: #d7b48a;
-  --line: #6a4630;
-  --accent: #f0c27a;
-  --danger: #e08a80;
-  color-scheme: dark;
 }
 
 * {
@@ -69,15 +92,18 @@ body {
 }
 
 body {
-  background: var(--desk);
-  color: var(--ink);
-  font-family: var(--font-ui);
-  font-size: 16px;
+  background: var(--pv-chrome);
+  color: var(--pv-text);
+  font-family: var(--pv-font-ui);
+  font-size: var(--pv-text-base);
   line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
   color: inherit;
 }
@@ -86,11 +112,28 @@ button {
   cursor: pointer;
 }
 
+h1,
+h2,
+h3 {
+  font-family: var(--pv-font-heading);
+  font-weight: 400;
+}
+
+::selection {
+  background: color-mix(in oklch, var(--pv-accent) 28%, transparent);
+}
+
 button:focus-visible,
 input:focus-visible,
-a:focus-visible {
-  outline: 2px solid var(--accent);
+select:focus-visible,
+a:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--pv-accent);
   outline-offset: 2px;
+}
+
+.paper {
+  color: var(--pv-ink);
 }
 
 @media (prefers-reduced-motion: reduce) {

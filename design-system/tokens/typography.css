@@ -1,0 +1,36 @@
+:root {
+  /* Families */
+  --pv-font-ui: 'Hanken Grotesk', system-ui, sans-serif;        /* menus, toolbar, labels, body UI */
+  --pv-font-heading: 'Young Serif', Georgia, serif;             /* UI headings: Chapters, Appearance, Projects, note titles */
+  --pv-font-manuscript: 'Literata', Georgia, serif;             /* the writer's text, default manuscript font */
+  --pv-font-garamond: 'EB Garamond', Garamond, serif;           /* manuscript option */
+  --pv-font-typewriter: ui-monospace, Menlo, monospace;         /* manuscript option */
+
+  /* UI sizes */
+  --pv-text-2xs: 10px;    /* tool group captions */
+  --pv-text-xs: 10.5px;   /* eyebrows, section labels, lang badge, running head */
+  --pv-text-sm: 11.5px;   /* meta, counts, floating bar, saved */
+  --pv-text-md: 12.5px;   /* title bar, toolbar selects, settings labels */
+  --pv-text-base: 13.5px; /* sidebar rows, buttons, body UI */
+  --pv-text-lg: 14px;     /* to-do text, tool glyphs */
+
+  /* Heading sizes (Young Serif, weight 400 only) */
+  --pv-heading-sm: 15px;  /* pane headings: Chapters, Appears in */
+  --pv-heading-md: 16px;  /* board columns */
+  --pv-heading-lg: 21px;  /* section headings: Projects */
+  --pv-heading-xl: 22px;  /* window headings: Appearance */
+  --pv-heading-2xl: 30px; /* note title */
+  --pv-heading-display: 52px; /* Home greeting, line-height 1.08 */
+
+  /* Manuscript */
+  --pv-manuscript-size: 16.5px;
+  --pv-manuscript-leading: 1.85;
+  --pv-manuscript-indent: 1.6em;
+  --pv-chapter-title: 28px;
+  --pv-dropcap: 58px;
+
+  /* Tracking */
+  --pv-track-eyebrow: .14em;   /* section labels */
+  --pv-track-running: .16em;   /* running head, dates */
+  --pv-track-chapter: .2em;    /* "Chapter Three", project kind */
+}

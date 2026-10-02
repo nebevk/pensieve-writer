@@ -1,12 +1,15 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Sidebar from "$lib/chapters/Sidebar.svelte";
   import Editor from "$lib/editor/Editor.svelte";
-  import Toolbar from "$lib/editor/Toolbar.svelte";
-  import { countWords, formatCount } from "$lib/editor/counts";
-  import { findNext } from "$lib/editor/find";
-  import { createChapter, createProject, type Chapter, type DocumentJson, type Project } from "$lib/model";
+  import Ribbon from "$lib/editor/Ribbon.svelte";
+  import StatusBar from "$lib/editor/StatusBar.svelte";
+  import TitleBar from "$lib/editor/TitleBar.svelte";
+  import { countWords } from "$lib/editor/counts";
+  import { findNext, replaceAll, replaceNext } from "$lib/editor/find";
+  import { createChapter, createProject, effectiveLanguage, type Chapter, type DocumentJson, type Project, type WritingLanguage } from "$lib/model";
   import { createAutosave, errorMessage, type SaveStatus } from "$lib/save/autosave";
   import { blocksToDocument, chaptersToDocx, downloadBlob, htmlToChapters } from "$lib/export/document";
   import { createAmbience } from "$lib/ambience";
@@ -18,8 +21,8 @@
   import Notes from "$lib/views/Notes.svelte";
   import Outline from "$lib/views/Outline.svelte";
   import Todos from "$lib/views/Todos.svelte";
-  import { loadPrefs, savePrefs, type ThemeName } from "$lib/prefs";
-  import { keepSnapshot, sqliteStorage } from "$lib/storage/sqlite";
+  import { loadPrefs, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs } from "$lib/prefs";
+  import { checkpointDatabase, keepSnapshot, listPersonalWords, rememberPersonalWord, sqliteStorage, switchProjectFile } from "$lib/storage/sqlite";
   import type { Editor as TiptapEditor } from "@tiptap/core";
 
   let project = $state<Project | null>(null);
@@ -31,12 +34,21 @@
   let editorRevision = $state(0);
   let findOpen = $state(false);
   let findQuery = $state("");
+  let replaceQuery = $state("");
   let findMissing = $state(false);
+  let replaceMode = $state(false);
+  let noteRequest = $state(0);
+  let todoRequest = $state(0);
   let findInput = $state<HTMLInputElement | undefined>(undefined);
   let prefs = $state(loadPrefs());
   let zen = $state(false);
+  let dock = $state<"notes" | "todos" | null>(null);
   let view = $state<"write" | "home" | "notes" | "todos" | "outline" | "book" | "settings">("write");
   let backupMessage = $state("");
+  let projectLocation = $state("");
+  let dictionary = $state<{ language: WritingLanguage; word: string }[]>([]);
+  let settingsOpen = $state(false);
+  let clock = $state(Date.now());
   const ambience = createAmbience();
 
   const autosave = createAutosave({
@@ -58,20 +70,76 @@
   const projectWords = $derived(
     chapters.reduce((sum, chapter) => sum + countWords(chapter.plainText), 0),
   );
-  const projectCharacters = $derived(
-    chapters.reduce((sum, chapter) => sum + chapter.plainText.length, 0),
+  const wordsToday = $derived(
+    prefs.writingDay === dayKey(new Date()) ? Math.max(0, projectWords - prefs.dayStartWords) : 0,
   );
+
+  function dayKey(date: Date): string {
+    return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+  }
+
+  function chapterName(index: number): string {
+    const names = ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"];
+    return names[index] ? `Chapter ${names[index]}` : `Chapter ${index + 1}`;
+  }
+
+  function roman(value: number): string {
+    const pairs: [number, string][] = [
+      [10, "X"],
+      [9, "IX"],
+      [5, "V"],
+      [4, "IV"],
+      [1, "I"],
+    ];
+    let rest = value;
+    let text = "";
+    for (const [amount, glyph] of pairs) {
+      while (rest >= amount) {
+        text += glyph;
+        rest -= amount;
+      }
+    }
+    return text || String(value);
+  }
 
   $effect(() => {
     if (findOpen && findInput) findInput.focus();
   });
 
   $effect(() => {
-    document.documentElement.dataset.theme = prefs.theme;
+    document.documentElement.dataset.theme = resolvedTheme(prefs.theme, new Date(clock));
     document.documentElement.style.setProperty("--column", `${Number(prefs.columnRem) || 44}rem`);
+    document.documentElement.style.setProperty("--pv-writing-font", manuscriptFamily(prefs.manuscriptFont));
+    document.documentElement.style.setProperty("--pv-writing-size", `${prefs.manuscriptSize}px`);
+    document.documentElement.dataset.grain = prefs.grain ? "true" : "false";
+    document.documentElement.dataset.running = prefs.runningHead ? "true" : "false";
     if (prefs.gentle) document.documentElement.dataset.gentle = "true";
     else delete document.documentElement.dataset.gentle;
     savePrefs(prefs);
+  });
+
+  $effect(() => {
+    if (!project) return;
+    const words = projectWords;
+    const today = dayKey(new Date());
+    const yesterday = dayKey(new Date(Date.now() - 86_400_000));
+    if (prefs.writingDay !== today) {
+      const missed = prefs.lastWriteDay !== yesterday && prefs.lastWriteDay !== today;
+      prefs = {
+        ...prefs,
+        writingDay: today,
+        dayStartWords: words,
+        streak: missed ? 0 : prefs.streak,
+      };
+      return;
+    }
+    if (words > prefs.dayStartWords && prefs.lastWriteDay !== today) {
+      prefs = {
+        ...prefs,
+        lastWriteDay: today,
+        streak: prefs.lastWriteDay === yesterday ? prefs.streak + 1 : 1,
+      };
+    }
   });
 
   $effect(() => {
@@ -96,6 +164,7 @@
         project = loaded;
         activeId = loaded.chapters[0]?.id ?? null;
         saveStatus = { state: "saved" };
+        await refreshWritingExtras();
       } catch (error) {
         if (disposed) return;
         loadError = errorMessage(error);
@@ -130,8 +199,13 @@
       }
     })();
 
+    const clockTimer = window.setInterval(() => {
+      clock = Date.now();
+    }, 60_000);
+
     return () => {
       disposed = true;
+      window.clearInterval(clockTimer);
       ambience.stop();
       unlistenClose?.();
       unlistenFocus?.();
@@ -147,6 +221,11 @@
       event.preventDefault();
       findOpen = true;
       findMissing = false;
+    }
+    if (event.key === "Escape" && settingsOpen) {
+      event.preventDefault();
+      settingsOpen = false;
+      return;
     }
     if (event.key === "Escape" && zen) {
       event.preventDefault();
@@ -188,6 +267,23 @@
   function runFind() {
     if (!textEditor || textEditor.isDestroyed) return;
     findMissing = !findNext(textEditor, findQuery);
+  }
+
+  function runReplace() {
+    if (!textEditor || textEditor.isDestroyed) return;
+    findMissing = !replaceNext(textEditor, findQuery, replaceQuery);
+  }
+
+  function runReplaceAll() {
+    if (!textEditor || textEditor.isDestroyed) return;
+    const count = replaceAll(textEditor, findQuery, replaceQuery);
+    findMissing = count === 0;
+  }
+
+  function cycleAmbience() {
+    const order = ["off", "rain", "fire"] as const;
+    const index = order.indexOf(prefs.ambience);
+    prefs = { ...prefs, ambience: order[(index + 1) % order.length] };
   }
 
   function updateChapter(id: string, contentJson: DocumentJson, plainText: string) {
@@ -261,6 +357,7 @@
     copy.contentJson = structuredClone(source.contentJson);
     copy.plainText = source.plainText;
     copy.synopsis = source.synopsis;
+    copy.language = source.language;
     copy.status = source.status;
     const chapters = project.chapters.map((chapter) =>
       chapter.position > source.position ? { ...chapter, position: chapter.position + 1 } : chapter,
@@ -345,6 +442,65 @@
     }
   }
 
+  async function refreshWritingExtras() {
+    try {
+      dictionary = await listPersonalWords();
+      projectLocation = loadPrefs().projectPath || (await invoke<string>("default_project_path"));
+      for (const entry of dictionary) {
+        try {
+          await invoke("add_personal_word", { language: entry.language, word: entry.word });
+        } catch {
+          // The word stays in Pensieve even if Windows cannot store it.
+        }
+      }
+    } catch {
+      // The manuscript is already open.
+    }
+  }
+
+  function setChapterLanguage(language: WritingLanguage) {
+    if (!activeId) return;
+    updateChapterMeta(activeId, { language });
+  }
+
+  function setSelectionLanguage(language: WritingLanguage) {
+    textEditor?.chain().focus().setMark("textLanguage", { lang: language }).run();
+  }
+
+  function setProjectLanguage(language: WritingLanguage) {
+    if (!project) return;
+    project = { ...project, language };
+    autosave.schedule();
+    void autosave.flush().catch(() => undefined);
+  }
+
+  async function addDictionaryWord(language: WritingLanguage, word: string) {
+    const cleaned = word.trim();
+    if (!cleaned) return;
+    try {
+      await invoke("add_personal_word", { language, word: cleaned });
+      await rememberPersonalWord(language, cleaned);
+      dictionary = await listPersonalWords();
+    } catch (error) {
+      backupMessage = errorMessage(error);
+    }
+  }
+
+  async function moveProject() {
+    if (!project) return;
+    try {
+      const folder = await chooseBackupFolder();
+      if (!folder) return;
+      await checkpointDatabase();
+      const source = loadPrefs().projectPath || (await invoke<string>("default_project_path"));
+      const destination = await invoke<string>("relocate_project", { source, folder });
+      await switchProjectFile(destination);
+      projectLocation = destination;
+      backupMessage = `Project file moved to ${destination}`;
+    } catch (error) {
+      backupMessage = errorMessage(error);
+    }
+  }
   async function pickBackupFolder() {
     try {
       const folder = await chooseBackupFolder();
@@ -374,19 +530,74 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<Particles active={prefs.theme === "candlelit" && !prefs.gentle} />
+<Particles active={resolvedTheme(prefs.theme, new Date(clock)) === "candlelit" && !prefs.gentle} />
 <div class="app" class:zen>
-  <nav class="views" aria-label="Views">
-    <button type="button" class:active={view === "write"} onclick={() => (view = "write")}>Write</button>
-    <button type="button" class:active={view === "home"} onclick={() => (view = "home")}>Dashboard</button>
-    <button type="button" class:active={view === "notes"} onclick={() => (view = "notes")}>Notes</button>
-    <button type="button" class:active={view === "todos"} onclick={() => (view = "todos")}>Todos</button>
-    <button type="button" class:active={view === "outline"} onclick={() => (view = "outline")}>Outline</button>
-    <button type="button" class:active={view === "book"} onclick={() => (view = "book")}>Book</button>
-    <button type="button" class:active={view === "settings"} onclick={() => (view = "settings")}>Settings</button>
-  </nav>
+  <TitleBar
+    project={project?.title ?? "Untitled"}
+    {view}
+    saveLabel={statusText(saveStatus)}
+    saveState={saveStatus.state}
+    language={project && activeChapter ? (effectiveLanguage(project, activeChapter) === "sl" ? "SL" : "EN") : "EN"}
+    error={saveStatus.state === "error" ? saveStatus.message : ""}
+    onView={(next) => {
+      if (zen) void setZen(false);
+      view = next;
+    }}
+    onLanguage={() => {
+      const current = project && activeChapter ? effectiveLanguage(project, activeChapter) : "en";
+      setChapterLanguage(current === "sl" ? "en" : "sl");
+    }}
+    onHome={() => {
+      if (zen) void setZen(false);
+      view = "home";
+    }}
+    {settingsOpen}
+    onSettings={() => {
+      if (zen) void setZen(false);
+      settingsOpen = true;
+    }}
+  />
   {#if view === "write"}
-<div class="shell" class:collapsed class:zen>
+  <Ribbon
+    editor={textEditor}
+    revision={editorRevision}
+    chaptersOpen={!collapsed}
+    notesOpen={dock === "notes"}
+    todosOpen={dock === "todos"}
+    onToggleChapters={() => (collapsed = !collapsed)}
+    onToggleNotes={() => (dock = dock === "notes" ? null : "notes")}
+    onToggleTodos={() => (dock = dock === "todos" ? null : "todos")}
+    onFind={() => {
+      replaceMode = false;
+      findOpen = true;
+      findMissing = false;
+      view = "write";
+    }}
+    language={project && activeChapter ? effectiveLanguage(project, activeChapter) : project?.language ?? "en"}
+    onChapterLanguage={setChapterLanguage}
+    onSelectionLanguage={setSelectionLanguage}
+    manuscriptFont={prefs.manuscriptFont}
+    manuscriptSize={prefs.manuscriptSize}
+    onFont={(font) => (prefs.manuscriptFont = font)}
+    onSize={(size) => (prefs.manuscriptSize = size)}
+    onNewNote={() => {
+      view = "notes";
+      noteRequest += 1;
+    }}
+    onAddTodo={() => {
+      view = "todos";
+      todoRequest += 1;
+    }}
+    onReplace={() => {
+      replaceMode = true;
+      findOpen = true;
+      findMissing = false;
+      view = "write";
+    }}
+  />
+  {/if}
+  {#if view === "write"}
+<div class="shell" class:collapsed class:zen class:docked={dock !== null}>
   <Sidebar
     {chapters}
     {activeId}
@@ -399,42 +610,6 @@
     onReorder={reorderChapters}
   />
   <section class="writing">
-    <header class="topbar">
-      <button
-        type="button"
-        aria-expanded={!collapsed}
-        onclick={() => (collapsed = !collapsed)}
-      >
-        {collapsed ? "Show chapters" : "Hide chapters"}
-      </button>
-      <label class="theme">
-        Theme
-        <select
-          aria-label="Theme"
-          value={prefs.theme}
-          onchange={(event) => {
-            prefs.theme = (event.currentTarget as HTMLSelectElement).value as ThemeName;
-          }}
-        >
-          <option value="paper">Paper</option>
-          <option value="sepia">Sepia</option>
-          <option value="dark">Dark</option>
-          <option value="candlelit">Candlelit</option>
-        </select>
-      </label>
-      <button type="button" onclick={() => void setZen(!zen)}>{zen ? "Leave zen" : "Zen"}</button>
-      <p class="counts">
-        {formatCount(chapterWords, activeChapter?.plainText.length ?? 0)}
-        <span>Project {formatCount(projectWords, projectCharacters)}</span>
-      </p>
-      <p class="status" class:error={saveStatus.state === "error"}>
-        {statusText(saveStatus)}
-        {#if saveStatus.state === "error"}
-          <span role="alert">{saveStatus.message}</span>
-        {/if}
-      </p>
-    </header>
-    <Toolbar editor={textEditor} revision={editorRevision} />
     {#if findOpen}
       <form
         class="find"
@@ -451,6 +626,11 @@
           oninput={() => (findMissing = false)}
         />
         <button type="submit">Find</button>
+        {#if replaceMode}
+          <input bind:value={replaceQuery} aria-label="Replace with" placeholder="Replace with" />
+          <button type="button" onclick={runReplace}>Replace</button>
+          <button type="button" onclick={runReplaceAll}>All</button>
+        {/if}
         {#if findMissing}
           <span>Not found</span>
         {/if}
@@ -460,18 +640,44 @@
       {#if activeChapter}
         {@const chapter = activeChapter}
         {#key chapter.id}
-          <article class="paper">
-            <Editor
-              initialContent={chapter.contentJson}
-              onChange={(json, text) => updateChapter(chapter.id, json, text)}
-              onEditor={(next) => (textEditor = next)}
-              onActivity={() => (editorRevision += 1)}
-            />
-          </article>
+          <div class="sheet" style:--sheet={zen ? `${prefs.columnRem}rem` : pageWidthValue(prefs.pageWidth)}>
+            <div class="sheet-under" aria-hidden="true"></div>
+            <article class="paper">
+              <div class="running">
+                <span>{project?.title}</span>
+                <span>{roman(chapters.findIndex((item) => item.id === chapter.id) + 1)}</span>
+              </div>
+              <p class="chapter-label">{chapterName(chapters.findIndex((item) => item.id === chapter.id))}</p>
+              <h2 class="chapter-title">{chapter.title}</h2>
+              <Editor
+                initialContent={chapter.contentJson}
+                language={project ? effectiveLanguage(project, chapter) : "en"}
+                typewriter={prefs.typewriter}
+                onChange={(json, text) => updateChapter(chapter.id, json, text)}
+                onEditor={(next) => (textEditor = next)}
+                onActivity={() => (editorRevision += 1)}
+              />
+            </article>
+          </div>
         {/key}
       {:else}
         <p class="opening">Opening…</p>
       {/if}
+    </div>
+    <div class="float-wrap">
+      <StatusBar
+        words={chapterWords}
+        {projectWords}
+        language={project && activeChapter ? (effectiveLanguage(project, activeChapter) === "sl" ? "Slovenian" : "English") : "English"}
+        saveLabel={statusText(saveStatus)}
+        error={saveStatus.state === "error" ? saveStatus.message : ""}
+        {zen}
+        onZen={() => void setZen(!zen)}
+        ambience={prefs.ambience}
+        today={wordsToday}
+        goal={prefs.dailyGoal}
+        onAmbience={cycleAmbience}
+      />
     </div>
     {#if zen}
       <div class="zen-hover">
@@ -491,40 +697,81 @@
       </div>
     {/if}
   </section>
+  {#if dock && project && !zen}
+    <aside class="dock">
+      <div class="dock-tabs">
+        <button type="button" class:active={dock === "notes"} onclick={() => (dock = "notes")}>Notes</button>
+        <button type="button" class:active={dock === "todos"} onclick={() => (dock = "todos")}>To-dos</button>
+        <button type="button" class="close" onclick={() => (dock = null)}>Close</button>
+      </div>
+      {#if dock === "notes"}
+        <Notes
+          compact
+          projectId={project.id}
+          {chapters}
+          language={project.language}
+          onShowTodos={() => (dock = "todos")}
+        />
+      {:else}
+        <Todos compact projectId={project.id} {chapters} onShowNotes={() => (dock = "notes")} />
+      {/if}
+    </aside>
+  {/if}
 </div>
   {:else if project}
-    <div class="alt">
+    <div class="alt" class:home={view === "home"} class:settings={view === "settings"}>
       {#if view === "home"}
         <Dashboard
           {project}
           {prefs}
+          saveLabel={statusText(saveStatus)}
+          {wordsToday}
           onContinue={() => (view = "write")}
           onRestored={(restored) => {
             project = restored;
             activeId = restored.chapters[0]?.id ?? null;
             view = "write";
           }}
-          onExport={() => void exportWord()}
-          onImport={(file) => void importWord(file)}
         />
       {:else if view === "notes"}
-        <Notes projectId={project.id} {chapters} />
+        <Notes
+          projectId={project.id}
+          {chapters}
+          language={project.language}
+          createRequest={noteRequest}
+          onShowTodos={() => (view = "todos")}
+        />
       {:else if view === "todos"}
-        <Todos projectId={project.id} />
+        <Todos
+          projectId={project.id}
+          {chapters}
+          focusRequest={todoRequest}
+          onShowNotes={() => (view = "notes")}
+        />
       {:else if view === "outline"}
         <Outline {chapters} onUpdate={updateChapterMeta} />
       {:else if view === "book"}
         <Book {chapters} />
-      {:else}
-        <Settings
-          {prefs}
-          {backupMessage}
-          onChange={(patch) => (prefs = { ...prefs, ...patch })}
-          onChooseFolder={() => void pickBackupFolder()}
-          onBackup={() => void backupNow()}
-        />
       {/if}
     </div>
+  {/if}
+  {#if settingsOpen && project}
+    <Settings
+      {prefs}
+      {backupMessage}
+      onChange={(patch) => (prefs = { ...prefs, ...patch })}
+      onChooseFolder={() => void pickBackupFolder()}
+      onBackup={() => void backupNow()}
+      {projectLocation}
+      projectLanguage={project.language}
+      {dictionary}
+      onMoveProject={() => void moveProject()}
+      onProjectLanguage={setProjectLanguage}
+      onAddWord={(language, word) => void addDictionaryWord(language, word)}
+      onExport={() => void exportWord()}
+      onImport={(file) => void importWord(file)}
+      onClose={() => (settingsOpen = false)}
+    />
   {/if}
 </div>
 
@@ -537,53 +784,144 @@
     flex-direction: column;
   }
 
-  .views {
-    display: flex;
-    gap: 0.25rem;
-    padding: 0.35rem 0.7rem;
-    background: var(--sidebar);
-    border-bottom: 1px solid var(--line);
-  }
-
-  .views button {
-    border: 0;
-    background: transparent;
-    border-radius: 6px;
-    padding: 0.25rem 0.55rem;
-    color: var(--muted);
-  }
-
-  .views button.active {
-    background: var(--paper);
-    color: var(--ink);
-  }
-
-  .app.zen .views {
+  .app.zen :global(.ribbon),
+  .app.zen :global(.titlebar),
+  .app.zen :global(.statusbar),
+  .app.zen .float-wrap {
     display: none;
   }
 
-  .alt {
+  .shell.docked {
+    grid-template-columns: var(--pv-sidebar-w) minmax(0, 1fr) var(--pv-sidebar-wide-w);
+  }
+
+  .shell.collapsed.docked {
+    grid-template-columns: 0 minmax(0, 1fr) var(--pv-sidebar-wide-w);
+  }
+
+  .shell.zen.docked {
+    grid-template-columns: 0 minmax(0, 1fr);
+  }
+
+  .dock {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--pv-chrome);
+    border-left: 1px solid var(--pv-line);
+    overflow: hidden;
+  }
+
+  .dock-tabs {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--pv-line);
+  }
+
+  .dock-tabs button {
+    border: 0;
+    background: transparent;
+    border-radius: var(--pv-radius-xs);
+    padding: 4px 8px;
+    color: var(--pv-text-subtle);
+    font-size: var(--pv-text-md);
+  }
+
+  .dock-tabs button.active {
+    background: var(--pv-selected);
+    color: var(--pv-text);
+    font-weight: 600;
+    box-shadow: inset 0 -2px var(--pv-accent);
+  }
+
+  .dock-tabs .close {
+    margin-left: auto;
+  }
+
+  .dock :global(.notes),
+  .dock :global(.board) {
     flex: 1;
     min-height: 0;
   }
 
+  .alt {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    background: var(--pv-desk);
+  }
+
+  .alt.home::before,
+  .alt.settings::before,
+  .alt.home::after,
+  .alt.settings::after {
+    content: "";
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
+  .alt.home::before {
+    right: -140px;
+    top: -160px;
+    width: 420px;
+    height: 420px;
+    background: var(--pv-decor-1);
+    opacity: 0.55;
+  }
+
+  .alt.home::after {
+    right: 300px;
+    top: 120px;
+    width: 56px;
+    height: 56px;
+    background: var(--pv-decor-2);
+    opacity: 0.8;
+  }
+
+  .alt.settings::before {
+    left: -60px;
+    bottom: -80px;
+    width: 220px;
+    height: 220px;
+    background: var(--pv-decor-2);
+    opacity: 0.5;
+  }
+
+  .alt.settings::after {
+    left: 120px;
+    bottom: 70px;
+    width: 44px;
+    height: 44px;
+    background: var(--pv-decor-1);
+    opacity: 0.6;
+  }
+
+  .alt > :global(*) {
+    position: relative;
+    z-index: 1;
+  }
+
+  .shell,
+  .alt,
+  .dock {
+    animation: rise 220ms ease;
+  }
+
   .shell {
     display: grid;
-    grid-template-columns: 15rem 1fr;
+    grid-template-columns: var(--pv-sidebar-w) minmax(0, 1fr);
     flex: 1;
     min-height: 0;
   }
 
   .shell.collapsed,
   .shell.zen {
-    grid-template-columns: 0 1fr;
-  }
-
-  .topbar,
-  .counts,
-  :global(.toolbar),
-  :global(.sidebar) {
-    transition: opacity 200ms ease;
+    grid-template-columns: 0 minmax(0, 1fr);
   }
 
   .shell.zen :global(.sidebar) {
@@ -591,64 +929,27 @@
     pointer-events: none;
   }
 
-  .shell.zen .topbar,
-  .shell.zen :global(.toolbar),
-  .shell.zen .find {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
-  }
-
   .writing {
+    position: relative;
     min-width: 0;
     display: flex;
     flex-direction: column;
     height: 100%;
     min-height: 0;
+    background: var(--pv-desk);
   }
 
-  .topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    padding: 0.45rem 0.9rem 0.15rem;
-    color: var(--muted);
-    font-size: 0.85rem;
-  }
-
-  .counts {
-    margin: 0;
-    display: flex;
-    gap: 0.8rem;
-    min-width: 0;
-    font-size: 0.8rem;
-  }
-
-  .counts span {
-    color: var(--muted);
-  }
-
-  .topbar button {
-    border: 0;
-    background: transparent;
-    padding: 0.25rem 0.4rem;
-    border-radius: 6px;
-  }
-
-  .topbar button:hover {
-    background: rgba(255, 255, 255, 0.35);
-  }
-
-  .status {
-    margin: 0;
-    display: flex;
-    gap: 0.6rem;
-    align-items: baseline;
-  }
-
-  .status.error {
-    color: var(--danger);
+  .writing::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 180px;
+    width: 900px;
+    height: 700px;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    pointer-events: none;
+    background: radial-gradient(closest-side, var(--pv-glow), transparent 70%);
   }
 
   .find {
@@ -663,9 +964,10 @@
   .find input {
     width: 16rem;
     max-width: 100%;
-    border: 1px solid var(--line);
-    background: var(--paper);
-    border-radius: 6px;
+    border: 1px solid var(--pv-line-strong);
+    background: var(--pv-field);
+    color: var(--pv-text);
+    border-radius: var(--pv-radius-xs);
     padding: 0.3rem 0.5rem;
   }
 
@@ -681,25 +983,82 @@
   }
 
   .stage {
+    position: relative;
     overflow: auto;
     flex: 1;
+    padding: 30px 24px 72px;
+  }
+
+  .sheet {
+    position: relative;
+    width: min(var(--sheet, var(--pv-sheet-book)), calc(100% - 12px));
+    margin: 0 auto;
+  }
+
+  .sheet-under {
+    position: absolute;
+    inset: 0;
+    transform: translate(5px, 6px) rotate(0.6deg);
+    background: var(--pv-paper-under);
+    box-shadow: var(--pv-shadow-under);
   }
 
   .paper {
-    width: min(var(--column), calc(100% - 3rem));
-    margin: 1.5rem auto 3rem;
-    background: var(--paper);
-    min-height: calc(100% - 4.5rem);
-    animation: rise 220ms ease;
+    position: relative;
+    min-height: calc(100vh - 180px);
+    padding: var(--pv-sheet-pad-y) var(--pv-sheet-pad-x);
+    background-color: var(--pv-paper);
+    background-image: var(--pv-vignette);
+    box-shadow: var(--pv-shadow-sheet);
+    color: var(--pv-ink);
   }
 
-  .theme {
+  :global(:root[data-grain="true"]) .paper {
+    background-image: var(--pv-grain), var(--pv-vignette);
+  }
+
+  :global(:root[data-running="false"]) .running {
+    display: none;
+  }
+
+  .running {
     display: flex;
-    align-items: center;
-    gap: 0.35rem;
+    justify-content: space-between;
+    margin-bottom: 64px;
+    font-family: var(--pv-font-ui);
+    font-size: var(--pv-text-xs);
+    letter-spacing: var(--pv-track-running);
+    text-transform: uppercase;
+    color: var(--pv-ink-meta);
   }
 
-  .theme select,
+  .chapter-label {
+    margin: 0 0 12px;
+    text-align: center;
+    font-family: var(--pv-font-ui);
+    font-size: 12px;
+    letter-spacing: var(--pv-track-chapter);
+    text-transform: uppercase;
+    color: var(--pv-ink-accent);
+  }
+
+  .chapter-title {
+    margin: 0 0 44px;
+    text-align: center;
+    font-family: var(--pv-font-manuscript);
+    font-size: var(--pv-chapter-title);
+    font-weight: 400;
+    color: var(--pv-ink);
+  }
+
+  .float-wrap {
+    position: absolute;
+    left: 50%;
+    bottom: 16px;
+    z-index: 2;
+    transform: translateX(-50%);
+  }
+
   .zen-bar input {
     font: inherit;
     color: inherit;

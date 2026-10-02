@@ -1,0 +1,50 @@
+:root {
+  /* Spacing scale (px values used across the designs) */
+  --pv-space-1: 2px;
+  --pv-space-2: 4px;
+  --pv-space-3: 6px;
+  --pv-space-4: 8px;
+  --pv-space-5: 10px;
+  --pv-space-6: 12px;
+  --pv-space-7: 14px;
+  --pv-space-8: 16px;
+  --pv-space-9: 18px;
+  --pv-space-10: 22px;
+  --pv-space-11: 28px;
+  --pv-space-12: 36px;
+  --pv-space-13: 44px;
+  --pv-space-14: 64px;
+
+  /* Radii: small and quiet. Paper is always square. */
+  --pv-radius-0: 0;      /* sheets, slips, note cards, project title pages */
+  --pv-radius-xs: 3px;   /* tool buttons, rows, chips, badges, inputs */
+  --pv-radius-sm: 4px;   /* segmented controls, primary buttons, swatches */
+  --pv-radius-md: 5px;   /* floating bar */
+  --pv-radius-window: 6px;
+  --pv-radius-pill: 999px; /* toggles and slider thumb only */
+
+  /* Chrome dimensions */
+  --pv-titlebar-h: 34px;
+  --pv-toolbar-h: 40px;
+  --pv-tool-w: 28px;
+  --pv-tool-h: 26px;
+  --pv-floatbar-h: 30px;
+  --pv-sidebar-w: 232px;        /* chapters */
+  --pv-sidebar-wide-w: 260px;   /* notes / to-dos */
+  --pv-aside-w: 250px;          /* note context */
+  --pv-settings-nav-w: 200px;
+
+  /* Page widths (Settings → Page width) */
+  --pv-sheet-narrow: 520px;
+  --pv-sheet-book: 600px;
+  --pv-sheet-wide: 720px;
+  --pv-sheet-pad-y: 44px;
+  --pv-sheet-pad-x: 76px;
+  --pv-note-w: 560px;
+
+  /* Motion */
+  --pv-ease: cubic-bezier(.2,.7,.2,1);
+  --pv-dur-fast: 120ms;
+  --pv-dur: 180ms;
+  --pv-dur-theme: 400ms;
+}

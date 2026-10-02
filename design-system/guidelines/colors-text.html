@@ -1,0 +1,9 @@
+<!-- @dsCard group="Colors" viewport="700x130" subtitle="Five text steps on chrome" name="Chrome text" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Chrome text</title><link rel="stylesheet" href="../styles.css">
+<style>body{padding:20px;box-sizing:border-box;font-family:var(--pv-font-ui);background:var(--pv-chrome)}
+.sw{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px}
+.s{display:flex;flex-direction:column;gap:5px;font-size:11px;color:var(--pv-text-subtle)}
+.s i{display:block;height:44px;border-radius:3px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06)}
+.s b{font-weight:600;color:var(--pv-text);font-size:11.5px}
+.lbl{font:600 10.5px/1 var(--pv-font-ui);letter-spacing:.14em;text-transform:uppercase;color:var(--pv-text-faint);margin:0 0 10px}
+</style></head><body><div class="sw"><div class="s"><i style="background:var(--pv-text)"></i><b>Text</b><span>--pv-text</span><span data-v="--pv-text"></span></div><div class="s"><i style="background:var(--pv-text-2)"></i><b>Text 2 (icons)</b><span>--pv-text-2</span><span data-v="--pv-text-2"></span></div><div class="s"><i style="background:var(--pv-text-muted)"></i><b>Muted</b><span>--pv-text-muted</span><span data-v="--pv-text-muted"></span></div><div class="s"><i style="background:var(--pv-text-subtle)"></i><b>Subtle</b><span>--pv-text-subtle</span><span data-v="--pv-text-subtle"></span></div><div class="s"><i style="background:var(--pv-text-faint)"></i><b>Faint</b><span>--pv-text-faint</span><span data-v="--pv-text-faint"></span></div></div><script>document.querySelectorAll('[data-v]').forEach(function(e){var s=getComputedStyle(e.closest('[data-theme]')||document.documentElement);e.textContent=s.getPropertyValue(e.dataset.v).trim();});</script></body></html>
