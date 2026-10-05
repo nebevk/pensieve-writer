@@ -29,6 +29,8 @@ export type Prefs = {
   knownProjects: KnownProject[];
   lastBackupAt: string;
   lastBackupError: string;
+  /** Fingerprint of the book in the newest automatic backup, to skip identical copies. */
+  lastBackupSignature: string;
 };
 
 const KEY = "pensieve-prefs";
@@ -78,6 +80,7 @@ export const defaultPrefs = (): Prefs => ({
   knownProjects: [],
   lastBackupAt: "",
   lastBackupError: "",
+  lastBackupSignature: "",
 });
 
 export function loadPrefs(): Prefs {

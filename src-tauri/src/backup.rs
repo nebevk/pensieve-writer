@@ -1,11 +1,27 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const KEEP: usize = 20;
 
+/// Writes one backup file. With `book`, only that book's backups count toward the 20 kept,
+/// so working on one book never prunes another book's backups.
 #[tauri::command]
-pub fn write_backup(folder: String, filename: String, contents: String) -> Result<String, String> {
-    if !filename.starts_with("pensieve-")
+pub fn write_backup(
+    folder: String,
+    filename: String,
+    contents: String,
+    book: Option<String>,
+) -> Result<String, String> {
+    let prefix = match book.as_deref() {
+        Some(key) if !key.is_empty() => {
+            if key.len() > 32 || !key.chars().all(|c| c.is_ascii_alphanumeric()) {
+                return Err("The backup name is not valid".into());
+            }
+            format!("pensieve-{key}-")
+        }
+        _ => "pensieve-".to_string(),
+    };
+    if !filename.starts_with(&prefix)
         || !filename.ends_with(".json")
         || filename.contains(['/', '\\'])
         || filename.contains("..")
@@ -30,8 +46,22 @@ pub fn write_backup(folder: String, filename: String, contents: String) -> Resul
         return Err(error.to_string());
     }
     remove_partial_backups(dir)?;
-    prune_old_backups(dir)?;
+    prune_old_backups(dir, &prefix)?;
     Ok(path.display().to_string())
+}
+
+/// Reads a backup file the writer picked, so it can be restored.
+#[tauri::command]
+pub fn read_backup_file(path: String) -> Result<String, String> {
+    let file = PathBuf::from(&path);
+    let is_json = file
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("json"));
+    if !is_json {
+        return Err("Choose a Pensieve backup (.json) file.".into());
+    }
+    fs::read_to_string(&file).map_err(|error| error.to_string())
 }
 
 fn remove_partial_backups(dir: &Path) -> Result<(), String> {
@@ -45,14 +75,14 @@ fn remove_partial_backups(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn prune_old_backups(dir: &Path) -> Result<(), String> {
+fn prune_old_backups(dir: &Path, prefix: &str) -> Result<(), String> {
     let mut files: Vec<_> = fs::read_dir(dir)
         .map_err(|error| error.to_string())?
         .filter_map(Result::ok)
         .filter(|entry| {
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            name.starts_with("pensieve-") && name.ends_with(".json")
+            name.starts_with(prefix) && name.ends_with(".json")
         })
         .collect();
 

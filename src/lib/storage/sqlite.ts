@@ -9,7 +9,19 @@ import {
 } from "$lib/model";
 import { loadPrefs, savePrefs } from "$lib/prefs";
 import type { Storage } from "./types";
-import { normalizeChapter, projectFromSnapshot, withRestoredChapter } from "./restore";
+import type { Note, Task } from "./organize";
+import { readNotesWith, readTasksWith, writeNoteWith, writeTaskWith } from "./noteRows";
+import {
+  missingItems,
+  normalizeChapter,
+  normalizeNote,
+  normalizeTask,
+  projectFromBackup,
+  projectFromSnapshot,
+  snapshotPayload,
+  withRestoredChapter,
+  type SnapshotPayload,
+} from "./restore";
 
 const DEFAULT_DB_URL = "sqlite:pensieve.db";
 const SCHEMA_VERSION = 3;
@@ -47,12 +59,6 @@ type SnapshotRow = {
   created_at: string;
   kind?: string;
   payload?: string;
-};
-
-type SnapshotPayload = {
-  title: string;
-  language?: WritingLanguage;
-  chapters: Chapter[];
 };
 
 type SnapshotKind = SnapshotInfo["kind"];
@@ -334,11 +340,9 @@ async function maybeSnapshot(db: Database, project: Project): Promise<void> {
 }
 
 async function insertSnapshot(db: Database, project: Project, kind: SnapshotKind): Promise<void> {
-  const payload: SnapshotPayload = {
-    title: project.title,
-    language: project.language,
-    chapters: project.chapters,
-  };
+  const notes = await readNotesWith(db, project.id);
+  const tasks = await readTasksWith(db, project.id);
+  const payload = snapshotPayload(project, notes, tasks);
   await db.execute(
     `INSERT INTO snapshots (id, project_id, created_at, kind, payload)
      VALUES ($1, $2, $3, $4, $5)`,
@@ -431,23 +435,74 @@ export function keepSnapshot(project: Project): Promise<void> {
   });
 }
 
-export async function checkpointDatabase(): Promise<void> {
-  const db = await database();
-  await db.select("PRAGMA wal_checkpoint(TRUNCATE)");
+/** Keeps a snapshot of the book as it is saved right now, for callers that don't hold the project. */
+export function snapshotSavedProject(projectId: string): Promise<void> {
+  return enqueue(async () => {
+    const db = await database();
+    const project = await readProject(db, projectId);
+    if (!project) throw new Error("The book for this note is missing");
+    await insertSnapshot(db, project, "manual");
+  });
 }
 
-export async function switchProjectFile(absolutePath: string): Promise<void> {
-  const previous = connectionUrl();
-  const db = await database();
-  const prefs = loadPrefs();
-  savePrefs({ ...prefs, projectPath: absolutePath });
-  try {
-    await db.close(previous);
-  } catch {
-    // The previous pool may already be closed.
+/** Runs after every write already queued, so nothing lands in the file mid-checkpoint. */
+export function checkpointDatabase(): Promise<void> {
+  return enqueue(async () => {
+    const db = await database();
+    await db.select("PRAGMA wal_checkpoint(TRUNCATE)");
+  });
+}
+
+/** Runs after every write already queued, so a pending save can't land in the next book's file. */
+export function switchProjectFile(absolutePath: string): Promise<void> {
+  return enqueue(async () => {
+    const previous = connectionUrl();
+    const db = await database();
+    const prefs = loadPrefs();
+    savePrefs({ ...prefs, projectPath: absolutePath });
+    try {
+      await db.close(previous);
+    } catch {
+      // The previous pool may already be closed.
+    }
+    databasePromise = null;
+    await database();
+  });
+}
+
+/** Adds the snapshot's or backup's notes and to-dos that the book no longer has. Existing ones stay as they are. */
+async function addMissingNotesAndTasks(
+  db: Database,
+  projectId: string,
+  notes: Note[] | undefined,
+  tasks: Task[] | undefined,
+): Promise<void> {
+  const noteIds = await db.select<{ id: string }[]>(`SELECT id FROM notes WHERE project_id = $1`, [projectId]);
+  for (const note of missingItems(notes, noteIds.map((row) => row.id))) {
+    await writeNoteWith(db, normalizeNote(note, projectId));
   }
-  databasePromise = null;
-  await database();
+  const taskIds = await db.select<{ id: string }[]>(`SELECT id FROM tasks WHERE project_id = $1`, [projectId]);
+  for (const task of missingItems(tasks, taskIds.map((row) => row.id))) {
+    await writeTaskWith(db, normalizeTask(task, projectId));
+  }
+}
+
+/** Replaces the open book's chapters with a Drive backup's, after keeping a "Before restore" snapshot. */
+export function restoreFromBackup(backup: {
+  project: Pick<Project, "title" | "chapters"> & Partial<Pick<Project, "language" | "kind">>;
+  notes: Note[];
+  tasks: Task[];
+}): Promise<Project> {
+  return enqueue(async () => {
+    const db = await database();
+    const current = await readProject(db);
+    if (!current) throw new Error("Open a book before restoring a backup");
+    await insertSnapshot(db, current, "before-restore");
+    const restored = projectFromBackup(current, backup.project);
+    await writeProject(db, restored);
+    await addMissingNotesAndTasks(db, restored.id, backup.notes, backup.tasks);
+    return restored;
+  });
 }
 
 export function listPersonalWords(): Promise<{ language: WritingLanguage; word: string }[]> {
@@ -611,6 +666,7 @@ export const sqliteStorage: Storage = {
       await insertSnapshot(db, current, "before-restore");
       const restored = projectFromSnapshot(current, payload);
       await writeProject(db, restored);
+      await addMissingNotesAndTasks(db, restored.id, payload.notes, payload.tasks);
 
       const keep = restored.chapters.map((chapter) => chapter.id);
       const placeholders = keep.map((_, index) => `$${index + 2}`).join(", ");

@@ -37,7 +37,9 @@ pub fn run() {
         )
         .invoke_handler(tauri::generate_handler![
             backup::write_backup,
+            backup::read_backup_file,
             project::default_project_path,
+            project::project_file_exists,
             project::relocate_project,
             project::reserve_project_path,
             project::read_image_file,

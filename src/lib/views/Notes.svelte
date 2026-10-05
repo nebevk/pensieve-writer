@@ -18,6 +18,7 @@
     type Task,
     type TodoState,
   } from "$lib/storage/organize";
+  import { snapshotSavedProject } from "$lib/storage/sqlite";
 
   let {
     projectId,
@@ -44,6 +45,7 @@
   let activeId = $state<string | null>(null);
   let query = $state("");
   let message = $state("");
+  let confirmDelete = $state<string | null>(null);
   let seenRequest = 0;
 
   const orderedChapters = $derived([...chapters].sort((a, b) => a.position - b.position));
@@ -165,11 +167,16 @@
     scheduleNoteSave(note);
   }
 
-  function updateActive(patch: Partial<Note>) {
-    if (!active) return;
-    const next = { ...active, ...patch, updatedAt: new Date().toISOString() };
-    notes = notes.map((note) => (note.id === next.id ? next : note));
+  function updateNote(id: string, patch: Partial<Note>) {
+    const current = notes.find((note) => note.id === id);
+    if (!current) return;
+    const next = { ...current, ...patch, updatedAt: new Date().toISOString() };
+    notes = notes.map((note) => (note.id === id ? next : note));
     schedule(next);
+  }
+
+  function updateActive(patch: Partial<Note>) {
+    if (active) updateNote(active.id, patch);
   }
 
   function updateField(index: number, patch: Partial<NoteField>) {
@@ -204,7 +211,11 @@
   }
 
   async function remove(id: string) {
+    confirmDelete = null;
     try {
+      // Keep a snapshot with the note in it, so a mistaken delete can be undone from Home.
+      await flushNoteSave();
+      await snapshotSavedProject(projectId);
       await deleteNote(id);
       notes = notes.filter((note) => note.id !== id);
       tasks = tasks.filter((task) => task.noteId !== id);
@@ -346,9 +357,11 @@
         </div>
         {#key note.id}
           <Editor
+            docId={note.id}
             initialContent={note.contentJson}
             {language}
-            onChange={(json: DocumentJson, text: string) => updateActive({ contentJson: json, plainText: text })}
+            onChange={(json: DocumentJson, text: string, id?: string) =>
+              id ? updateNote(id, { contentJson: json, plainText: text }) : updateActive({ contentJson: json, plainText: text })}
             onEditor={() => {}}
             onActivity={() => {}}
           />
@@ -384,7 +397,15 @@
             </label>
           {/each}
         </div>
-        <button type="button" class="danger" onclick={() => void remove(note.id)}>Delete note</button>
+        {#if confirmDelete === note.id}
+          <div class="confirm" role="alertdialog" aria-label="Delete note">
+            <p>Delete “{note.title}” and its to-dos? A snapshot is kept first, so you can restore it from Home.</p>
+            <button type="button" class="danger" onclick={() => void remove(note.id)}>Delete</button>
+            <button type="button" class="text" onclick={() => (confirmDelete = null)}>Cancel</button>
+          </div>
+        {:else}
+          <button type="button" class="danger" onclick={() => (confirmDelete = note.id)}>Delete note</button>
+        {/if}
       </article>
     {:else}
       <p class="quiet">Create a note for a character, place, or idea.</p>
@@ -564,6 +585,21 @@
     color: var(--pv-accent);
     text-align: left;
     padding: 6px 8px;
+  }
+
+  .confirm {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    margin-top: 12px;
+  }
+
+  .confirm p {
+    width: 100%;
+    margin: 0;
+    color: var(--pv-ink-2);
+    font-size: var(--pv-text-md);
   }
 
   .desk {

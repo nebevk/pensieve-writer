@@ -22,6 +22,10 @@
     onCopyHtml,
     onPrint,
     onImport,
+    backupOffer = null,
+    onPickBackup,
+    onRestoreBackup,
+    onCancelBackup,
     onClose,
   }: {
     prefs: Prefs;
@@ -42,6 +46,11 @@
     onCopyHtml: () => void;
     onPrint: () => void;
     onImport: (file: File) => void;
+    /** A backup file the writer picked, waiting for them to confirm the restore. */
+    backupOffer?: { title: string; savedAt: string; otherBook: boolean } | null;
+    onPickBackup: () => void;
+    onRestoreBackup: () => void;
+    onCancelBackup: () => void;
     onClose: () => void;
   } = $props();
 
@@ -312,7 +321,26 @@
           <div class="actions">
             <button type="button" onclick={onChooseFolder}>Choose folder</button>
             <button type="button" onclick={onBackup} disabled={!prefs.backupFolder}>Back up now</button>
+            <button type="button" onclick={onPickBackup}>Restore from a backup…</button>
           </div>
+          {#if backupOffer}
+            <div class="offer" role="alertdialog" aria-label="Restore from a backup">
+              <p>
+                Restore “{backupOffer.title}” from the backup saved {backupOffer.savedAt}?
+                {#if backupOffer.otherBook}
+                  This backup is of a different book than the one open now.
+                {/if}
+              </p>
+              <p class="hint">
+                The open book's chapters are replaced by the backup's, and notes or to-dos it no longer has come back.
+                A “Before restore” snapshot of the open book is kept first.
+              </p>
+              <div class="actions">
+                <button type="button" onclick={onRestoreBackup}>Restore</button>
+                <button type="button" onclick={onCancelBackup}>Cancel</button>
+              </div>
+            </div>
+          {/if}
           {#if backupMessage}
             <p class="hint">{backupMessage}</p>
           {/if}
@@ -744,6 +772,21 @@
     color: var(--pv-text);
     padding: 0 8px;
     font-weight: 400;
+  }
+
+  .offer {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--pv-line-strong);
+    border-left: 3px solid var(--pv-accent);
+    border-radius: var(--pv-radius-sm);
+    background: var(--pv-field);
+  }
+
+  .offer p {
+    margin: 0;
   }
 
   .hint,

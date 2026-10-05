@@ -14,7 +14,7 @@
     saveLabel = "Saved",
     wordsToday = 0,
     onContinue,
-    onRestored,
+    onRestore,
     onRename,
     onOpenProject,
     onStartProject,
@@ -27,7 +27,8 @@
     saveLabel?: string;
     wordsToday?: number;
     onContinue: (chapterId: string | null) => void;
-    onRestored: (project: Project) => void;
+    /** Restores a snapshot after saving pending work; rejects if the restore fails. */
+    onRestore: (snapshotId: string) => Promise<void>;
     onRename: (title: string) => void;
     onOpenProject: () => void;
     onStartProject: (kind: ProjectKind) => void;
@@ -133,9 +134,8 @@
 
   async function restore(id: string) {
     try {
-      const restored = await sqliteStorage.restore(id);
+      await onRestore(id);
       pendingRestore = null;
-      onRestored(restored);
     } catch (error) {
       message = error instanceof Error ? error.message : "Could not restore that snapshot";
     }

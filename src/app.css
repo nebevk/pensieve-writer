@@ -137,6 +137,19 @@ textarea:focus-visible {
   color: var(--pv-ink);
 }
 
+/* The window clips to one screen; a printout needs the whole document, without the candle sparks. */
+@media print {
+  html,
+  body {
+    height: auto;
+    overflow: visible;
+  }
+
+  .particles {
+    display: none !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

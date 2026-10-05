@@ -89,6 +89,11 @@
   }
 
   @media print {
+    .book {
+      height: auto;
+      overflow: visible;
+    }
+
     .bar {
       display: none;
     }

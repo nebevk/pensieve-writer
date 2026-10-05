@@ -3,7 +3,7 @@
   import type { Editor } from "@tiptap/core";
   import type { ManuscriptFont } from "$lib/prefs";
   import { chooseImageFile } from "$lib/storage/backup";
-  import { shrinkImage } from "./imageSize";
+  import { imageType, shrinkImage } from "./imageSize";
   import Icon from "./Icon.svelte";
 
   let {
@@ -44,6 +44,8 @@
 
   let expanded = $state(false);
   let linkOpen = $state(false);
+  let imageProblem = $state("");
+  let problemTimer: ReturnType<typeof setTimeout> | null = null;
   let linkDraft = $state("https://");
 
   type Tool = {
@@ -156,18 +158,25 @@
   }
 
   async function askImage() {
-    const path = await chooseImageFile();
-    if (!path) return;
-    const bytes = await invoke<number[]>("read_image_file", { path });
-    const blob = new Blob([new Uint8Array(bytes)]);
-    const original = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(blob);
-    });
-    const src = await shrinkImage(original);
-    ready()?.chain().focus().insertContent({ type: "image", attrs: { src, alt: "" } }).run();
+    imageProblem = "";
+    try {
+      const path = await chooseImageFile();
+      if (!path) return;
+      const bytes = await invoke<number[]>("read_image_file", { path });
+      const blob = new Blob([new Uint8Array(bytes)], { type: imageType(path) });
+      const original = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+      });
+      const src = await shrinkImage(original);
+      ready()?.chain().focus().insertContent({ type: "image", attrs: { src, alt: "" } }).run();
+    } catch (error) {
+      imageProblem = `Couldn't add that picture. ${error instanceof Error ? error.message : String(error)}`;
+      if (problemTimer) clearTimeout(problemTimer);
+      problemTimer = setTimeout(() => (imageProblem = ""), 8000);
+    }
   }
 
   function clearFormatting() {
@@ -270,6 +279,9 @@
             <input bind:value={linkDraft} aria-label="Link address" />
             <button type="submit" class="tool text wide">Add</button>
           </form>
+        {/if}
+        {#if imageProblem}
+          <span class="problem" role="alert">{imageProblem}</span>
         {/if}
       </div>
       <p>Insert</p>
@@ -467,6 +479,13 @@
     display: flex;
     align-items: center;
     gap: 4px;
+  }
+
+  .problem {
+    max-width: 16rem;
+    font-size: var(--pv-text-sm);
+    line-height: 1.3;
+    color: var(--danger);
   }
 
   .link-form input {

@@ -8,6 +8,12 @@ fn app_database(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+/// Whether a remembered book file is still there. Opening a missing path would create an empty book.
+#[tauri::command]
+pub fn project_file_exists(path: String) -> bool {
+    Path::new(&path).is_file()
+}
+
 #[tauri::command]
 pub fn default_project_path(app: AppHandle) -> Result<String, String> {
     Ok(app_database(&app)?.display().to_string())

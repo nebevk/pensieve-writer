@@ -13,7 +13,8 @@
   import { createAutosave, errorMessage, type SaveStatus } from "$lib/save/autosave";
   import { blocksToDocument, chaptersToDocx, chaptersToHtml, chaptersToMarkdown, chaptersToPlain, downloadBlob, downloadText, htmlToChapters } from "$lib/export/document";
   import { createAmbience } from "$lib/ambience";
-  import { chooseBackupFolder, chooseProjectFile, writeBackup } from "$lib/storage/backup";
+  import { chooseBackupFile, chooseBackupFolder, chooseProjectFile, readBackupFile, writeBackup } from "$lib/storage/backup";
+  import type { BackupContent } from "$lib/storage/backupFile";
   import Settings from "$lib/views/Settings.svelte";
   import Particles from "$lib/views/Particles.svelte";
   import Book from "$lib/views/Book.svelte";
@@ -25,7 +26,7 @@
   import { duplicateChapterProject, patchChapter, removeChapter, renameChapterProject, reorderChapterList, setChapterText } from "$lib/chapters/mutate";
   import { nextTitle, openingTitle, welcomeDocument, welcomePlain } from "$lib/chapters/welcome";
   import { flushNoteSave } from "$lib/storage/organize";
-  import { checkpointDatabase, forgetPersonalWord, keepSnapshot, listPersonalWords, readSnapshotChapters, rememberPersonalWord, restoreChapter, sqliteStorage, switchProjectFile } from "$lib/storage/sqlite";
+  import { checkpointDatabase, forgetPersonalWord, keepSnapshot, listPersonalWords, readSnapshotChapters, rememberPersonalWord, restoreChapter, restoreFromBackup, sqliteStorage, switchProjectFile } from "$lib/storage/sqlite";
   import type { Editor as TiptapEditor } from "@tiptap/core";
 
   let project = $state<Project | null>(null);
@@ -59,6 +60,8 @@
   let projectLocation = $state("");
   let dictionary = $state<{ language: WritingLanguage; word: string }[]>([]);
   let settingsOpen = $state(false);
+  let restoring = $state(false);
+  let pendingBackup = $state<BackupContent | null>(null);
   let clock = $state(Date.now());
   const ambience = createAmbience();
 
@@ -157,8 +160,11 @@
       try {
         try {
           const stored = await loadPrefsFile();
-          if (!disposed && stored) prefs = stored;
-          else if (!disposed) savePrefs(prefs);
+          if (!disposed && stored) {
+            // The database opens with the book path in browser storage, so put the file's settings there first.
+            savePrefs(stored);
+            prefs = stored;
+          } else if (!disposed) savePrefs(prefs);
         } catch {
           // Keep the settings already in this window if the file cannot be read.
         }
@@ -305,8 +311,21 @@
     findMissing = !replaceNext(textEditor, findQuery, replaceQuery);
   }
 
-  function runReplaceAll() {
+  async function runReplaceAll() {
     if (findScope === "book" && project && findQuery) {
+      captureEditor();
+      if (bookHits.length === 0) {
+        findMissing = true;
+        return;
+      }
+      try {
+        // Undo only reaches the open chapter, so keep the whole book first.
+        await keepSnapshot(project);
+      } catch (error) {
+        saveStatus = { state: "error", message: errorMessage(error) };
+        return;
+      }
+      if (!project) return;
       let total = 0;
       const now = new Date().toISOString();
       const chapters = project.chapters.map((chapter) => {
@@ -498,7 +517,12 @@
     }
   }
 
-  function printPages() {
+  /** Prints every chapter from the Book view, not whatever happens to be on screen. */
+  async function printBook() {
+    settingsOpen = false;
+    if (zen) await setZen(false);
+    view = "book";
+    await tick();
     window.print();
   }
 
@@ -531,17 +555,82 @@
     }
   }
 
+  /**
+   * Closes the editor so it hands back its text, saves everything, then runs `work`.
+   * The editor reopens on whatever `work` leaves in `project`, so an open editor can't
+   * write its older text over a restore.
+   */
+  async function withEditorClosed(work: () => Promise<void>): Promise<void> {
+    restoring = true;
+    try {
+      await tick();
+      await flushNoteSave();
+      await autosave.flush();
+      await work();
+    } finally {
+      restoring = false;
+    }
+  }
+
   async function restoreHistoryChapter() {
     if (!historySnapshotId || !historyChapterId) return;
+    const snapshotId = historySnapshotId;
+    const chapterId = historyChapterId;
     try {
-      await autosave.flush();
-      const restored = await restoreChapter(historySnapshotId, historyChapterId);
-      project = restored;
-      activeId = historyChapterId;
+      await withEditorClosed(async () => {
+        project = await restoreChapter(snapshotId, chapterId);
+        activeId = chapterId;
+      });
       historyOpen = false;
     } catch (error) {
       saveStatus = { state: "error", message: errorMessage(error) };
     }
+  }
+
+  async function restoreSnapshot(id: string): Promise<void> {
+    await withEditorClosed(async () => {
+      const restored = await sqliteStorage.restore(id);
+      project = restored;
+      activeId = restored.chapters[0]?.id ?? null;
+    });
+    view = "write";
+  }
+
+  async function pickBackup() {
+    try {
+      const path = await chooseBackupFile();
+      if (path) pendingBackup = await readBackupFile(path);
+    } catch (error) {
+      backupMessage = errorMessage(error);
+    }
+  }
+
+  async function restoreBackup() {
+    const backup = pendingBackup;
+    if (!backup) return;
+    pendingBackup = null;
+    try {
+      await withEditorClosed(async () => {
+        const restored = await restoreFromBackup(backup);
+        project = restored;
+        activeId = restored.chapters[0]?.id ?? null;
+        rememberBook(projectLocation || prefs.projectPath, restored.title);
+      });
+      settingsOpen = false;
+      view = "write";
+    } catch (error) {
+      backupMessage = errorMessage(error);
+    }
+  }
+
+  function backupOffer(backup: BackupContent | null) {
+    if (!backup || !project) return null;
+    const saved = new Date(backup.savedAt);
+    return {
+      title: backup.project.title || "Untitled",
+      savedAt: Number.isNaN(saved.getTime()) ? "an unknown date" : saved.toLocaleString(),
+      otherBook: backup.project.id !== project.id,
+    };
   }
 
   function reportSaveError(message: string) {
@@ -627,7 +716,8 @@
     autosave.schedule();
   }
 
-  async function useProjectFile(path: string) {
+  async function useProjectFile(path: string, openWrite = true) {
+    await flushNoteSave();
     await autosave.flush();
     await switchProjectFile(path);
     prefs = { ...loadPrefs(), writingDay: "" };
@@ -636,7 +726,19 @@
     activeId = loaded.chapters[0]?.id ?? null;
     projectLocation = path;
     rememberBook(path, loaded.title);
-    view = "write";
+    if (openWrite) view = "write";
+  }
+
+  async function openKnownBook(path: string) {
+    try {
+      // Opening a missing file would quietly create an empty book in its place.
+      if (!(await invoke<boolean>("project_file_exists", { path }))) {
+        throw new Error(`That book's file is missing: ${path}`);
+      }
+      await useProjectFile(path);
+    } catch (error) {
+      saveStatus = { state: "error", message: errorMessage(error) };
+    }
   }
 
   async function openAnotherProject() {
@@ -660,7 +762,9 @@
         return;
       }
       const path = await invoke<string>("reserve_project_path", { folder });
-      await useProjectFile(path);
+      // Stay on Home until the welcome page is in place, or the editor would open on the
+      // blank first chapter and save that blank text over the welcome page.
+      await useProjectFile(path, false);
       const folderName = folder.split(/[/\\]/).filter(Boolean).pop() || "New book";
       if (!project) return;
       const welcome = project.chapters[0];
@@ -681,6 +785,7 @@
       rememberBook(path, folderName);
       autosave.schedule();
       await autosave.flush();
+      view = "write";
     } catch (error) {
       saveStatus = { state: "error", message: errorMessage(error) };
     }
@@ -719,11 +824,15 @@
     try {
       const folder = await chooseBackupFolder();
       if (!folder) return;
+      await flushNoteSave();
+      await autosave.flush();
       await checkpointDatabase();
       const source = loadPrefs().projectPath || (await invoke<string>("default_project_path"));
       const destination = await invoke<string>("relocate_project", { source, folder });
       await switchProjectFile(destination);
       projectLocation = destination;
+      // The old file stays behind as a copy; keep it off Home so nobody edits the stale one.
+      prefs = { ...prefs, knownProjects: prefs.knownProjects.filter((book) => book.path !== source) };
       rememberBook(destination, project.title);
       backupMessage = `Project file moved to ${destination}`;
     } catch (error) {
@@ -745,13 +854,21 @@
     if (!project || !prefs.backupFolder) return Promise.resolve();
     if (driveBackup) return driveBackup;
     const folder = prefs.backupFolder;
-    const book = project;
     driveBackup = (async () => {
       try {
+        await flushNoteSave();
         await autosave.flush();
-        const path = await writeBackup(folder, book);
-        prefs = { ...prefs, lastBackupAt: new Date().toISOString(), lastBackupError: "" };
-        if (announce) backupMessage = `Saved ${path}`;
+        const book = project;
+        if (!book) return;
+        // Automatic backups skip identical copies, so idle hours don't push older versions out of the folder.
+        const result = await writeBackup(folder, book, announce ? "" : prefs.lastBackupSignature);
+        prefs = {
+          ...prefs,
+          lastBackupAt: new Date().toISOString(),
+          lastBackupError: "",
+          lastBackupSignature: result.signature,
+        };
+        if (announce) backupMessage = result.path ? `Saved ${result.path}` : "Saved";
       } catch (error) {
         const message = errorMessage(error);
         prefs = { ...prefs, lastBackupError: message };
@@ -889,7 +1006,7 @@
         {#if replaceMode}
           <input bind:value={replaceQuery} aria-label="Replace with" placeholder="Replace with" />
           <button type="button" onclick={runReplace}>Replace</button>
-          <button type="button" onclick={runReplaceAll}>All</button>
+          <button type="button" onclick={() => void runReplaceAll()}>All</button>
         {/if}
         {#if findMissing}
           <span>Not found</span>
@@ -929,7 +1046,7 @@
       </div>
     {/if}
     <div class="stage">
-      {#if activeChapter}
+      {#if activeChapter && !restoring}
         {@const chapter = activeChapter}
         {#key chapter.id}
           <div class="sheet" style:--sheet={zen ? `${prefs.columnRem}rem` : pageWidthValue(prefs.pageWidth)}>
@@ -942,13 +1059,14 @@
               <p class="chapter-label">{chapterName(chapters.findIndex((item) => item.id === chapter.id))}</p>
               <h2 class="chapter-title">{chapter.title}</h2>
               <Editor
+                docId={chapter.id}
                 initialContent={chapter.contentJson}
                 language={project ? effectiveLanguage(project, chapter) : "en"}
                 typewriter={prefs.typewriter}
                 live={false}
-                onChange={(json, text) => updateChapter(chapter.id, json, text)}
+                onChange={(json, text, id) => updateChapter(id ?? chapter.id, json, text)}
                 onEdit={() => autosave.schedule()}
-                onText={(text) => updateChapterText(chapter.id, text)}
+                onText={(text, id) => updateChapterText(id ?? chapter.id, text)}
                 onEditor={(next) => (textEditor = next)}
                 onActivity={() => (editorRevision += 1)}
               />
@@ -1041,14 +1159,10 @@
           onRename={renameProject}
           onOpenProject={() => void openAnotherProject()}
           onStartProject={(kind) => void startNewProject(kind)}
-          onOpenBook={(path) => void useProjectFile(path).catch((error) => {
-            saveStatus = { state: "error", message: errorMessage(error) };
-          })}
-          onRestored={(restored) => {
-            project = restored;
-            activeId = restored.chapters[0]?.id ?? null;
-            view = "write";
-          }}
+          books={prefs.knownProjects}
+          currentPath={projectLocation}
+          onOpenBook={(path) => void openKnownBook(path)}
+          onRestore={restoreSnapshot}
         />
       {:else if view === "notes"}
         <Notes
@@ -1091,7 +1205,11 @@
       onExport={() => void exportWord()}
       onExportText={(kind) => void exportText(kind)}
       onCopyHtml={() => void copyHtml()}
-      onPrint={printPages}
+      onPrint={() => void printBook()}
+      backupOffer={backupOffer(pendingBackup)}
+      onPickBackup={() => void pickBackup()}
+      onRestoreBackup={() => void restoreBackup()}
+      onCancelBackup={() => (pendingBackup = null)}
       onImport={(file) => void importWord(file)}
       startSection={settingsSection}
       onClose={() => {
@@ -1341,6 +1459,7 @@
     }
 
     .app,
+    .alt,
     .shell,
     .writing,
     .stage,

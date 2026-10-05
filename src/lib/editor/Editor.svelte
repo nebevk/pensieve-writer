@@ -8,6 +8,7 @@
   import { TextLanguage } from "./textLanguage";
 
   let {
+    docId,
     initialContent,
     onChange,
     onEditor,
@@ -18,12 +19,14 @@
     language = "en",
     typewriter = false,
   }: {
+    /** The chapter or note this editor opened. Every change is handed back with it. */
+    docId?: string;
     initialContent: DocumentJson;
-    onChange: (json: DocumentJson, text: string) => void;
+    onChange: (json: DocumentJson, text: string, docId?: string) => void;
     onEditor: (editor: Editor | null) => void;
     onActivity: () => void;
     onEdit?: () => void;
-    onText?: (text: string) => void;
+    onText?: (text: string, docId?: string) => void;
     /** When false, the chapter JSON is read at save time instead of on every keystroke. */
     live?: boolean;
     language?: WritingLanguage;
@@ -32,13 +35,15 @@
 
   let typewriterOn = false;
   let liveOn = true;
-  let reportText: ((text: string) => void) | undefined;
+  let reportText: ((text: string, docId?: string) => void) | undefined;
   let markEdited: (() => void) | undefined;
   let countTimer: ReturnType<typeof setTimeout> | null = null;
+  // Fixed when the editor opens, so the text it hands back on closing goes to the same chapter or note.
+  let ownerId: string | undefined;
 
   let host: HTMLDivElement | undefined = $state();
   let editor = $state<Editor | null>(null);
-  let publish: (json: DocumentJson, text: string) => void = () => {};
+  let publish: (json: DocumentJson, text: string, docId?: string) => void = () => {};
   let notify = () => {};
 
   $effect(() => {
@@ -54,6 +59,7 @@
 
   onMount(() => {
     if (!host) return;
+    ownerId = docId;
     publish = onChange;
     notify = onActivity;
     editor = new Editor({
@@ -81,11 +87,11 @@
         },
       },
       onUpdate: ({ editor: current }) => {
-        if (liveOn) publish(current.getJSON() as DocumentJson, current.getText());
+        if (liveOn) publish(current.getJSON() as DocumentJson, current.getText(), ownerId);
         else markEdited?.();
         if (countTimer) clearTimeout(countTimer);
         countTimer = setTimeout(() => {
-          reportText?.(current.getText());
+          reportText?.(current.getText(), ownerId);
         }, 400);
         if (!typewriterOn || !host) return;
         const scroller = host.closest(".stage");
@@ -103,7 +109,7 @@
 
   onDestroy(() => {
     if (countTimer) clearTimeout(countTimer);
-    if (editor && !editor.isDestroyed) publish(editor.getJSON() as DocumentJson, editor.getText());
+    if (editor && !editor.isDestroyed) publish(editor.getJSON() as DocumentJson, editor.getText(), ownerId);
     onEditor(null);
     editor?.destroy();
     editor = null;
