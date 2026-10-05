@@ -1,10 +1,11 @@
 # Design system gaps
 
-What the app is still missing compared with the design system in `design-system/`. First review 2 October 2026; updated the same day.
+What the app is still missing compared with the design system in `design-system/`. First review 2 October 2026; rechecked 2 and 5 October.
 
 - **Design source:** the UI kit in `design-system/ui_kits/desktop/`, the components in `design-system/components/`, and rounds 3–4 plus the Home screen (2c) in `design-system/Pensieve Directions.dc.html`. Earlier rounds are superseded and were not used.
-- **App:** commit `8d7da8c` plus the uncommitted changes in the working tree at the second review (project rename, Continue fix, image picker, link field, docked note and to-do, theme menu, brand icons).
+- **App:** commit `22d85eb`, "feat: keep the manuscript safe and finish the writing tools", plus the fixes applied on 5 October.
 - **IDs:** each gap has an ID (HOME-4, TOOL-2, …) so you can ask for it by name. IDs stay fixed; closed gaps move to "Closed" rather than being renumbered. Requirement IDs in brackets (ED-12, VW-4, …) point to `docs/requirements.md`.
+- **Not design:** data-safety findings and other suggestions are in `docs/improvements.md`.
 
 **Status:** *Missing*: not in the app. *Partial*: started, not finished. *Differs*: works, but not the way the design shows; decide whether to change it.
 
@@ -12,7 +13,7 @@ What the app is still missing compared with the design system in `design-system/
 
 ## Summary
 
-40 open gaps: 3 P1, 11 P2, 26 P3. Since the first review, 4 gaps and 2 small fixes are closed, 3 placeholder buttons were hidden, and 2 differences were accepted (see "Accepted differences").
+36 open gaps: no P1, 11 P2, 25 P3. Since the first review, 8 gaps and 2 small fixes are closed, 3 placeholder buttons were hidden, and 2 differences were accepted.
 
 Already matching the design:
 
@@ -24,44 +25,45 @@ Already matching the design:
 - The floating bar with today's goal meter.
 - Notes as index cards with fields, to-dos, "Appears in" and "Linked notes", and the Notes / To-dos switch.
 - The To-dos board with filters, quick add, and chapter and note chips.
-- Settings as a window over a scrim, with the Appearance section complete.
+- Home's project list, backup line, "Start something new" tile and "Continue writing" card.
+- Settings as a window over a scrim, with Appearance and Shortcuts.
 - Decor circles only on Home and Settings, the accent focus ring, and reduced motion.
 
 Biggest open gaps:
 
-1. Home still shows one project: you can open another project file, but there's no project list and no way to start a new project (HOME-1, HOME-2).
-2. Backups to the Google Drive folder only happen when you press "Back up now", and the time of the last backup isn't shown (HOME-5).
-3. [[Links]] between notes are plain text, and the manuscript has no way to link a note (NOTE-1, TOOL-3).
-4. Icons and motion don't follow the system yet, and Outline and Book still use the old styles (LOOK-1 to LOOK-3).
-5. The native Windows title bar sits above the app's own bar (WIN-1).
+1. [[Links]] between notes are plain text, and the manuscript has no way to link a note (NOTE-1, TOOL-3).
+2. Icons and motion don't follow the system yet, and Outline and Book still use the old styles (LOOK-1 to LOOK-3).
+3. The native Windows title bar sits above the app's own bar (WIN-1).
+4. Home still opens under the project title bar instead of its own header, and the app starts in Write rather than on Home (HOME-6, HOME-7).
 
-## Closed since the first review
+## Closed
 
-| ID | What changed |
-|---|---|
-| HOME-3 Project title | Click the title on the Home card to rename the book; the new title is saved with the project |
-| HOME-4 Continue writing | "Continue writing" and the card now open the chapter the card shows |
-| TOOL-4 New note, Add to-do | Both now open the panel beside the page instead of leaving it, and a to-do added there is filed under the open chapter |
-| TOOL-7 Image, link | Image opens a file picker and stores the picture in the chapter; Link uses a small field in the toolbar instead of a browser prompt |
-| Small fix | The "Spell check test" link is gone from the chapter list |
-| Small fix | The unused `Toolbar.svelte` is deleted |
+| ID | What changed | Checked |
+|---|---|---|
+| HOME-1 Several projects | Home lists the open book and every other book you've opened, with a count; each card opens its book. A book whose file is gone shows an error instead of opening empty | 5 Oct |
+| HOME-2 New project | A "Start something new" tile and button, with a choice of Novel, Short stories or Article. The new book gets its own file in a folder you pick, outside the backup folder, and opens on a welcome page | 5 Oct |
+| HOME-3 Project title | Click the title on the Home card to rename the book; the new title is saved with the project | 2 Oct |
+| HOME-4 Continue writing | "Continue writing" and the card open the chapter the card shows | 2 Oct |
+| HOME-5 Drive backup and its status | Backs up to the Drive folder every hour while the app is open and again when it closes. Home shows "Backed up · 12 min ago", "No backup yet" or "Last backup failed" | 5 Oct |
+| TOOL-4 New note, Add to-do | Both open the panel beside the page instead of leaving it, and a to-do added there is filed under the open chapter | 2 Oct |
+| TOOL-7 Image, link | Image opens a file picker and stores the picture in the chapter; Link uses a small field in the toolbar instead of a browser prompt | 2 Oct |
+| SET-1 Shortcuts | Settings → Shortcuts lists the keys, and Ctrl+/ opens it | 5 Oct |
+| Small fix | The "Spell check test" link is gone from the chapter list | 2 Oct |
+| Small fix | The unused `Toolbar.svelte` is deleted | 2 Oct |
 
-TOOL-1 to TOOL-3 (Footnote, Comment, Link a note) were placeholders; they're now hidden, so they no longer mislead. They stay below as Missing because the design includes them.
+TOOL-1 to TOOL-3 (Footnote, Comment, Link a note) were placeholders; they're hidden now, so they no longer mislead. They stay below as Missing because the design includes them.
 
 ## 1. Home
 
-Design: Directions 2c, `HomeScreen` in `ui_kits/desktop/screens.js`, `components/home/`. App: `src/lib/views/Dashboard.svelte`, `src/lib/storage/sqlite.ts`.
+Design: Directions 2c, `HomeScreen` in `ui_kits/desktop/screens.js`, `components/home/`. App: `src/lib/views/Dashboard.svelte`, `src/routes/+page.svelte`.
 
 | Gap | Design | App today | Status | Pri |
 |---|---|---|---|---|
-| **HOME-1** Several projects (VW-4) | A "Projects" grid lists every project with a count; each card opens its own book | One card, under the heading "This book". "Open another project…" swaps in a different `.db` file, but Home never lists more than the open one | Partial | P1 |
-| **HOME-2** New project (CH-8) | "+ New project" beside the heading and a dashed "Start something new" tile | Neither exists; there is no way to start a second project | Missing | P1 |
-| **HOME-5** Drive backup and its status (SV-9) | Header line: "Backed up to Google Drive · 12 min ago" | Backups to the chosen folder only happen on "Back up now". The last backup time isn't stored or shown (requirements §8 asks for the time and success or failure) | Missing | P1 |
-| **HOME-6** Home header | Its own 60px header: P mark with the "Pensieve" wordmark, backup line, large language badge, settings. No view tabs, because Home sits above all projects | Home shows the project title bar with the view tabs, none selected | Missing | P2 |
+| **HOME-6** Home header | Its own 60px header: P mark with the "Pensieve" wordmark, backup line, large language badge, settings. No view tabs, because Home sits above all projects | Home shows the project title bar with the view tabs, none selected; the backup line sits under the date | Missing | P2 |
 | **HOME-7** Start on Home | The app opens on Home (UI kit default; scenario 1 in requirements) | Opens in Write on chapter 1 | Differs | P2 |
-| **HOME-8** Project kind (CH-8) | Each card names its kind (Novel, Kratke zgodbe, Article) in a tone colour | Hard-coded "Book", or "Knjiga" for Slovenian projects | Missing | P2 |
-| **HOME-9** Target and progress | "48,930 / 80,000" with a bar for words against a target; "6 of 12 stories · SL"; "1,240 words · Final" | No word target. The bar shows the share of chapters that have any text, and the stats show total words only | Missing | P2 |
-| **HOME-10** Greeting | "Good evening." plus a short line about the book: "Ana is still in the kitchen." | Just "Good evening." The repeated manuscript line is gone, but there's no line about the book. AI is a non-goal, so use the chapter synopsis or a one-line note you write | Partial | P3 |
+| **HOME-8** Project kind (CH-8) | Each card names its kind (Novel, Kratke zgodbe, Article) in a tone colour | Each project now stores its kind, chosen when you start it, but the cards still say "Book" (or "Knjiga") | Partial | P2 |
+| **HOME-9** Target and progress | "48,930 / 80,000" with a bar for words against a target; "6 of 12 stories · SL"; "1,240 words · Final" | No book target. Chapters now have word goals, which could add up to one, but the bar still shows the share of chapters that have any text | Missing | P2 |
+| **HOME-10** Greeting | "Good evening." plus a short line about the book: "Ana is still in the kitchen." | "Good evening." followed by a short King James Bible verse instead of a line about the book. If that's deliberate, it can move to Accepted differences | Differs | P3 |
 | **HOME-11** Place on the card | "Ch. III · p. 47" | "Ch. 3" (no page numbers exist; see PAGE-1) | Partial | P3 |
 
 ## 2. Window and title bar
@@ -93,7 +95,7 @@ Design: `components/navigation/ChapterList.jsx`, `ChapterItem.jsx`, `StatusDot.j
 
 | Gap | Design | App today | Status | Pri |
 |---|---|---|---|---|
-| **CHAP-1** Status legend | "Final · Revising · Draft" with dots at the bottom | No legend; the bottom holds Duplicate and Delete links | Missing | P3 |
+| **CHAP-1** Status legend | "Final · Revising · Draft" with dots at the bottom | No legend; the bottom now holds Duplicate, Delete, Part, Goal and "Earlier versions" | Missing | P3 |
 | **CHAP-2** Add button | Accent "+" beside the "Chapters" heading | A text button, "New" | Differs | P3 |
 | **CHAP-3** Untitled chapters | A chapter without a title shows "Untitled" in faint italics | Saves the word "Untitled" as the title and shows it like any other | Partial | P3 |
 | **CHAP-4** Status names (CH-6) | Final, Revising, Draft, plus a hollow dot for empty chapters | Final, Revised, Draft (requirement CH-6 also says "revised") | Differs | P3 |
@@ -113,8 +115,8 @@ Design: `components/chrome/FloatingBar.jsx`, Directions 3a, 3c and 4a. App: `src
 
 | Gap | Design | App today | Status | Pri |
 |---|---|---|---|---|
-| **BAR-1** Ambience per theme (AT-3, AT-5) | Rain in Daylight, Fireplace in Candlelit, Night rain in Moonlit | Ambience is a separate setting (Off, Rain, Fire) that ignores the theme. There's no Night rain, and the sounds are generated noise, not recorded loops | Differs | P3 |
-| **BAR-2** Icons | Rain or flame icon before the ambience name; moon icon on the Zen button | Text only: "Rain", "Fire", "Quiet", "Zen" | Missing | P3 |
+| **BAR-1** Ambience per theme (AT-3, AT-5) | Rain in Daylight, Fireplace in Candlelit, Night rain in Moonlit | Ambience is a separate setting (Off, Rain, Fireplace, Café, Piano) that ignores the theme, and there's no Night rain. The app looks for recorded loops in `static/ambience/`, but none are there yet, so all four are generated noise | Differs | P3 |
+| **BAR-2** Icons | Rain or flame icon before the ambience name; moon icon on the Zen button | Text only: "Rain", "Fire", "Café", "Piano", "Quiet", "Zen". The bar says "Fire" where Settings says "Fireplace" | Missing | P3 |
 | **BAR-3** Leaving Zen | In Zen the bar stays and its button reads "Exit Zen" | The bar hides in Zen; you leave with Esc or a bar that appears at the top edge (this meets ZN-5). The Zen layout isn't fully designed yet | Differs | P3 |
 | **BAR-4** Contents | Ambience · chapter words · today's goal · Zen. Save state and language live in the title bar | Also shows a theme menu, the book total, the language name and the save state | Differs | P3 |
 
@@ -124,8 +126,8 @@ Design: Directions 4b, `NotesScreen` in `ui_kits/desktop/screens.js`, `component
 
 | Gap | Design | App today | Status | Pri |
 |---|---|---|---|---|
-| **NOTE-1** Links in the text (NT-6) | [[Links]] in a note show in accent with an underline; clicking one opens that note | [[Title]] stays plain text. Links only work from the "Linked notes" column | Missing | P2 |
-| **NOTE-2** Chapter on a note's to-do | A note's to-do can name its chapter ("Chapter 4"); on the board it carries a chapter chip and a note chip | To-dos added on a note are always "Whole book", and nothing can change that | Missing | P2 |
+| **NOTE-1** Links in the text (NT-6) | [[Links]] in a note show in accent with an underline; clicking one opens that note | [[Title]] stays plain text. Links only work from the "Linked notes" and new "Linked from" columns | Missing | P2 |
+| **NOTE-2** Chapter on a note's to-do | A note's to-do shows its chapter ("Chapter 4"); on the board it carries a chapter chip and a note chip | A to-do added on a note starts as "Whole book". You can now give it a chapter with Edit on the to-do board, but the note card doesn't show the chapter | Partial | P2 |
 | **NOTE-3** Done tick | A done box is sage with a white tick | Sage box, no tick | Partial | P3 |
 | **NOTE-4** Search icon | Magnifier at the start of the search field | Plain field | Missing | P3 |
 | **NOTE-5** Right-column headings | "Appears in" and "Linked notes" in Young Serif | Small uppercase labels | Differs | P3 |
@@ -145,7 +147,6 @@ Design: Directions 3d, `SettingsWindow` in `ui_kits/desktop/screens.js`, `compon
 
 | Gap | Design | App today | Status | Pri |
 |---|---|---|---|---|
-| **SET-1** Shortcuts (ST-4) | A seventh section, "Shortcuts" | No such section, and no shortcut list anywhere | Missing | P3 |
 | **SET-2** Theme previews | Each swatch shows a small page with three lines of text; dark themes show the lamp glow | Blank page, no glow | Partial | P3 |
 
 ## 10. Across the app
@@ -154,9 +155,9 @@ Design: `design-system/readme.md` (Iconography, Motion), `components/core/Icon.j
 
 | Gap | Design | App today | Status | Pri |
 |---|---|---|---|---|
-| **LOOK-1** Icons | Lucide outline icons at stroke 1.75. The paths are already in `components/core/Icon.jsx`, so no new dependency is needed | Hand-drawn icons, with many missing: sliders (settings), chevrons, image, link, new note, replace, indent, outdent, rain, flame, x, arrow, plus. Image and Link are now the words "Img" and "Link"; New note uses the Notes page icon, Replace uses Redo, Clear formatting uses a bin, indent and outdent are "+" and "–", "All tools" and "Fewer" use ▾ and ▴, Settings closes with "×", and "Continue writing" has no arrow | Partial | P2 |
+| **LOOK-1** Icons | Lucide outline icons at stroke 1.75. The paths are already in `components/core/Icon.jsx`, so no new dependency is needed | Hand-drawn icons, with many missing: sliders (settings), chevrons, image, link, new note, replace, indent, outdent, rain, flame, x, arrow, plus. Image and Link are the words "Img" and "Link"; New note uses the Notes page icon, Replace uses Redo, Clear formatting uses a bin, indent and outdent are "+" and "–", "All tools" and "Fewer" use ▾ and ▴, Settings closes with "×", and "Continue writing" has no arrow | Partial | P2 |
 | **LOOK-2** Motion and pressed states (AT-1) | 120ms colour fades on hover and press; 180ms lifts and toggles on `cubic-bezier(.2,.7,.2,1)`; 400ms theme change; solid buttons brighten on hover and darken on press (`tokens/base.css`) | `base.css` isn't imported and nothing replaces it. Hovers switch instantly, cards and slips jump when lifted, toggles snap, theme changes flash, and most buttons have no pressed state | Missing | P2 |
-| **LOOK-3** Old styles left over | Every surface uses the `--pv-*` tokens: chrome colours on chrome, ink colours on paper | Outline, Book, the find bar, the Zen top bar, the chapter Duplicate and Delete links and "Opening…" still use the old variables (`--muted`, `--ink`, `--desk`) and 6px corners. On Outline cards this puts chrome text on paper, which is light on light and hard to read in Candlelit and Moonlit | Partial | P2 |
+| **LOOK-3** Old styles left over | Every surface uses the `--pv-*` tokens: chrome colours on chrome, ink colours on paper | Outline, Book, the find bar, the Zen top bar, the controls under the chapter list and "Opening…" still use the old variables (`--muted`, `--ink`, `--desk`) and 6px corners. On Outline cards this puts chrome text on paper, which is light on light and hard to read in Candlelit and Moonlit | Partial | P2 |
 
 ## Accepted differences
 
@@ -171,10 +172,12 @@ The design system doesn't cover these, so they aren't gaps. Each already works i
 
 - Outline view (VW-3) and Book view (VW-2).
 - Zen layout (ZN-1 to ZN-5). The UI kit only hides the chrome and keeps the floating bar.
-- Settings sections other than Appearance: General, Writing & goals, Ambience, Backup & export, Language.
-- The Notes and To-dos panel beside the page (NT-7), listed as "Try next" in round 4. New note and Add to-do now use it.
-- The find and replace bar (ED-8), and the new link field in "All tools".
-- The snapshot list and restore (SV-3), now at the bottom of Home.
+- Settings sections other than Appearance: General, Writing & goals, Ambience, Backup & export, Language, and the new Shortcuts list.
+- The Notes and To-dos panel beside the page (NT-7), listed as "Try next" in round 4.
+- The find and replace bar (ED-8), now with a whole-book mode and a list of matches, and the link field in "All tools".
+- The snapshot list and restore (SV-3) on Home, and "Earlier versions" for one chapter (SV-4).
+- Starting a project: the template choice and the welcome page.
+- Editing a to-do on the board.
 - Error states such as "Not saved" or a failed backup. The system has no error colour; the app defines its own `--danger`.
 - Home in Candlelit and Moonlit.
 
@@ -183,30 +186,23 @@ The design system doesn't cover these, so they aren't gaps. Each already works i
 Keep these; most come from `requirements.md`. They need a place in the design.
 
 - The Chapters toggle in the quiet toolbar (CH-7).
-- Duplicate and Delete under the chapter list (CH-3), and drag-to-reorder (CH-4).
+- Duplicate, Delete, Part, Goal and "Earlier versions" under the chapter list (CH-3, CH-5, CH-6, SV-4), and drag-to-reorder (CH-4).
 - "Notes panel" and "To-dos panel" buttons in "All tools" (NT-7).
-- "Linked chapters" checkboxes and "Delete note" on the note card (NT-3).
+- "Linked chapters" checkboxes, "Delete note" and "Linked from" on the note card (NT-3, NT-6).
 - The theme menu on the floating bar (the design changes themes only in Settings).
 - "Open another project…" on Home.
+- The interface language switch in Settings → General.
 - Drifting particles in Candlelit (AT-4). The design keeps decoration off the writing views, so decide whether they stay.
 
 ## Needed but not drawn
 
 No screen shows these, but the design depends on them and the app can't do them yet.
 
-- Edit or delete a to-do: rename it, change its chapter or note, or remove it. Today a to-do can only be added and moved between columns.
-- Create, delete and list projects (follows HOME-1 and HOME-2).
-
-## Small fixes noticed during the review
-
-- `src-tauri/src/backup.rs` writes backup files directly instead of writing a temp file and renaming it (SV-2).
-- Inserted images are stored inside the chapter text as data, so every hourly and daily snapshot copies them again. A few large photos can make saves and snapshots slow on an older laptop; consider shrinking images on insert or storing them once.
-- The streak fields (`streak`, `lastWriteDay`) are still in `src/lib/prefs.ts`, but nothing uses them since the streak was dropped.
+- Remove a book from the Home list, or delete a book (follows HOME-1).
 
 ## Suggested order
 
-1. **Projects:** HOME-1 and HOME-2, then HOME-7, HOME-6, HOME-8 and HOME-9. `AGENTS.md` keeps one SQLite file per project, so a project list needs a small index of project files; "Open another project…" is a start.
-2. **Safety:** HOME-5.
-3. **Links:** NOTE-1 and TOOL-3 can share one [[link]] mark for notes and the manuscript; then NOTE-2.
-4. **Look:** LOOK-1, LOOK-2, LOOK-3 and WIN-1.
-5. The P3 items, screen by screen.
+1. **Projects:** HOME-7, HOME-6, HOME-8 and HOME-9. Other books' cards show only their title so far, so HOME-8 and HOME-9 apply to them too.
+2. **Links:** NOTE-1 and TOOL-3 can share one [[link]] mark for notes and the manuscript; then NOTE-2.
+3. **Look:** LOOK-1, LOOK-2, LOOK-3 and WIN-1.
+4. The P3 items, screen by screen.
