@@ -26,6 +26,14 @@
     onPickBackup,
     onRestoreBackup,
     onCancelBackup,
+    importPreview = null,
+    onConfirmImport,
+    onCancelImport,
+    bookTitle = "",
+    onChooseWordFolder,
+    onUpdateWordCopy,
+    onStopWordCopy,
+    onAddExamples,
     onClose,
   }: {
     prefs: Prefs;
@@ -51,8 +59,27 @@
     onPickBackup: () => void;
     onRestoreBackup: () => void;
     onCancelBackup: () => void;
+    /** A Word file read and waiting: its chapters, before anything in the book changes. */
+    importPreview?: { fileName: string; chapters: { title: string; words: number }[] } | null;
+    onConfirmImport: (mode: "replace" | "append") => void;
+    onCancelImport: () => void;
+    bookTitle?: string;
+    onChooseWordFolder: () => void;
+    onUpdateWordCopy: () => void;
+    onStopWordCopy: () => void;
+    onAddExamples: () => void;
     onClose: () => void;
   } = $props();
+
+  function ago(iso: string): string {
+    const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+    if (Number.isNaN(minutes)) return "";
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours} h ago`;
+    return new Date(iso).toLocaleDateString();
+  }
 
   type Section = "General" | "Writing & goals" | "Appearance" | "Ambience" | "Backup & export" | "Language" | "Shortcuts";
 
@@ -251,6 +278,17 @@
             <button type="button" class:on={prefs.uiLanguage === "en"} onclick={() => onChange({ uiLanguage: "en" })}>English</button>
             <button type="button" class:on={prefs.uiLanguage === "sl"} onclick={() => onChange({ uiLanguage: "sl" })}>Slovenščina</button>
           </div>
+          <p class="lab">Example books</p>
+          <p class="hint">
+            A novel, a short-story collection in Slovenian and an article, with notes and to-dos, to see how
+            Pensieve fills up. They're saved as separate books, so your own books stay as they are.
+          </p>
+          <div class="actions">
+            <button type="button" onclick={onAddExamples}>Add example books</button>
+          </div>
+          {#if backupMessage}
+            <p class="hint">{backupMessage}</p>
+          {/if}
         {:else if section === "Writing & goals"}
           <h2>Writing & goals</h2>
           <label class="field">
@@ -299,9 +337,9 @@
           <p class="path">{projectLocation || "App folder"}</p>
           <div class="actions">
             <button type="button" onclick={onMoveProject}>Move project…</button>
-            <button type="button" onclick={onExport}>Export Word</button>
-            <button type="button" onclick={() => onExportText("markdown")}>Markdown</button>
-            <button type="button" onclick={() => onExportText("plain")}>Plain text</button>
+            <button type="button" onclick={onExport}>Export Word…</button>
+            <button type="button" onclick={() => onExportText("markdown")}>Markdown…</button>
+            <button type="button" onclick={() => onExportText("plain")}>Plain text…</button>
             <button type="button" onclick={onCopyHtml}>Copy HTML</button>
             <button type="button" onclick={onPrint}>Print / PDF</button>
             <label class="file">
@@ -317,6 +355,50 @@
               />
             </label>
           </div>
+          {#if importPreview}
+            {@const words = importPreview.chapters.reduce((sum, chapter) => sum + chapter.words, 0)}
+            <div class="offer" role="alertdialog" aria-label="Import a Word file">
+              <p>
+                “{importPreview.fileName}” has {importPreview.chapters.length}
+                {importPreview.chapters.length === 1 ? "chapter" : "chapters"} and {words.toLocaleString()} words:
+              </p>
+              <ol class="found">
+                {#each importPreview.chapters.slice(0, 12) as chapter, index (index)}
+                  <li>{chapter.title} <span>· {chapter.words.toLocaleString()} words</span></li>
+                {/each}
+              </ol>
+              {#if importPreview.chapters.length > 12}
+                <p class="hint">…and {importPreview.chapters.length - 12} more.</p>
+              {/if}
+              <p class="hint">
+                Replacing keeps a snapshot first. Chapters with the same title keep their notes, status and goal.
+              </p>
+              <div class="actions">
+                <button type="button" onclick={() => onConfirmImport("replace")}>Replace this book's chapters</button>
+                <button type="button" onclick={() => onConfirmImport("append")}>Add as new chapters</button>
+                <button type="button" onclick={onCancelImport}>Cancel</button>
+              </div>
+            </div>
+          {/if}
+          <p class="lab">Word copy</p>
+          <p class="hint">
+            Pensieve keeps “{bookTitle || "Untitled"}.docx” in this folder up to date whenever you leave the window,
+            switch books or close the app. It's a copy to open in Word; bring changes made there back with Import Word.
+          </p>
+          <p class="path">{prefs.wordCopyFolder || "No folder chosen, so there's no Word copy yet."}</p>
+          <div class="actions">
+            <button type="button" onclick={onChooseWordFolder}>Choose folder…</button>
+            <button type="button" onclick={onUpdateWordCopy} disabled={!prefs.wordCopyFolder}>Update now</button>
+            {#if prefs.wordCopyFolder}
+              <button type="button" onclick={onStopWordCopy}>Stop</button>
+            {/if}
+          </div>
+          {#if prefs.wordCopyFolder && prefs.wordCopyError}
+            <p class="hint problem" role="alert">{prefs.wordCopyError}</p>
+          {:else if prefs.wordCopyFolder && prefs.wordCopyAt}
+            <p class="hint">Updated {ago(prefs.wordCopyAt)}.</p>
+          {/if}
+          <p class="lab">Backups</p>
           <p class="path">{prefs.backupFolder || "No backup folder chosen"}</p>
           <div class="actions">
             <button type="button" onclick={onChooseFolder}>Choose folder</button>
@@ -787,6 +869,22 @@
 
   .offer p {
     margin: 0;
+  }
+
+  .found {
+    margin: 0;
+    padding-left: 1.4rem;
+    max-height: 12rem;
+    overflow: auto;
+    color: var(--pv-text);
+  }
+
+  .found span {
+    color: var(--pv-text-faint);
+  }
+
+  .problem {
+    color: var(--danger);
   }
 
   .hint,

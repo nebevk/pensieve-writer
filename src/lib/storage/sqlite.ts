@@ -457,13 +457,11 @@ export function checkpointDatabase(): Promise<void> {
 export function switchProjectFile(absolutePath: string): Promise<void> {
   return enqueue(async () => {
     const previous = connectionUrl();
-    const db = await database();
-    const prefs = loadPrefs();
-    savePrefs({ ...prefs, projectPath: absolutePath });
+    savePrefs({ ...loadPrefs(), projectPath: absolutePath });
     try {
-      await db.close(previous);
+      await (await database()).close(previous);
     } catch {
-      // The previous pool may already be closed.
+      // The previous file may have failed to open, or its pool is already closed.
     }
     databasePromise = null;
     await database();

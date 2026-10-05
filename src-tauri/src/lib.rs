@@ -1,4 +1,5 @@
 mod backup;
+mod export;
 mod project;
 mod spellcheck;
 
@@ -38,8 +39,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             backup::write_backup,
             backup::read_backup_file,
+            export::write_document,
             project::default_project_path,
             project::project_file_exists,
+            project::example_book_path,
             project::relocate_project,
             project::reserve_project_path,
             project::read_image_file,

@@ -4,8 +4,9 @@ import { manuscriptText, projectFromSnapshot, withRestoredChapter } from "$lib/s
 import { backupFile } from "$lib/storage/backupFile";
 import { wordsFor } from "$lib/editor/counts";
 import { replaceInDocument, searchChapters } from "$lib/editor/find";
-import { chaptersToDocx, chaptersToMarkdown, documentToBlocks } from "$lib/export/document";
-import mammoth from "mammoth";
+import { chaptersToMarkdown, documentToBlocks } from "$lib/export/document";
+import { wordFile } from "$lib/export/word";
+import { readWordFile } from "$lib/export/wordImport";
 
 describe("restore drill", () => {
   it("restores snapshot text, including č š ž", () => {
@@ -102,12 +103,15 @@ describe("export", () => {
         },
       ],
     };
-    const blob = await chaptersToDocx("Book", [chapter]);
-    const result = await mammoth.convertToHtml({
-      buffer: Buffer.from(await blob.arrayBuffer()),
-    } as unknown as { arrayBuffer: ArrayBuffer });
-    expect(result.value).toContain("Dawn");
-    expect(result.value.toLowerCase()).toContain("<em>soft light</em>");
+    const bytes = await wordFile(
+      { title: "Book", kind: "novel", language: "en", chapters: [chapter] },
+      { font: "Literata", sizePx: 17, pageWidth: "book", runningHead: false },
+    );
+    const result = await readWordFile(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+    const back = JSON.stringify(result.chapters[0].contentJson);
+    expect(back).toContain('"type":"heading"');
+    expect(back).toContain('"text":"Dawn"');
+    expect(back).toContain('{"type":"text","text":"soft light","marks":[{"type":"italic"}]}');
     const blocks = documentToBlocks(chapter.contentJson);
     expect(blocks[0]?.kind).toBe("h1");
     expect(blocks[1]?.inlines[0]?.italic).toBe(true);

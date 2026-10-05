@@ -31,6 +31,12 @@ export type Prefs = {
   lastBackupError: string;
   /** Fingerprint of the book in the newest automatic backup, to skip identical copies. */
   lastBackupSignature: string;
+  /** Folder where Pensieve keeps an up-to-date Word copy of the open book; empty means none. */
+  wordCopyFolder: string;
+  /** Per Word copy path: the stamp Pensieve last wrote and the book's fingerprint at that time. */
+  wordCopies: Record<string, { stamp: string; signature: string }>;
+  wordCopyAt: string;
+  wordCopyError: string;
 };
 
 const KEY = "pensieve-prefs";
@@ -81,6 +87,10 @@ export const defaultPrefs = (): Prefs => ({
   lastBackupAt: "",
   lastBackupError: "",
   lastBackupSignature: "",
+  wordCopyFolder: "",
+  wordCopies: {},
+  wordCopyAt: "",
+  wordCopyError: "",
 });
 
 export function loadPrefs(): Prefs {

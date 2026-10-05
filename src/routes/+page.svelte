@@ -7,14 +7,18 @@
   import Ribbon from "$lib/editor/Ribbon.svelte";
   import StatusBar from "$lib/editor/StatusBar.svelte";
   import TitleBar from "$lib/editor/TitleBar.svelte";
-  import { wordsFor } from "$lib/editor/counts";
+  import { countWords, wordsFor } from "$lib/editor/counts";
+  import { shrinkImage } from "$lib/editor/imageSize";
   import { replaceInDocument, searchChapters, findNext, replaceAll, replaceNext } from "$lib/editor/find";
   import { createChapter, createProject, effectiveLanguage, type Chapter, type DocumentJson, type Project, type ProjectKind, type SnapshotInfo, type WritingLanguage } from "$lib/model";
   import { createAutosave, errorMessage, type SaveStatus } from "$lib/save/autosave";
-  import { blocksToDocument, chaptersToDocx, chaptersToHtml, chaptersToMarkdown, chaptersToPlain, downloadBlob, downloadText, htmlToChapters } from "$lib/export/document";
+  import { chaptersToHtml, chaptersToMarkdown, chaptersToPlain } from "$lib/export/document";
+  import { ALREADY_EXISTS, CHANGED_ELSEWHERE, MUST_BE_NEW, chooseSavePath, inFolder, writeFileTo, type ExportKind } from "$lib/export/files";
+  import { wordFileFor, wordLook } from "$lib/export/wordAssets";
+  import { appendBookChapters, readWordFile, replaceBookChapters, type WordImport } from "$lib/export/wordImport";
   import { createAmbience } from "$lib/ambience";
   import { chooseBackupFile, chooseBackupFolder, chooseProjectFile, readBackupFile, writeBackup } from "$lib/storage/backup";
-  import type { BackupContent } from "$lib/storage/backupFile";
+  import { backupSignature, type BackupContent } from "$lib/storage/backupFile";
   import Settings from "$lib/views/Settings.svelte";
   import Particles from "$lib/views/Particles.svelte";
   import Book from "$lib/views/Book.svelte";
@@ -22,10 +26,11 @@
   import Notes from "$lib/views/Notes.svelte";
   import Outline from "$lib/views/Outline.svelte";
   import Todos from "$lib/views/Todos.svelte";
-  import { flushPrefs, loadPrefs, loadPrefsFile, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs } from "$lib/prefs";
+  import { flushPrefs, loadPrefs, loadPrefsFile, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs, type KnownProject } from "$lib/prefs";
   import { duplicateChapterProject, patchChapter, removeChapter, renameChapterProject, reorderChapterList, setChapterText } from "$lib/chapters/mutate";
   import { nextTitle, openingTitle, welcomeDocument, welcomePlain } from "$lib/chapters/welcome";
-  import { flushNoteSave } from "$lib/storage/organize";
+  import { chapterName, roman } from "$lib/chapters/labels";
+  import { flushNoteSave, saveNote, saveTask } from "$lib/storage/organize";
   import { checkpointDatabase, forgetPersonalWord, keepSnapshot, listPersonalWords, readSnapshotChapters, rememberPersonalWord, restoreChapter, restoreFromBackup, sqliteStorage, switchProjectFile } from "$lib/storage/sqlite";
   import type { Editor as TiptapEditor } from "@tiptap/core";
 
@@ -62,6 +67,11 @@
   let settingsOpen = $state(false);
   let restoring = $state(false);
   let pendingBackup = $state<BackupContent | null>(null);
+  let importOffer = $state<{ fileName: string; result: WordImport } | null>(null);
+  // A Word copy path that was changed elsewhere; automatic updates leave it alone until "Update now".
+  let wordCopyHeld = "";
+  // True while the database points at another book file; backups and the Word copy wait.
+  let switchingBooks = false;
   let clock = $state(Date.now());
   const ambience = createAmbience();
 
@@ -90,30 +100,6 @@
 
   function dayKey(date: Date): string {
     return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
-  }
-
-  function chapterName(index: number): string {
-    const names = ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"];
-    return names[index] ? `Chapter ${names[index]}` : `Chapter ${index + 1}`;
-  }
-
-  function roman(value: number): string {
-    const pairs: [number, string][] = [
-      [10, "X"],
-      [9, "IX"],
-      [5, "V"],
-      [4, "IV"],
-      [1, "I"],
-    ];
-    let rest = value;
-    let text = "";
-    for (const [amount, glyph] of pairs) {
-      while (rest >= amount) {
-        text += glyph;
-        rest -= amount;
-      }
-    }
-    return text || String(value);
   }
 
   $effect(() => {
@@ -199,6 +185,8 @@
             } catch {
               // The live book is already saved. Home shows the backup failure.
             }
+            // Never throws; a problem is shown in Settings next time.
+            await updateWordCopy();
             await win.destroy();
           } catch {
             closing = false;
@@ -206,8 +194,10 @@
         });
         unlistenFocus = await win.onFocusChanged(({ payload: focused }) => {
           if (!focused) {
+            // Leaving the window is a good moment to refresh the Word copy: nobody is typing.
             void flushNoteSave()
               .then(() => autosave.flush())
+              .then(() => updateWordCopy())
               .catch(() => undefined);
           }
         });
@@ -475,34 +465,139 @@
     void autosave.flush().catch(() => undefined);
   }
 
-  async function exportWord() {
-    if (!project) return;
-    try {
-      await autosave.flush();
-      const blob = await chaptersToDocx(project.title || "Pensieve", project.chapters);
-      downloadBlob(blob, `${safeName(project.title)}.docx`);
-    } catch (error) {
-      saveStatus = { state: "error", message: errorMessage(error) };
-    }
-  }
-
   function safeName(title: string): string {
     const cleaned = title.trim().replace(/[<>:"/\\|?*]/g, "") || "pensieve";
     return cleaned;
   }
 
-  async function exportText(kind: "markdown" | "plain") {
+  /** Saves pending edits, asks where to save, then writes the export there. */
+  async function saveExport(kind: ExportKind, contents: (book: Project) => Promise<Uint8Array>) {
     if (!project) return;
     try {
+      await flushNoteSave();
       await autosave.flush();
-      const title = project.title || "Pensieve";
-      if (kind === "markdown") {
-        downloadText(chaptersToMarkdown(title, project.chapters), `${safeName(title)}.md`, "text/markdown");
-      } else {
-        downloadText(chaptersToPlain(title, project.chapters), `${safeName(title)}.txt`, "text/plain");
-      }
+      const book = project;
+      const path = await chooseSavePath(`${safeName(book.title)}.${kind}`, kind);
+      if (!path) return;
+      const written = await writeFileTo(path, await contents(book));
+      backupMessage = `Saved ${written.path}`;
     } catch (error) {
-      saveStatus = { state: "error", message: errorMessage(error) };
+      backupMessage = errorMessage(error);
+    }
+  }
+
+  function exportWord() {
+    return saveExport("docx", (book) => wordFileFor(book, prefs));
+  }
+
+  function exportText(kind: "markdown" | "plain") {
+    return saveExport(kind === "markdown" ? "md" : "txt", async (book) => {
+      const title = book.title || "Pensieve";
+      const text = kind === "markdown" ? chaptersToMarkdown(title, book.chapters) : chaptersToPlain(title, book.chapters);
+      return new TextEncoder().encode(text);
+    });
+  }
+
+  let wordCopyRun: Promise<void> | null = null;
+
+  /**
+   * Keeps "<book title>.docx" in the chosen folder up to date. It only writes when the book or its
+   * look changed, and never replaces a copy that was changed in Word or a file Pensieve didn't make.
+   */
+  function updateWordCopy(force = false): Promise<void> {
+    if (!project || !prefs.wordCopyFolder || switchingBooks) return Promise.resolve();
+    if (wordCopyRun) return wordCopyRun;
+    const folder = prefs.wordCopyFolder;
+    wordCopyRun = (async () => {
+      let path = "";
+      try {
+        await flushNoteSave();
+        await autosave.flush();
+        const book = project;
+        if (!book) return;
+        path = inFolder(folder, `${safeName(book.title)}.docx`);
+        if (!force && path === wordCopyHeld) return;
+        const signature = `${backupSignature(book, [], [])}|${JSON.stringify(wordLook(prefs))}`;
+        const known = prefs.wordCopies[path];
+        if (!force && known?.signature === signature && !prefs.wordCopyError) return;
+        const written = await writeFileTo(path, await wordFileFor(book, prefs), force ? "" : (known?.stamp ?? MUST_BE_NEW));
+        wordCopyHeld = "";
+        prefs = {
+          ...prefs,
+          wordCopies: { ...prefs.wordCopies, [path]: { stamp: written.stamp, signature } },
+          wordCopyAt: new Date().toISOString(),
+          wordCopyError: "",
+        };
+      } catch (error) {
+        const message = errorMessage(error);
+        const name = path.split(/[\\/]/).pop() || "The Word copy";
+        if (message === CHANGED_ELSEWHERE || message === ALREADY_EXISTS) wordCopyHeld = path;
+        const wordCopyError =
+          message === CHANGED_ELSEWHERE
+            ? `“${name}” was changed outside Pensieve, so it wasn't replaced. Import it to bring those changes in, then press Update now. Without the import, Update now replaces the file and those changes are lost.`
+            : message === ALREADY_EXISTS
+              ? `“${name}” is already in that folder and wasn't made by Pensieve, so it wasn't replaced. Rename it, pick another folder, or press Update now to replace it.`
+              : message;
+        prefs = { ...prefs, wordCopyError };
+      } finally {
+        wordCopyRun = null;
+      }
+    })();
+    return wordCopyRun;
+  }
+
+  async function pickWordCopyFolder() {
+    try {
+      const folder = await chooseBackupFolder();
+      if (!folder) return;
+      wordCopyHeld = "";
+      prefs = { ...prefs, wordCopyFolder: folder, wordCopyError: "" };
+      await updateWordCopy();
+    } catch (error) {
+      backupMessage = errorMessage(error);
+    }
+  }
+
+  /** Reads a Word file and shows its chapters before anything changes. */
+  async function offerWordImport(file: File) {
+    try {
+      const result = await readWordFile(await file.arrayBuffer(), file.name.replace(/\.docx$/i, ""));
+      for (const chapter of result.chapters) await shrinkPictures(chapter.contentJson);
+      importOffer = { fileName: file.name, result };
+    } catch (error) {
+      backupMessage = errorMessage(error);
+    }
+  }
+
+  async function shrinkPictures(node: { type?: string; attrs?: Record<string, unknown>; content?: unknown[] }) {
+    if (node.type === "image" && typeof node.attrs?.src === "string") node.attrs.src = await shrinkImage(node.attrs.src);
+    for (const child of node.content ?? []) await shrinkPictures(child as typeof node);
+  }
+
+  async function confirmWordImport(mode: "replace" | "append") {
+    const offer = importOffer;
+    if (!offer || !project) return;
+    importOffer = null;
+    try {
+      await withEditorClosed(async () => {
+        if (!project) return;
+        if (mode === "replace") {
+          await keepSnapshot(project);
+          const next = replaceBookChapters(project, offer.result.chapters);
+          project = offer.result.title && project.title === "Untitled" ? { ...next, title: offer.result.title } : next;
+          activeId = project.chapters[0]?.id ?? null;
+        } else {
+          const before = new Set(project.chapters.map((chapter) => chapter.id));
+          project = appendBookChapters(project, offer.result.chapters);
+          activeId = project.chapters.find((chapter) => !before.has(chapter.id))?.id ?? activeId;
+        }
+        autosave.schedule();
+        await autosave.flush();
+      });
+      settingsOpen = false;
+      view = "write";
+    } catch (error) {
+      backupMessage = errorMessage(error);
     }
   }
 
@@ -637,31 +732,6 @@
     saveStatus = { state: "error", message };
   }
 
-  async function importWord(file: File) {
-    if (!project) return;
-    try {
-      const mammoth = await import("mammoth");
-      const result = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
-      const imported = htmlToChapters(result.value);
-      if (imported.length === 0) throw new Error("That Word file had no text to import");
-      let position = project.chapters.reduce((max, chapter) => Math.max(max, chapter.position), -1);
-      const added = imported.map((chapter) => {
-        position += 1;
-        const created = createChapter(project!.id, chapter.title, position);
-        created.contentJson = blocksToDocument(chapter.blocks);
-        created.plainText = chapter.blocks.map((block) => block.inlines.map((inline) => inline.text).join("")).join("\n");
-        return created;
-      });
-      project = { ...project, chapters: [...project.chapters, ...added] };
-      activeId = added[0]?.id ?? activeId;
-      view = "write";
-      autosave.schedule();
-      await autosave.flush();
-    } catch (error) {
-      saveStatus = { state: "error", message: errorMessage(error) };
-    }
-  }
-
   async function refreshWritingExtras() {
     try {
       dictionary = await listPersonalWords();
@@ -719,14 +789,71 @@
   async function useProjectFile(path: string, openWrite = true) {
     await flushNoteSave();
     await autosave.flush();
-    await switchProjectFile(path);
-    prefs = { ...loadPrefs(), writingDay: "" };
-    const loaded = await sqliteStorage.load();
+    await updateWordCopy();
+    const previous = projectLocation || prefs.projectPath || (await invoke<string>("default_project_path"));
+    switchingBooks = true;
+    let loaded: Project;
+    try {
+      await switchProjectFile(path);
+      prefs = { ...loadPrefs(), writingDay: "" };
+      loaded = await sqliteStorage.load();
+    } catch (error) {
+      // Go back to the open book, or the next autosave would write it into the other file.
+      try {
+        await switchProjectFile(previous);
+        prefs = { ...loadPrefs() };
+      } catch {
+        // The original error below is the one worth showing.
+      }
+      throw error;
+    } finally {
+      switchingBooks = false;
+    }
     project = loaded;
     activeId = loaded.chapters[0]?.id ?? null;
     projectLocation = path;
     rememberBook(path, loaded.title);
     if (openWrite) view = "write";
+  }
+
+  /**
+   * Writes the example books (a novel, a Slovenian story collection and an article) into their own
+   * files in the app folder, then lists them on Home. The open book is never touched, and examples
+   * that already exist are only listed again.
+   */
+  async function addExampleBooks() {
+    if (!project) return;
+    try {
+      const home = projectLocation || prefs.projectPath || (await invoke<string>("default_project_path"));
+      const { EXAMPLE_BOOKS, buildExample } = await import("$lib/samples/examples");
+      const added: KnownProject[] = [];
+      await withEditorClosed(async () => {
+        await updateWordCopy();
+        switchingBooks = true;
+        try {
+          for (const example of EXAMPLE_BOOKS) {
+            const target = await invoke<{ path: string; exists: boolean }>("example_book_path", { name: example.slug });
+            if (!target.exists) {
+              await switchProjectFile(target.path);
+              const blank = await sqliteStorage.load();
+              const built = buildExample(example, blank.id);
+              await sqliteStorage.save(built.project);
+              for (const note of built.notes) await saveNote(note);
+              for (const task of built.tasks) await saveTask(task);
+            }
+            added.push({ path: target.path, title: example.title });
+          }
+        } finally {
+          await switchProjectFile(home);
+          switchingBooks = false;
+        }
+      });
+      const paths = new Set(added.map((book) => book.path));
+      prefs = { ...prefs, knownProjects: [...prefs.knownProjects.filter((book) => !paths.has(book.path)), ...added] };
+      backupMessage = "The example books are on Home.";
+    } catch (error) {
+      backupMessage = errorMessage(error);
+    }
   }
 
   async function openKnownBook(path: string) {
@@ -851,7 +978,7 @@
   let driveBackup: Promise<void> | null = null;
 
   function runDriveBackup(announce: boolean): Promise<void> {
-    if (!project || !prefs.backupFolder) return Promise.resolve();
+    if (!project || !prefs.backupFolder || switchingBooks) return Promise.resolve();
     if (driveBackup) return driveBackup;
     const folder = prefs.backupFolder;
     driveBackup = (async () => {
@@ -1210,7 +1337,21 @@
       onPickBackup={() => void pickBackup()}
       onRestoreBackup={() => void restoreBackup()}
       onCancelBackup={() => (pendingBackup = null)}
-      onImport={(file) => void importWord(file)}
+      onImport={(file) => void offerWordImport(file)}
+      importPreview={importOffer && {
+        fileName: importOffer.fileName,
+        chapters: importOffer.result.chapters.map((chapter) => ({ title: chapter.title, words: countWords(chapter.plainText) })),
+      }}
+      onConfirmImport={(mode) => void confirmWordImport(mode)}
+      onCancelImport={() => (importOffer = null)}
+      bookTitle={project.title}
+      onAddExamples={() => void addExampleBooks()}
+      onChooseWordFolder={() => void pickWordCopyFolder()}
+      onUpdateWordCopy={() => {
+        wordCopyHeld = "";
+        void updateWordCopy(true);
+      }}
+      onStopWordCopy={() => (prefs = { ...prefs, wordCopyFolder: "", wordCopyError: "" })}
       startSection={settingsSection}
       onClose={() => {
         settingsOpen = false;

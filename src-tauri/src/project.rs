@@ -8,6 +8,28 @@ fn app_database(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+#[derive(serde::Serialize)]
+pub struct ExamplePath {
+    path: String,
+    exists: bool,
+}
+
+/// Where an example book lives: `<app config>/examples/<name>.db`, apart from the writer's own books.
+#[tauri::command]
+pub fn example_book_path(app: AppHandle, name: String) -> Result<ExamplePath, String> {
+    if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err("The example name is not valid".into());
+    }
+    let mut dir = app.path().app_config_dir().map_err(|error| error.to_string())?;
+    dir.push("examples");
+    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    let path = dir.join(format!("{name}.db"));
+    Ok(ExamplePath {
+        exists: path.is_file(),
+        path: path.display().to_string(),
+    })
+}
+
 /// Whether a remembered book file is still there. Opening a missing path would create an empty book.
 #[tauri::command]
 pub fn project_file_exists(path: String) -> bool {
