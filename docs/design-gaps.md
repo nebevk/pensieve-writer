@@ -3,7 +3,7 @@
 What the app is still missing compared with the design system in `design-system/`. First review 2 October 2026; rechecked 2 and 5 October.
 
 - **Design source:** the UI kit in `design-system/ui_kits/desktop/`, the components in `design-system/components/`, and rounds 3–4 plus the Home screen (2c) in `design-system/Pensieve Directions.dc.html`. Earlier rounds are superseded and were not used.
-- **App:** commit `22d85eb`, "feat: keep the manuscript safe and finish the writing tools", plus the fixes applied on 5 October.
+- **App:** commit `22d85eb`, "feat: keep the manuscript safe and finish the writing tools", plus the fixes applied on 5 October. The Word work and example books added later that day don't change any designed screen.
 - **IDs:** each gap has an ID (HOME-4, TOOL-2, …) so you can ask for it by name. IDs stay fixed; closed gaps move to "Closed" rather than being renumbered. Requirement IDs in brackets (ED-12, VW-4, …) point to `docs/requirements.md`.
 - **Not design:** data-safety findings and other suggestions are in `docs/improvements.md`.
 
@@ -172,7 +172,7 @@ The design system doesn't cover these, so they aren't gaps. Each already works i
 
 - Outline view (VW-3) and Book view (VW-2).
 - Zen layout (ZN-1 to ZN-5). The UI kit only hides the chrome and keeps the floating bar.
-- Settings sections other than Appearance: General, Writing & goals, Ambience, Backup & export, Language, and the new Shortcuts list.
+- Settings sections other than Appearance: General, Writing & goals, Ambience, Backup & export, Language, and the new Shortcuts list. Backup & export now also holds Export Word, the Word copy and the Word import preview, and General has "Add example books".
 - The Notes and To-dos panel beside the page (NT-7), listed as "Try next" in round 4.
 - The find and replace bar (ED-8), now with a whole-book mode and a list of matches, and the link field in "All tools".
 - The snapshot list and restore (SV-3) on Home, and "Earlier versions" for one chapter (SV-4).
