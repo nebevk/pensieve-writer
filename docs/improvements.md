@@ -10,7 +10,7 @@ Ideas for making Pensieve safer, faster and nicer to write in, beyond matching t
 
 ## Summary
 
-49 suggestions: 41 done, 6 partly done, 2 open. No P1 items are left.
+49 suggestions: 43 done, 4 partly done, 2 open. No P1 items are left.
 
 Every round of changes on 5 October passed the type check (no errors or warnings), the tests (54 now), `cargo check` and a production build. The Word work was also checked in Word 2021: exported books, drop caps at 13, 17 and 24 px in all three fonts, and an edit saved in Word and imported back. Removing a dictionary word was checked against the Windows spell checker itself. Nobody has clicked through the running app since then, so try these once by hand:
 
@@ -52,8 +52,6 @@ Every round of changes on 5 October passed the type check (no errors or warnings
 
 | ID | Suggestion | Why | Status | Pri |
 |---|---|---|---|---|
-| **IMP-22** Slovenian interface | Translate the rest of the interface | Done so far: Settings → General switches about 30 labels (view tabs, greetings, Home buttons, Settings sections, the chapter list heading). The toolbar, notes, to-dos, floating bar, Settings contents and messages are still English only | Partial | P3 |
-| **IMP-23** Recorded ambience loops (AT-3) | Add short recordings as `static/ambience/rain.ogg`, `fire.ogg`, `cafe.ogg` and `piano.ogg` | Done so far: the app plays those files when they exist. None are there yet, so all four sounds are still generated noise | Partial | P3 |
 | **IMP-25** Keyboard and screen-reader pass | Check that every tool can be reached with Tab and has a clear name | Done so far: Settings traps focus, focuses its first control, and returns focus when it closes. Toolbar buttons that show a letter or symbol (B, I, A, +, –, “) and Settings' × now have spoken names, and svelte-check reports no accessibility warnings. What's left needs someone tabbing through the running app | Partial | P3 |
 
 ## 5. Code health
@@ -83,6 +81,8 @@ Every round of changes on 5 October passed the type check (no errors or warnings
 | IMP-19 Edit and delete to-dos | Edit on a slip renames it, changes its chapter or note, or deletes it |
 | IMP-20 Backlinks | A note lists the notes that link to it, under "Linked from" |
 | IMP-21 Notes for this chapter | The side panel puts notes linked to the open chapter first and marks them "This chapter" |
+| IMP-22 Slovenian interface | Every label, button, message, file dialog and error has a Slovenian version in `src/lib/i18n.ts`, switched in Settings → General. Tool names follow Word's Slovenian edition (Krepko, Ležeče, Razveljavi). Numbers, dates and "how long ago" follow the language (1.240 besed, pred 5 min), using Slovenian's four plural forms. Problems Windows reports in English are translated too. A new book starts in the interface language, welcome page included. A test checks that every English text has a Slovenian one with the same blanks to fill. Checked on screen at 1366 px |
+| IMP-23 Recorded ambience loops (AT-3) | `static/ambience/` holds four recordings, all public domain or CC0, with sources in `CREDITS.txt`: rain on leaves, a fireplace, a café and Satie's Gymnopédie No. 1. Each is cut into a seamless loop (checked by rendering the loop point in Chromium) and evened out in loudness, 3.8 MB in all. The sound fades in and out, the volume slider changes the level without restarting it, saving other settings no longer restarts it, and the audio device is released while nothing plays |
 | IMP-24 Keyboard cheat sheet (ST-4) | Settings → Shortcuts, also opened with Ctrl+/ |
 | IMP-26 First-run welcome | Every new book file, including the one made on first launch, opens on the welcome page with an empty first chapter after it. "Start something new" uses the same code (`firstChapters` in `src/lib/chapters/welcome.ts`) |
 | IMP-27 Tests for the data paths | Vitest, run by CI: 43 tests covering restore, notes in snapshots, backup files, the note save queue, counts, find and replace, exports, pictures, Word export and import, and the example books |
