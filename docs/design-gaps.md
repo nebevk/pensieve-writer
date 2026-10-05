@@ -3,7 +3,7 @@
 What the app is still missing compared with the design system in `design-system/`. First review 2 October 2026; rechecked 2 and 5 October.
 
 - **Design source:** the UI kit in `design-system/ui_kits/desktop/`, the components in `design-system/components/`, and rounds 3–4 plus the Home screen (2c) in `design-system/Pensieve Directions.dc.html`. Earlier rounds are superseded and were not used.
-- **App:** commit `22d85eb`, "feat: keep the manuscript safe and finish the writing tools", plus the fixes applied on 5 October. The Word work and example books added later that day don't change any designed screen.
+- **App:** commit `22d85eb`, "feat: keep the manuscript safe and finish the writing tools", plus the changes made on 5 October. The Word work and example books don't change any designed screen; starting on Home closed HOME-7.
 - **IDs:** each gap has an ID (HOME-4, TOOL-2, …) so you can ask for it by name. IDs stay fixed; closed gaps move to "Closed" rather than being renumbered. Requirement IDs in brackets (ED-12, VW-4, …) point to `docs/requirements.md`.
 - **Not design:** data-safety findings and other suggestions are in `docs/improvements.md`.
 
@@ -13,7 +13,7 @@ What the app is still missing compared with the design system in `design-system/
 
 ## Summary
 
-36 open gaps: no P1, 11 P2, 25 P3. Since the first review, 8 gaps and 2 small fixes are closed, 3 placeholder buttons were hidden, and 2 differences were accepted.
+35 open gaps: no P1, 10 P2, 25 P3. Since the first review, 9 gaps and 2 small fixes are closed, 3 placeholder buttons were hidden, and 2 differences were accepted.
 
 Already matching the design:
 
@@ -34,7 +34,7 @@ Biggest open gaps:
 1. [[Links]] between notes are plain text, and the manuscript has no way to link a note (NOTE-1, TOOL-3).
 2. Icons and motion don't follow the system yet, and Outline and Book still use the old styles (LOOK-1 to LOOK-3).
 3. The native Windows title bar sits above the app's own bar (WIN-1).
-4. Home still opens under the project title bar instead of its own header, and the app starts in Write rather than on Home (HOME-6, HOME-7).
+4. Home still opens under the project title bar instead of its own header (HOME-6).
 
 ## Closed
 
@@ -45,6 +45,7 @@ Biggest open gaps:
 | HOME-3 Project title | Click the title on the Home card to rename the book; the new title is saved with the project | 2 Oct |
 | HOME-4 Continue writing | "Continue writing" and the card open the chapter the card shows | 2 Oct |
 | HOME-5 Drive backup and its status | Backs up to the Drive folder every hour while the app is open and again when it closes. Home shows "Backed up · 12 min ago", "No backup yet" or "Last backup failed" | 5 Oct |
+| HOME-7 Start on Home | The app opens on Home; "Continue writing" opens the chapter you worked on last | 5 Oct |
 | TOOL-4 New note, Add to-do | Both open the panel beside the page instead of leaving it, and a to-do added there is filed under the open chapter | 2 Oct |
 | TOOL-7 Image, link | Image opens a file picker and stores the picture in the chapter; Link uses a small field in the toolbar instead of a browser prompt | 2 Oct |
 | SET-1 Shortcuts | Settings → Shortcuts lists the keys, and Ctrl+/ opens it | 5 Oct |
@@ -60,7 +61,6 @@ Design: Directions 2c, `HomeScreen` in `ui_kits/desktop/screens.js`, `components
 | Gap | Design | App today | Status | Pri |
 |---|---|---|---|---|
 | **HOME-6** Home header | Its own 60px header: P mark with the "Pensieve" wordmark, backup line, large language badge, settings. No view tabs, because Home sits above all projects | Home shows the project title bar with the view tabs, none selected; the backup line sits under the date | Missing | P2 |
-| **HOME-7** Start on Home | The app opens on Home (UI kit default; scenario 1 in requirements) | Opens in Write on chapter 1 | Differs | P2 |
 | **HOME-8** Project kind (CH-8) | Each card names its kind (Novel, Kratke zgodbe, Article) in a tone colour | Each project now stores its kind, chosen when you start it, but the cards still say "Book" (or "Knjiga") | Partial | P2 |
 | **HOME-9** Target and progress | "48,930 / 80,000" with a bar for words against a target; "6 of 12 stories · SL"; "1,240 words · Final" | No book target. Chapters now have word goals, which could add up to one, but the bar still shows the share of chapters that have any text | Missing | P2 |
 | **HOME-10** Greeting | "Good evening." plus a short line about the book: "Ana is still in the kitchen." | "Good evening." followed by a short King James Bible verse instead of a line about the book. If that's deliberate, it can move to Accepted differences | Differs | P3 |
@@ -157,7 +157,7 @@ Design: `design-system/readme.md` (Iconography, Motion), `components/core/Icon.j
 |---|---|---|---|---|
 | **LOOK-1** Icons | Lucide outline icons at stroke 1.75. The paths are already in `components/core/Icon.jsx`, so no new dependency is needed | Hand-drawn icons, with many missing: sliders (settings), chevrons, image, link, new note, replace, indent, outdent, rain, flame, x, arrow, plus. Image and Link are the words "Img" and "Link"; New note uses the Notes page icon, Replace uses Redo, Clear formatting uses a bin, indent and outdent are "+" and "–", "All tools" and "Fewer" use ▾ and ▴, Settings closes with "×", and "Continue writing" has no arrow | Partial | P2 |
 | **LOOK-2** Motion and pressed states (AT-1) | 120ms colour fades on hover and press; 180ms lifts and toggles on `cubic-bezier(.2,.7,.2,1)`; 400ms theme change; solid buttons brighten on hover and darken on press (`tokens/base.css`) | `base.css` isn't imported and nothing replaces it. Hovers switch instantly, cards and slips jump when lifted, toggles snap, theme changes flash, and most buttons have no pressed state | Missing | P2 |
-| **LOOK-3** Old styles left over | Every surface uses the `--pv-*` tokens: chrome colours on chrome, ink colours on paper | Outline, Book, the find bar, the Zen top bar, the controls under the chapter list and "Opening…" still use the old variables (`--muted`, `--ink`, `--desk`) and 6px corners. On Outline cards this puts chrome text on paper, which is light on light and hard to read in Candlelit and Moonlit | Partial | P2 |
+| **LOOK-3** Old styles left over | Every surface uses the `--pv-*` tokens: chrome colours on chrome, ink colours on paper | Outline, Book, the find bar, the Zen top bar, and the controls under the chapter list still use the old variables (`--muted`, `--ink`, `--desk`) and 6px corners. On Outline cards this puts chrome text on paper, which is light on light and hard to read in Candlelit and Moonlit | Partial | P2 |
 
 ## Accepted differences
 
@@ -202,7 +202,7 @@ No screen shows these, but the design depends on them and the app can't do them 
 
 ## Suggested order
 
-1. **Projects:** HOME-7, HOME-6, HOME-8 and HOME-9. Other books' cards show only their title so far, so HOME-8 and HOME-9 apply to them too.
+1. **Projects:** HOME-6, HOME-8 and HOME-9. Other books' cards show only their title so far, so HOME-8 and HOME-9 apply to them too.
 2. **Links:** NOTE-1 and TOOL-3 can share one [[link]] mark for notes and the manuscript; then NOTE-2.
 3. **Look:** LOOK-1, LOOK-2, LOOK-3 and WIN-1.
 4. The P3 items, screen by screen.

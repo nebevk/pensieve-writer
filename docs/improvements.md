@@ -1,6 +1,6 @@
 # Suggested improvements
 
-Ideas for making Pensieve safer, faster and nicer to write in, beyond matching the design. Written 2 October 2026; rechecked 5 October against commit `22d85eb`, then updated the same day after the fixes for IMP-31 to IMP-39 were applied, and again after the Word work and the example books (IMP-46, IMP-47).
+Ideas for making Pensieve safer, faster and nicer to write in, beyond matching the design. Written 2 October 2026; rechecked 5 October against commit `22d85eb` and updated several times that day, most recently after IMP-17, IMP-26, IMP-29, IMP-45, IMP-48 and IMP-49 were done.
 
 - Design gaps live in `docs/design-gaps.md`; this list doesn't repeat them.
 - Requirement IDs in brackets point to `docs/requirements.md`.
@@ -10,9 +10,9 @@ Ideas for making Pensieve safer, faster and nicer to write in, beyond matching t
 
 ## Summary
 
-49 suggestions: 35 done, 10 partly done, 4 open. No P1 items are left.
+49 suggestions: 41 done, 6 partly done, 2 open. No P1 items are left.
 
-The 5 October fixes were checked with the type check (no errors or warnings), 25 tests and a production build. The Word work was checked with the type check, 43 tests, `cargo check`, a production build, and in Word 2021: exported books, drop caps at 13, 17 and 24 px in all three fonts, and an edit saved in Word and imported back. Nobody has clicked through any of it in the running app yet, so try these once by hand:
+Every round of changes on 5 October passed the type check (no errors or warnings), the tests (54 now), `cargo check` and a production build. The Word work was also checked in Word 2021: exported books, drop caps at 13, 17 and 24 px in all three fonts, and an edit saved in Word and imported back. Removing a dictionary word was checked against the Windows spell checker itself. Nobody has clicked through the running app since then, so try these once by hand:
 
 1. Type in a note, switch to another note and type straight away; both notes keep their text.
 2. Delete a note, then restore the "Kept" snapshot on Home; the note comes back.
@@ -24,6 +24,10 @@ The 5 October fixes were checked with the type check (no errors or warnings), 25
 8. Settings → Backup & export → "Export Word…", save, and open the file in Word; it looks like the page in Pensieve.
 9. Choose a Word copy folder, type in a chapter and switch to another window; the copy updates. Change the copy in Word and save it; Pensieve stops updating it and says why.
 10. "Import Word…" that copy and choose "Replace this book's chapters"; the change made in Word appears in the chapter.
+11. Start the app; it opens on Home, and "Continue writing" opens the chapter you worked on last.
+12. Type in a note that is also a to-do, switch to To-dos straight away and change its state; the note keeps the words you just typed.
+13. Put a picture in a chapter; it shows in the Book view and in print, and it's in the Markdown export and in "Copy HTML".
+14. Remove a word in Settings → Language; the page underlines it again (perhaps only after restarting Pensieve).
 
 ## 1. Never lose the writer's text
 
@@ -37,16 +41,12 @@ The 5 October fixes were checked with the type check (no errors or warnings), 25
 | ID | Suggestion | Why | Status | Pri |
 |---|---|---|---|---|
 | **IMP-10** Measure on the real laptop | Time typing in a 10,000-word chapter of a 150,000-word book on the writer's laptop, in Candlelit with particles on | IMP-8 and IMP-9 removed the main per-keystroke costs; this confirms it on the hardware that matters. The answers to open questions 1 and 2 in the requirements (laptop model and RAM) decide how much ambience the app can afford | Open | P2 |
-| **IMP-49** Load the Word writer when it's needed | Import the `docx` library only when exporting or updating the Word copy, as the Word reader already does | The page's script is 908 kB, and about 350 kB of that is the Word writer, loaded at every start. Loading it later helps the 3-second cold start on an older laptop (performance requirement) | Open | P3 |
 
 ## 3. Writing features
 
 | ID | Suggestion | Why | Status | Pri |
 |---|---|---|---|---|
-| **IMP-45** Pictures in exports and the Book view (ED-12) | Carry pictures through to HTML, Markdown and the Book view | Done so far: Word export carries pictures, scaled to the text width. `documentToBlocks` in `src/lib/export/document.ts` still has no case for pictures, so each one becomes an empty paragraph in HTML, Markdown, the Book view and printouts | Partial | P3 |
-| **IMP-48** Chapter labels in the book's language | Label chapters in the book's language ("Prvo poglavje" in a Slovenian book), and decide whether a story collection says "Chapter" at all | The page and the Word export say "Chapter One" above every chapter, also in the Slovenian example collection | Open | P3 |
-| **IMP-17** Manage the personal dictionary (ED-13) | Also remove the word from the Windows spell checker | Done so far: Settings can remove a word from Pensieve's list, and says honestly that Windows may still accept it | Partial | P3 |
-| **IMP-18** Paste from Word (ED-10) | Paste a chapter from a real manuscript and check headings, italics and paragraphs survive | The tests cover Word export and re-import, not pasting | Open | P3 |
+| **IMP-18** Paste from Word (ED-10) | Paste a chapter from a real manuscript and check headings, italics and paragraphs survive | The tests cover Word export and re-import, not pasting. An automatic test needs a browser-like document in the tests (a test-only package such as `happy-dom`) | Open | P3 |
 
 ## 4. Comfort and polish
 
@@ -54,15 +54,13 @@ The 5 October fixes were checked with the type check (no errors or warnings), 25
 |---|---|---|---|---|
 | **IMP-22** Slovenian interface | Translate the rest of the interface | Done so far: Settings → General switches about 30 labels (view tabs, greetings, Home buttons, Settings sections, the chapter list heading). The toolbar, notes, to-dos, floating bar, Settings contents and messages are still English only | Partial | P3 |
 | **IMP-23** Recorded ambience loops (AT-3) | Add short recordings as `static/ambience/rain.ogg`, `fire.ogg`, `cafe.ogg` and `piano.ogg` | Done so far: the app plays those files when they exist. None are there yet, so all four sounds are still generated noise | Partial | P3 |
-| **IMP-25** Keyboard and screen-reader pass | Check that every tool can be reached with Tab and has a clear name | Done so far: Settings traps focus, focuses its first control, and returns focus when it closes | Partial | P3 |
-| **IMP-26** First-run welcome | Put the welcome page in the first book the app creates on install, too | Done so far: books made with "Start something new" open on a welcome page. The book created automatically on first launch, the one the writer sees first, still starts blank | Partial | P3 |
+| **IMP-25** Keyboard and screen-reader pass | Check that every tool can be reached with Tab and has a clear name | Done so far: Settings traps focus, focuses its first control, and returns focus when it closes. Toolbar buttons that show a letter or symbol (B, I, A, +, –, “) and Settings' × now have spoken names, and svelte-check reports no accessibility warnings. What's left needs someone tabbing through the running app | Partial | P3 |
 
 ## 5. Code health
 
 | ID | Suggestion | Why | Status | Pri |
 |---|---|---|---|---|
-| **IMP-28** Split `+page.svelte` | Move find and replace, history and restores, projects, backups and Zen into their own modules | Done so far: chapter changes moved to `src/lib/chapters/mutate.ts`. The page is still the largest file in the app, at over 1,500 lines | Partial | P3 |
-| **IMP-29** One save path for notes and to-dos | Route to-dos through the same save queue as notes | Done so far: notes save through one queue (`src/lib/save/queue.ts`), and note and to-do errors reach the title bar. To-dos still save on their own | Partial | P3 |
+| **IMP-28** Split `+page.svelte` | Move find and replace, history and restores, projects, backups, the Word copy and Zen into their own modules | Done so far: chapter changes moved to `src/lib/chapters/mutate.ts`. The page is still the largest file in the app, at about 1,770 lines | Partial | P3 |
 
 ## Done
 
@@ -81,11 +79,14 @@ The 5 October fixes were checked with the type check (no errors or warnings), 25
 | IMP-14 Word goal per chapter (CH-6) | Set under the chapter list or in Outline; the list shows words against the goal |
 | IMP-15 Project templates (CH-8) | Novel, Short stories and Article; an Article has no chapter list |
 | IMP-16 Parts (CH-5) | Chapters can belong to a named part, shown as a heading in the chapter list |
+| IMP-17 Manage the personal dictionary (ED-13) | Removing a word in Settings removes it from Pensieve's list and from the Windows spell checker. Checked against Windows: the word is flagged again afterwards |
 | IMP-19 Edit and delete to-dos | Edit on a slip renames it, changes its chapter or note, or deletes it |
 | IMP-20 Backlinks | A note lists the notes that link to it, under "Linked from" |
 | IMP-21 Notes for this chapter | The side panel puts notes linked to the open chapter first and marks them "This chapter" |
 | IMP-24 Keyboard cheat sheet (ST-4) | Settings → Shortcuts, also opened with Ctrl+/ |
+| IMP-26 First-run welcome | Every new book file, including the one made on first launch, opens on the welcome page with an empty first chapter after it. "Start something new" uses the same code (`firstChapters` in `src/lib/chapters/welcome.ts`) |
 | IMP-27 Tests for the data paths | Vitest, run by CI: 43 tests covering restore, notes in snapshots, backup files, the note save queue, counts, find and replace, exports, pictures, Word export and import, and the example books |
+| IMP-29 One save path for notes and to-dos | Every note and to-do change, including deleting a to-do, goes through one queue in `src/lib/storage/organize.ts`. The latest change to each wins, and a failed write is tried again. Lists and backups wait for pending saves. This closed a gap where the To-dos view could read a note before its last words were saved, then write that older copy back when you changed the to-do's state |
 | IMP-30 Remove unused settings | The streak fields are gone and are dropped from old saved settings |
 | IMP-31 Save every edited note | `src/lib/save/queue.ts` keeps one pending save per note, so switching notes quickly no longer drops the previous note's last words |
 | IMP-32 Protect notes | "Delete note" asks first and keeps a snapshot. Snapshots now hold notes and to-dos, and restoring one brings back any notes and to-dos the book no longer has, without changing the ones it still has |
@@ -101,12 +102,15 @@ The 5 October fixes were checked with the type check (no errors or warnings), 25
 | IMP-42 Backups miss the last edits | Found while applying the fixes: a backup took the book from before saving the last edits, so it could miss up to two seconds of typing. It now saves notes and chapters first |
 | IMP-43 Separate backups per book | Found while applying the fixes: all books shared the folder's 20-backup limit, so working on one book pruned another's backups. Files are now named `pensieve-<book>-<time>.json` and each book keeps its own 20. Older files without a book name are no longer pruned |
 | IMP-44 Safer book switching and moving | Found while applying the fixes: switching books now saves pending note edits first, and the database switch waits for queued writes, so they can't land in the next book's file. After "Move project…", the old copy is dropped from Home's list. Opening a remembered book whose file is gone shows an error instead of creating an empty book. If the next book fails to open, the app now goes back to the one it left |
+| IMP-45 Pictures in exports and the Book view (ED-12) | Pictures reach Word, HTML, Markdown, plain text (as "[Picture]"), the Book view and printouts. The same pass keeps line breaks, links, superscript, highlights, horizontal rules, quotes with several paragraphs and nested lists, which were lost or run together before. Lists and quotes come out as one list or quote each, and only web and mail links reach the HTML |
 | IMP-46 Word files that open in Word (SV-6, SV-8) | Asked for on 5 October. "Export Word…" asks where to save and writes the book as it looks on the page: the manuscript font packed into the file, the app's text size and spacing, chapter labels, drop caps, first-line indents, each chapter on a new page, and a running head with page numbers. Word keeps the fonts when it saves the file again. A **Word copy** in a chosen folder is rewritten when the window loses focus, on a book switch and on close. Automatic updates stop, and say why, when the copy was changed in Word or a file Pensieve didn't write has its name. "Update now" replaces it; the message asks you to import the Word changes first. "Import Word…" lists the chapters it found, then either replaces the book's chapters (after a snapshot, keeping each chapter's status, goal and part) or adds them. Files from elsewhere are split at headings or chapter lines. Fonts: static Literata and EB Garamond from Google Fonts (SIL Open Font License) in `static/fonts/word/`. Word ignores variable fonts |
 | IMP-47 Example books | Asked for on 5 October. Settings → General → "Add example books" adds a novel (*The Lantern House*), a Slovenian story collection (*Zgodbe ob reki*) and an article. Each is its own book file, with notes and to-dos, so every view has something in it. Clicking again doesn't make copies |
+| IMP-48 Chapter labels in the book's language | Labels follow the book's language ("Prvo poglavje", "13. poglavje"), and story collections label stories ("Story One", "Prva zgodba"), on the page and in Word. Word import also recognises Slovenian chapter lines such as "3. poglavje" |
+| IMP-49 Load the Word writer when it's needed | The `docx` library loads on the first Word export or Word copy update. The page's startup script went from 908 kB to 549 kB |
 
 ## Suggested order
 
-1. **Try the fixes by hand:** the ten checks in the summary, on the real laptop.
+1. **Try the fixes by hand:** the checks in the summary, on the real laptop.
 2. **Speed:** IMP-10 on the same laptop.
 3. **Finish the safety items:** IMP-7, then IMP-6.
 4. The rest, by what the writer asks for first.
