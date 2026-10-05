@@ -5,6 +5,7 @@
   import { chooseImageFile } from "$lib/storage/backup";
   import { imageType, shrinkImage } from "./imageSize";
   import Icon from "./Icon.svelte";
+  import { t } from "$lib/ui.svelte";
 
   let {
     editor,
@@ -22,6 +23,7 @@
     onSize,
     onNewNote,
     onAddTodo,
+    loadNotes,
     onReplace,
   }: {
     editor: Editor | null;
@@ -40,10 +42,15 @@
     onNewNote: () => void;
     onAddTodo: () => void;
     onReplace: () => void;
+    /** The book's notes, for "Link a note". */
+    loadNotes: () => Promise<{ id: string; title: string }[]>;
   } = $props();
 
   let expanded = $state(false);
   let linkOpen = $state(false);
+  let notePicker = $state(false);
+  let noteChoices = $state<{ id: string; title: string }[]>([]);
+  let noteQuery = $state("");
   let imageProblem = $state("");
   let problemTimer: ReturnType<typeof setTimeout> | null = null;
   let linkDraft = $state("https://");
@@ -95,24 +102,24 @@
   });
 
   const marks = $derived([
-    format("Bold (Ctrl+B)", (current) => current.isActive("bold"), (current) => current.chain().focus().toggleBold().run(), "B"),
-    format("Italic (Ctrl+I)", (current) => current.isActive("italic"), (current) => current.chain().focus().toggleItalic().run(), "I"),
-    format("Underline (Ctrl+U)", (current) => current.isActive("underline"), (current) => current.chain().focus().toggleUnderline().run(), "U"),
-    format("Strikethrough", (current) => current.isActive("strike"), (current) => current.chain().focus().toggleStrike().run(), "S"),
+    format(`${t("bold")} (Ctrl+B)`, (current) => current.isActive("bold"), (current) => current.chain().focus().toggleBold().run(), "B"),
+    format(`${t("italic")} (Ctrl+I)`, (current) => current.isActive("italic"), (current) => current.chain().focus().toggleItalic().run(), "I"),
+    format(`${t("underline")} (Ctrl+U)`, (current) => current.isActive("underline"), (current) => current.chain().focus().toggleUnderline().run(), "U"),
+    format(t("strikethrough"), (current) => current.isActive("strike"), (current) => current.chain().focus().toggleStrike().run(), "S"),
   ]);
 
   const history = $derived([
-    format("Undo (Ctrl+Z)", () => false, (current) => current.chain().focus().undo().run(), undefined, "undo", (current) => current.can().undo()),
-    format("Redo (Ctrl+Y)", () => false, (current) => current.chain().focus().redo().run(), undefined, "redo", (current) => current.can().redo()),
+    format(`${t("undo")} (Ctrl+Z)`, () => false, (current) => current.chain().focus().undo().run(), undefined, "undo", (current) => current.can().undo()),
+    format(`${t("redo")} (Ctrl+Y)`, () => false, (current) => current.chain().focus().redo().run(), undefined, "redo", (current) => current.can().redo()),
   ]);
 
   const blocks = $derived([
-    format("Bulleted list", (current) => current.isActive("bulletList"), (current) => current.chain().focus().toggleBulletList().run(), undefined, "bullets"),
-    format("Numbered list", (current) => current.isActive("orderedList"), (current) => current.chain().focus().toggleOrderedList().run(), undefined, "numbers"),
-    format("Align left", (current) => current.isActive({ textAlign: "left" }), (current) => current.chain().focus().setTextAlign("left").run(), undefined, "align-left"),
-    format("Align center", (current) => current.isActive({ textAlign: "center" }), (current) => current.chain().focus().setTextAlign("center").run(), undefined, "align-center"),
-    format("Align right", (current) => current.isActive({ textAlign: "right" }), (current) => current.chain().focus().setTextAlign("right").run(), undefined, "align-right"),
-    format("Justify", (current) => current.isActive({ textAlign: "justify" }), (current) => current.chain().focus().setTextAlign("justify").run(), undefined, "align-justify"),
+    format(t("bulletedList"), (current) => current.isActive("bulletList"), (current) => current.chain().focus().toggleBulletList().run(), undefined, "list"),
+    format(t("numberedList"), (current) => current.isActive("orderedList"), (current) => current.chain().focus().toggleOrderedList().run(), undefined, "listOrdered"),
+    format(t("alignLeft"), (current) => current.isActive({ textAlign: "left" }), (current) => current.chain().focus().setTextAlign("left").run(), undefined, "alignLeft"),
+    format(t("alignCenter"), (current) => current.isActive({ textAlign: "center" }), (current) => current.chain().focus().setTextAlign("center").run(), undefined, "alignCenter"),
+    format(t("alignRight"), (current) => current.isActive({ textAlign: "right" }), (current) => current.chain().focus().setTextAlign("right").run(), undefined, "alignRight"),
+    format(t("justify"), (current) => current.isActive({ textAlign: "justify" }), (current) => current.chain().focus().setTextAlign("justify").run(), undefined, "alignJustify"),
   ]);
 
   function applyStyle(value: string) {
@@ -145,6 +152,51 @@
     current.chain().focus().updateAttributes(type, { indent: Math.max(0, Math.min(6, indent + delta)) }).run();
   }
 
+  const pickable = $derived(
+    noteChoices.filter((note) => note.title.toLowerCase().includes(noteQuery.trim().toLowerCase())).slice(0, 12),
+  );
+  const onNoteLink = $derived(revision >= 0 && ready()?.isActive("noteLink") === true);
+
+  async function openNotePicker() {
+    if (notePicker) {
+      notePicker = false;
+      return;
+    }
+    noteQuery = "";
+    notePicker = true;
+    try {
+      noteChoices = [...(await loadNotes())].sort((a, b) => a.title.localeCompare(b.title));
+    } catch {
+      noteChoices = [];
+    }
+  }
+
+  /** Links the selected words to a note, or writes the note's name at the cursor as a link. */
+  function linkNote(note: { id: string; title: string }) {
+    const current = ready();
+    notePicker = false;
+    if (!current) return;
+    const attrs = { noteId: note.id, title: note.title };
+    if (current.state.selection.empty) {
+      current.chain().focus().insertContent({ type: "text", text: note.title, marks: [{ type: "noteLink", attrs }] }).run();
+    } else {
+      current.chain().focus().setMark("noteLink", attrs).run();
+    }
+  }
+
+  /** Adds a footnote after the cursor and selects it, so its note can be written straight away. */
+  function insertFootnote() {
+    const current = ready();
+    if (!current) return;
+    const at = current.state.selection.to;
+    current.chain().focus().insertContentAt(at, { type: "footnote", attrs: { text: "" } }).setNodeSelection(at).run();
+  }
+
+  function unlinkNote() {
+    notePicker = false;
+    ready()?.chain().focus().extendMarkRange("noteLink").unsetMark("noteLink").run();
+  }
+
   function applyLink() {
     const current = ready();
     const href = linkDraft.trim();
@@ -173,7 +225,7 @@
       const src = await shrinkImage(original);
       ready()?.chain().focus().insertContent({ type: "image", attrs: { src, alt: "" } }).run();
     } catch (error) {
-      imageProblem = `Couldn't add that picture. ${error instanceof Error ? error.message : String(error)}`;
+      imageProblem = t("pictureFailed", { error: error instanceof Error ? error.message : String(error) });
       if (problemTimer) clearTimeout(problemTimer);
       problemTimer = setTimeout(() => (imageProblem = ""), 8000);
     }
@@ -184,13 +236,13 @@
   }
 </script>
 
-<div class="ribbon" class:expanded role="toolbar" aria-label="Writing tools">
+<div class="ribbon" class:expanded role="toolbar" aria-label={t("writingTools")}>
   {#if !expanded}
-    <select aria-label="Paragraph style" value={styleValue} onchange={(event) => applyStyle(event.currentTarget.value)}>
-      <option value="p">Normal text</option>
-      <option value="h1">Heading 1</option>
-      <option value="h2">Heading 2</option>
-      <option value="h3">Heading 3</option>
+    <select aria-label={t("paragraphStyle")} value={styleValue} onchange={(event) => applyStyle(event.currentTarget.value)}>
+      <option value="p">{t("normalText")}</option>
+      <option value="h1">{t("heading1")}</option>
+      <option value="h2">{t("heading2")}</option>
+      <option value="h3">{t("heading3")}</option>
     </select>
     <span class="rule"></span>
     {#each marks as tool (tool.title)}
@@ -199,75 +251,75 @@
     <span class="rule"></span>
     {@render toolButton(blocks[0])}
     {@render toolButton(blocks[2])}
-    <button type="button" class="tool serif" title="Block quote" aria-label="Block quote" onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleBlockquote().run()}>“</button>
-    <button type="button" class="tool scene" title="Scene break" aria-label="Scene break" onmousedown={(event) => event.preventDefault()} onclick={sceneBreak}>* *</button>
+    <button type="button" class="tool serif" title={t("blockQuote")} aria-label={t("blockQuote")} onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleBlockquote().run()}>“</button>
+    <button type="button" class="tool scene" title={t("sceneBreak")} aria-label={t("sceneBreak")} onmousedown={(event) => event.preventDefault()} onclick={sceneBreak}>* *</button>
     <span class="rule"></span>
     <button type="button" class="more" onclick={() => (expanded = true)}>
-      All tools
-      <span aria-hidden="true">▾</span>
+      {t("allTools")}
+      <Icon name="chevronDown" />
     </button>
     <span class="spacer"></span>
-    <button type="button" class="tool" class:active={chaptersOpen} title="Chapters" aria-pressed={chaptersOpen} onclick={onToggleChapters}>
+    <button type="button" class="tool" class:active={chaptersOpen} title={t("chapters")} aria-label={t("chapters")} aria-pressed={chaptersOpen} onclick={onToggleChapters}>
       <Icon name="chapters" />
     </button>
-    <button type="button" class="tool" title="Find (Ctrl+F)" onmousedown={(event) => event.preventDefault()} onclick={onFind}>
-      <Icon name="find" />
+    <button type="button" class="tool" title={`${t("find")} (Ctrl+F)`} aria-label={t("find")} onmousedown={(event) => event.preventDefault()} onclick={onFind}>
+      <Icon name="search" />
     </button>
   {:else}
-    {@render group("History", history)}
+    {@render group(t("groupHistory"), history)}
     <section class="group">
       <div class="tools picks">
-        <select aria-label="Paragraph style" value={styleValue} onchange={(event) => applyStyle(event.currentTarget.value)}>
-          <option value="p">Normal text</option>
-          <option value="h1">Heading 1</option>
-          <option value="h2">Heading 2</option>
-          <option value="h3">Heading 3</option>
+        <select aria-label={t("paragraphStyle")} value={styleValue} onchange={(event) => applyStyle(event.currentTarget.value)}>
+          <option value="p">{t("normalText")}</option>
+          <option value="h1">{t("heading1")}</option>
+          <option value="h2">{t("heading2")}</option>
+          <option value="h3">{t("heading3")}</option>
         </select>
-        <select aria-label="Manuscript font" value={manuscriptFont} onchange={(event) => onFont(event.currentTarget.value as ManuscriptFont)}>
+        <select aria-label={t("manuscriptFont")} value={manuscriptFont} onchange={(event) => onFont(event.currentTarget.value as ManuscriptFont)}>
           <option value="literata">Literata</option>
           <option value="garamond">Garamond</option>
-          <option value="typewriter">Typewriter</option>
+          <option value="typewriter">{t("fontTypewriter")}</option>
         </select>
-        <select aria-label="Text size" value={manuscriptSize} onchange={(event) => onSize(Number(event.currentTarget.value))}>
+        <select aria-label={t("textSize")} value={manuscriptSize} onchange={(event) => onSize(Number(event.currentTarget.value))}>
           {#each [13, 15, 17, 19, 21, 24] as size (size)}
             <option value={size}>{size}</option>
           {/each}
         </select>
       </div>
-      <p>Text</p>
+      <p>{t("groupText")}</p>
     </section>
     <section class="group">
       <div class="tools">
         {#each marks as tool (tool.title)}
           {@render toolButton(tool)}
         {/each}
-        <button type="button" class="tool" title="Superscript" aria-label="Superscript" onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleMark("superscript").run()}>x²</button>
-        <button type="button" class="tool color" title="Text colour" aria-label="Text colour" onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleMark("textColor").run()}>A</button>
-        <button type="button" class="tool" title="Highlight" onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleMark("highlight").run()}>
+        <button type="button" class="tool" title={t("superscript")} aria-label={t("superscript")} onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleMark("superscript").run()}>x²</button>
+        <button type="button" class="tool color" title={t("textColour")} aria-label={t("textColour")} onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleMark("textColor").run()}>A</button>
+        <button type="button" class="tool" title={t("highlight")} aria-label={t("highlight")} onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleMark("highlight").run()}>
           <span class="swatch"></span>
         </button>
-        <button type="button" class="tool" title="Clear formatting" onmousedown={(event) => event.preventDefault()} onclick={clearFormatting}>
-          <Icon name="clear" />
+        <button type="button" class="tool" title={t("clearFormatting")} aria-label={t("clearFormatting")} onmousedown={(event) => event.preventDefault()} onclick={clearFormatting}>
+          <Icon name="clearFormat" />
         </button>
       </div>
-      <p>Format</p>
+      <p>{t("groupFormat")}</p>
     </section>
     <section class="group">
       <div class="tools">
         {#each blocks as tool (tool.title)}
           {@render toolButton(tool)}
         {/each}
-        <button type="button" class="tool" title="Decrease indent" aria-label="Decrease indent" onmousedown={(event) => event.preventDefault()} onclick={() => shiftIndent(-1)}>–</button>
-        <button type="button" class="tool" title="Increase indent" aria-label="Increase indent" onmousedown={(event) => event.preventDefault()} onclick={() => shiftIndent(1)}>+</button>
+        <button type="button" class="tool" title={t("decreaseIndent")} aria-label={t("decreaseIndent")} onmousedown={(event) => event.preventDefault()} onclick={() => shiftIndent(-1)}><Icon name="outdent" /></button>
+        <button type="button" class="tool" title={t("increaseIndent")} aria-label={t("increaseIndent")} onmousedown={(event) => event.preventDefault()} onclick={() => shiftIndent(1)}><Icon name="indent" /></button>
       </div>
-      <p>Paragraph</p>
+      <p>{t("groupParagraph")}</p>
     </section>
     <section class="group">
       <div class="tools">
-        <button type="button" class="tool serif" title="Block quote" aria-label="Block quote" onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleBlockquote().run()}>“</button>
-        <button type="button" class="tool scene" title="Scene break" aria-label="Scene break" onmousedown={(event) => event.preventDefault()} onclick={sceneBreak}>* *</button>
-        <button type="button" class="tool" title="Image" aria-label="Image" onmousedown={(event) => event.preventDefault()} onclick={() => void askImage()}>Img</button>
-        <button type="button" class="tool" title="Link" onmousedown={(event) => event.preventDefault()} onclick={() => (linkOpen = !linkOpen)}>Link</button>
+        <button type="button" class="tool serif" title={t("blockQuote")} aria-label={t("blockQuote")} onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleBlockquote().run()}>“</button>
+        <button type="button" class="tool scene" title={t("sceneBreak")} aria-label={t("sceneBreak")} onmousedown={(event) => event.preventDefault()} onclick={sceneBreak}>* *</button>
+        <button type="button" class="tool" title={t("image")} aria-label={t("image")} onmousedown={(event) => event.preventDefault()} onclick={() => void askImage()}><Icon name="image" /></button>
+        <button type="button" class="tool" class:active={linkOpen} title={t("link")} aria-label={t("link")} aria-pressed={linkOpen} onmousedown={(event) => event.preventDefault()} onclick={() => (linkOpen = !linkOpen)}><Icon name="link" /></button>
         {#if linkOpen}
           <form
             class="link-form"
@@ -276,36 +328,56 @@
               applyLink();
             }}
           >
-            <input bind:value={linkDraft} aria-label="Link address" />
-            <button type="submit" class="tool text wide">Add</button>
+            <input bind:value={linkDraft} aria-label={t("linkAddress")} />
+            <button type="submit" class="tool text wide">{t("add")}</button>
           </form>
         {/if}
+        <button type="button" class="tool serif" title={t("footnote")} aria-label={t("footnote")} onmousedown={(event) => event.preventDefault()} onclick={insertFootnote}>¹</button>
         {#if imageProblem}
           <span class="problem" role="alert">{imageProblem}</span>
         {/if}
       </div>
-      <p>Insert</p>
+      <p>{t("groupInsert")}</p>
     </section>
     <section class="group">
       <div class="tools">
-        <button type="button" class="tool" title="New note" onclick={onNewNote}><Icon name="notes" /></button>
-        <button type="button" class="tool" title="Add to-do" onclick={onAddTodo}><Icon name="todos" /></button>
-        <button type="button" class="tool" class:active={notesOpen} title="Notes panel" aria-pressed={notesOpen} onclick={onToggleNotes}><Icon name="notes" /></button>
-        <button type="button" class="tool" class:active={todosOpen} title="To-dos panel" aria-pressed={todosOpen} onclick={onToggleTodos}><Icon name="todos" /></button>
+        <button type="button" class="tool" title={t("newNote")} aria-label={t("newNote")} onclick={onNewNote}><Icon name="newNote" /></button>
+        <button type="button" class="tool" title={t("addTodo")} aria-label={t("addTodo")} onclick={onAddTodo}><Icon name="listTodo" /></button>
+        <span class="picker-wrap">
+          <button type="button" class="tool note-link" class:active={notePicker || onNoteLink} title={t("linkNote")} aria-label={t("linkNote")} aria-expanded={notePicker} onmousedown={(event) => event.preventDefault()} onclick={() => void openNotePicker()}>[[ ]]</button>
+          {#if notePicker}
+            <div class="note-picker" role="dialog" aria-label={t("linkNote")}>
+              <!-- svelte-ignore a11y_autofocus -->
+              <input bind:value={noteQuery} placeholder={t("findNote")} aria-label={t("findNote")} autofocus />
+              <ul>
+                {#each pickable as note (note.id)}
+                  <li><button type="button" onmousedown={(event) => event.preventDefault()} onclick={() => linkNote(note)}>{note.title}</button></li>
+                {:else}
+                  <li class="empty">{noteChoices.length ? t("notFound") : t("noNotesToLink")}</li>
+                {/each}
+              </ul>
+              {#if onNoteLink}
+                <button type="button" class="unlink" onmousedown={(event) => event.preventDefault()} onclick={unlinkNote}>{t("removeNoteLink")}</button>
+              {/if}
+            </div>
+          {/if}
+        </span>
+        <button type="button" class="tool" class:active={notesOpen} title={t("notesPanel")} aria-label={t("notesPanel")} aria-pressed={notesOpen} onclick={onToggleNotes}><Icon name="notes" /></button>
+        <button type="button" class="tool" class:active={todosOpen} title={t("todosPanel")} aria-label={t("todosPanel")} aria-pressed={todosOpen} onclick={onToggleTodos}><Icon name="todos" /></button>
       </div>
       <p>Pensieve</p>
     </section>
     <section class="group last">
       <div class="tools">
-        <button type="button" class="tool" title="Find (Ctrl+F)" onmousedown={(event) => event.preventDefault()} onclick={onFind}><Icon name="find" /></button>
-        <button type="button" class="tool" title="Replace" onmousedown={(event) => event.preventDefault()} onclick={onReplace}><Icon name="redo" /></button>
+        <button type="button" class="tool" title={`${t("find")} (Ctrl+F)`} aria-label={t("find")} onmousedown={(event) => event.preventDefault()} onclick={onFind}><Icon name="search" /></button>
+        <button type="button" class="tool" title={t("replace")} aria-label={t("replace")} onmousedown={(event) => event.preventDefault()} onclick={onReplace}><Icon name="replace" /></button>
       </div>
-      <p>Find</p>
+      <p>{t("groupFind")}</p>
     </section>
     <span class="spacer"></span>
     <button type="button" class="more fewer" onclick={() => (expanded = false)}>
-      Fewer
-      <span aria-hidden="true">▴</span>
+      {t("fewerTools")}
+      <Icon name="chevronUp" />
     </button>
   {/if}
 </div>
@@ -361,6 +433,13 @@
     height: auto;
     padding: 8px 12px 0;
     background: var(--pv-chrome-raised);
+    /* A narrow window wraps the groups onto a second row instead of scrolling them sideways,
+       and nothing clips the note picker below its button. */
+    flex-wrap: wrap;
+    row-gap: 6px;
+    overflow: visible;
+    position: relative;
+    z-index: 5;
   }
 
   select {
@@ -394,7 +473,7 @@
     display: flex;
     flex-direction: column;
     gap: 5px;
-    padding: 0 8px;
+    padding: 0 5px;
     border-right: 1px solid var(--pv-divider);
   }
 
@@ -404,7 +483,7 @@
 
   .tools {
     display: flex;
-    gap: 2px;
+    gap: 1px;
     align-items: center;
     flex: 1;
   }
@@ -448,6 +527,7 @@
   .tool.scene {
     width: auto;
     padding: 0 6px;
+    white-space: nowrap;
     font-size: 12px;
     letter-spacing: 2px;
     font-weight: 400;
@@ -474,6 +554,82 @@
   .tool.wide {
     width: auto;
     padding: 0 6px;
+  }
+
+  .picker-wrap {
+    position: relative;
+  }
+
+  .tool.note-link {
+    width: auto;
+    padding: 0 5px;
+    white-space: nowrap;
+    font-family: var(--pv-font-ui);
+    font-size: var(--pv-text-sm);
+    letter-spacing: 1px;
+    color: var(--pv-accent);
+  }
+
+  .note-picker {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 30;
+    width: 15rem;
+    padding: 8px;
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-sm);
+    background: var(--pv-chrome);
+    box-shadow: var(--pv-shadow-bar);
+  }
+
+  .note-picker input {
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 6px;
+    padding: 4px 6px;
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-xs);
+    background: var(--pv-field);
+    color: var(--pv-text);
+  }
+
+  .note-picker ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 14rem;
+    overflow: auto;
+  }
+
+  .note-picker li button,
+  .note-picker .unlink {
+    width: 100%;
+    padding: 5px 6px;
+    border: 0;
+    border-radius: var(--pv-radius-xs);
+    background: transparent;
+    color: var(--pv-text);
+    text-align: left;
+    font-size: var(--pv-text-md);
+  }
+
+  .note-picker li button:hover,
+  .note-picker .unlink:hover {
+    background: var(--pv-selected);
+  }
+
+  .note-picker .empty {
+    padding: 5px 6px;
+    color: var(--pv-text-subtle);
+    font-size: var(--pv-text-sm);
+  }
+
+  .note-picker .unlink {
+    margin-top: 4px;
+    border-top: 1px solid var(--pv-line);
+    border-radius: 0;
+    color: var(--pv-text-subtle);
   }
 
   .link-form {
@@ -531,6 +687,11 @@
     font-size: var(--pv-text-md);
     font-weight: 400;
     color: var(--pv-text-muted);
+  }
+
+  .more :global(svg) {
+    width: 11px;
+    height: 11px;
   }
 
   .fewer {

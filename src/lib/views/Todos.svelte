@@ -11,6 +11,8 @@
     type Task,
     type TodoState,
   } from "$lib/storage/organize";
+  import type { UiKey } from "$lib/i18n";
+  import { t } from "$lib/ui.svelte";
 
   let {
     projectId,
@@ -43,10 +45,10 @@
   let editNote = $state("");
 
   const ordered = $derived([...chapters].sort((a, b) => a.position - b.position));
-  const columns: { id: TodoState; label: string }[] = [
-    { id: "todo", label: "To do" },
-    { id: "doing", label: "Doing" },
-    { id: "done", label: "Done" },
+  const columns: { id: TodoState; key: UiKey }[] = [
+    { id: "todo", key: "columnTodo" },
+    { id: "doing", key: "columnDoing" },
+    { id: "done", key: "columnDone" },
   ];
 
   const cards = $derived.by(() => {
@@ -77,10 +79,10 @@
   const noteCount = $derived(notes.length);
 
   function chapterLabel(id: string): string {
-    if (!id) return "Whole book";
+    if (!id) return t("wholeBook");
     const index = ordered.findIndex((chapter) => chapter.id === id);
     const chapter = ordered[index];
-    return chapter ? `${index + 1} · ${chapter.title}` : "Chapter";
+    return chapter ? `${index + 1} · ${chapter.title}` : t("chapter");
   }
 
   function visible(card: (typeof cards)[number]): boolean {
@@ -105,7 +107,7 @@
     try {
       [notes, tasks] = await Promise.all([listNotes(projectId), listTasks(projectId)]);
     } catch (error) {
-      message = error instanceof Error ? error.message : "Could not load to-dos";
+      message = error instanceof Error ? error.message : t("todosLoadFailed");
     }
   }
 
@@ -132,7 +134,7 @@
         await saveTask(next);
       }
     } catch (error) {
-      message = error instanceof Error ? error.message : "Could not update that to-do";
+      message = error instanceof Error ? error.message : t("todoUpdateFailed");
       onSaveError?.(message);
     }
   }
@@ -165,7 +167,7 @@
       }
       editing = null;
     } catch (error) {
-      message = error instanceof Error ? error.message : "Could not update that to-do";
+      message = error instanceof Error ? error.message : t("todoUpdateFailed");
       onSaveError?.(message);
     }
   }
@@ -184,7 +186,7 @@
       }
       editing = null;
     } catch (error) {
-      message = error instanceof Error ? error.message : "Could not remove that to-do";
+      message = error instanceof Error ? error.message : t("todoRemoveFailed");
       onSaveError?.(message);
     }
   }
@@ -208,7 +210,7 @@
     try {
       await saveTask(task);
     } catch (error) {
-      message = error instanceof Error ? error.message : "Could not add that to-do";
+      message = error instanceof Error ? error.message : t("todoAddFailed");
       onSaveError?.(message);
     }
   }
@@ -218,28 +220,32 @@
   {#if !compact}
     <aside>
       <div class="switch" role="tablist">
-        <button type="button" role="tab" onclick={() => onShowNotes?.()}>Notes <span>{noteCount}</span></button>
-        <button type="button" class="on" role="tab" aria-selected="true">To-dos <span>{openCount}</span></button>
+        <button type="button" role="tab" onclick={() => onShowNotes?.()}>{t("notes")} <span>{noteCount}</span></button>
+        <button type="button" class="on" role="tab" aria-selected="true">{t("todos")} <span>{openCount}</span></button>
       </div>
-      <p class="eyebrow">Show</p>
+      <p class="eyebrow">{t("show")}</p>
       <button type="button" class="row" class:active={filter === "open"} onclick={() => (filter = "open")}>
-        <span>Open to-dos</span><span>{openCount}</span>
+        <span>{t("openTodosFilter")}</span><span>{openCount}</span>
       </button>
       <button type="button" class="row" class:active={filter === "notes"} onclick={() => (filter = "notes")}>
-        <span>From notes</span>
+        <span>{t("fromNotes")}</span>
         <span>{cards.filter((card) => card.state !== "done" && (card.noteId || card.kind === "note")).length}</span>
       </button>
-      <p class="eyebrow">By chapter</p>
-      <button type="button" class="row" class:active={filter === "book"} onclick={() => (filter = "book")}>
-        <span>Whole book</span>
+      <p class="eyebrow">{t("byChapter")}</p>
+      <!-- Only chapters that have open to-dos, with the whole book last, as in the design. -->
+      {#each ordered as chapter, index (chapter.id)}
+        {@const open = cards.filter((card) => card.state !== "done" && card.chapterId === chapter.id).length}
+        {#if open > 0 || filter === chapter.id}
+          <button type="button" class="row" class:active={filter === chapter.id} onclick={() => (filter = chapter.id)}>
+            <span>{index + 1} · {chapter.title}</span>
+            <span>{open}</span>
+          </button>
+        {/if}
+      {/each}
+      <button type="button" class="row muted" class:active={filter === "book"} onclick={() => (filter = "book")}>
+        <span>{t("wholeBook")}</span>
         <span>{cards.filter((card) => card.state !== "done" && card.chapterId === "" && card.kind === "task").length}</span>
       </button>
-      {#each ordered as chapter, index (chapter.id)}
-        <button type="button" class="row" class:active={filter === chapter.id} onclick={() => (filter = chapter.id)}>
-          <span>{index + 1} · {chapter.title}</span>
-          <span>{cards.filter((card) => card.state !== "done" && card.chapterId === chapter.id).length}</span>
-        </button>
-      {/each}
     </aside>
   {/if}
 
@@ -252,14 +258,14 @@
       }}
     >
       <span>+</span>
-      <input bind:this={addInput} bind:value={draft} placeholder="Add a to-do…" aria-label="Add a to-do" />
-      <span class="hint">Enter to add</span>
+      <input bind:this={addInput} bind:value={draft} placeholder={t("addTodoHint")} aria-label={t("addTodo")} />
+      <span class="hint">{t("enterToAdd")}</span>
     </form>
     <div class="columns">
       {#each columns as column (column.id)}
         {@const items = cards.filter((card) => card.state === column.id && visible(card))}
         <section>
-          <h2>{column.label} <span>{items.length}</span></h2>
+          <h2><i class="dot {column.id}" aria-hidden="true"></i>{t(column.key)} <span>{items.length}</span></h2>
           {#each items as card (card.kind + card.id)}
             <article class="slip" class:done={column.id === "done"}>
               <button type="button" class="title" onclick={() => void cycle(card.id, card.kind)}>{card.title}</button>
@@ -273,7 +279,7 @@
                   <span class="tag note">{card.noteTitle}</span>
                 {/if}
               </span>
-              <button type="button" class="quiet" onclick={(event) => beginEdit(card, event)}>Edit</button>
+              <button type="button" class="quiet" onclick={(event) => beginEdit(card, event)}>{t("edit")}</button>
               {#if editing === `${card.kind}:${card.id}`}
                 <form
                   class="edit"
@@ -282,23 +288,23 @@
                     void saveEdit(card);
                   }}
                 >
-                  <input bind:value={editTitle} aria-label="To-do title" />
+                  <input bind:value={editTitle} aria-label={t("todoTitle")} />
                   {#if card.kind === "task"}
-                    <select bind:value={editChapter} aria-label="Chapter">
-                      <option value="">Whole book</option>
+                    <select bind:value={editChapter} aria-label={t("chapter")}>
+                      <option value="">{t("wholeBook")}</option>
                       {#each ordered as chapter, index (chapter.id)}
                         <option value={chapter.id}>{index + 1} · {chapter.title}</option>
                       {/each}
                     </select>
-                    <select bind:value={editNote} aria-label="Note">
-                      <option value="">No note</option>
+                    <select bind:value={editNote} aria-label={t("note")}>
+                      <option value="">{t("noNote")}</option>
                       {#each notes as note (note.id)}
                         <option value={note.id}>{note.title}</option>
                       {/each}
                     </select>
                   {/if}
-                  <button type="submit">Save</button>
-                  <button type="button" onclick={() => void removeCard(card)}>Delete</button>
+                  <button type="submit">{t("save")}</button>
+                  <button type="button" onclick={() => void removeCard(card)}>{t("delete")}</button>
                 </form>
               {/if}
             </article>
@@ -459,6 +465,32 @@
     color: var(--pv-text-faint);
     font-family: var(--pv-font-ui);
     font-size: var(--pv-text-sm);
+  }
+
+  /* The same dots as chapter status: hollow to do, accent doing, sage done. */
+  .dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 8px;
+    vertical-align: middle;
+    border-radius: 50%;
+    box-sizing: border-box;
+    border: 1.5px solid var(--pv-text-faint);
+  }
+
+  .dot.doing {
+    border: 0;
+    background: var(--pv-accent);
+  }
+
+  .dot.done {
+    border: 0;
+    background: var(--pv-status-final);
+  }
+
+  .row.muted:not(.active) {
+    color: var(--pv-text-muted);
   }
 
   .slip button.title,

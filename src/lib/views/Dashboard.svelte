@@ -3,7 +3,9 @@
   import { countWords } from "$lib/editor/counts";
   import type { Chapter, Project, ProjectKind, SnapshotInfo } from "$lib/model";
   import type { KnownProject, Prefs } from "$lib/prefs";
-  import { t } from "$lib/i18n";
+  import { translate, type UiKey } from "$lib/i18n";
+  import { ago, locale, num, plural, snapshotName, t } from "$lib/ui.svelte";
+  import Icon from "$lib/editor/Icon.svelte";
   import { randomQuote } from "$lib/quotes";
   import { listNotes, listTasks } from "$lib/storage/organize";
   import { sqliteStorage } from "$lib/storage/sqlite";
@@ -11,7 +13,7 @@
   let {
     project,
     prefs,
-    saveLabel = "Saved",
+    saveLabel = "",
     wordsToday = 0,
     onContinue,
     onRestore,
@@ -74,11 +76,12 @@
 
   function greeting(now = new Date()): string {
     const hour = now.getHours();
-    const lang = prefs.uiLanguage;
-    if (hour < 12) return t(lang, "morning");
-    if (hour < 18) return t(lang, "afternoon");
-    return t(lang, "evening");
+    if (hour < 12) return t("morning");
+    if (hour < 18) return t("afternoon");
+    return t("evening");
   }
+
+  const KINDS: Record<ProjectKind, UiKey> = { novel: "novel", stories: "stories", article: "article" };
 
   function clip(text: string, max = 88): string {
     if (text.length <= max) return text;
@@ -89,31 +92,18 @@
     const then = new Date(iso);
     const start = new Date();
     start.setHours(0, 0, 0, 0);
-    if (then.getTime() >= start.getTime()) return "Today";
-    return then.toLocaleDateString("en-GB", { day: "numeric", month: "long" });
-  }
-
-  function snapshotLabel(kind: string): string {
-    if (kind === "daily") return "Daily";
-    if (kind === "manual") return "Kept";
-    if (kind === "before-restore") return "Before restore";
-    return "Hourly";
+    if (then.getTime() >= start.getTime()) return t("today");
+    return then.toLocaleDateString(locale(), { day: "numeric", month: "long" });
   }
 
   function backupStatus(current: Prefs): string {
-    if (current.lastBackupError) return "Last backup failed";
-    if (!current.lastBackupAt) return "No backup yet";
-    return `Backed up · ${edited(current.lastBackupAt).replace("Edited ", "").replace("edited ", "")}`;
+    if (current.lastBackupError) return t("backupFailed");
+    if (!current.lastBackupAt) return t("noBackupYet");
+    return t("backedUp", { ago: ago(current.lastBackupAt) });
   }
 
   function edited(iso: string): string {
-    const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-    if (minutes < 1) return "edited just now";
-    if (minutes < 60) return `edited ${minutes} min ago`;
-    const hours = Math.round(minutes / 60);
-    if (hours < 24) return `edited ${hours} h ago`;
-    const days = Math.round(hours / 24);
-    return `edited ${days} d ago`;
+    return t("editedAgoInline", { ago: ago(iso) });
   }
 
   onMount(() => {
@@ -128,7 +118,7 @@
         tasks.filter((task) => task.todoState !== "done").length +
         notes.filter((note) => note.todoState && note.todoState !== "done").length;
     } catch (error) {
-      message = error instanceof Error ? error.message : "Could not load the home view";
+      message = error instanceof Error ? error.message : t("homeLoadFailed");
     }
   }
 
@@ -137,7 +127,7 @@
       await onRestore(id);
       pendingRestore = null;
     } catch (error) {
-      message = error instanceof Error ? error.message : "Could not restore that snapshot";
+      message = error instanceof Error ? error.message : t("restoreFailed");
     }
   }
 </script>
@@ -146,7 +136,7 @@
   <div class="hero">
     <div class="greeting">
       <p class="date">
-        {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
+        {new Date().toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long" })}
       </p>
       <p class="backup">{backupStatus(prefs)}</p>
       <h1>{greeting()}.</h1>
@@ -157,13 +147,13 @@
       <div class="stats">
         <div>
           <p class="value">
-            {wordsToday.toLocaleString("en")}{#if prefs.dailyGoal > 0}<span> / {prefs.dailyGoal.toLocaleString("en")}</span>{/if}
+            {num(wordsToday)}{#if prefs.dailyGoal > 0}<span> / {num(prefs.dailyGoal)}</span>{/if}
           </p>
-          <p class="label">words today</p>
+          <p class="label">{t("wordsToday")}</p>
         </div>
         <div>
           <p class="value">{todoCount}</p>
-          <p class="label">open to-dos</p>
+          <p class="label">{t("openTodos")}</p>
         </div>
       </div>
     </div>
@@ -173,19 +163,19 @@
       <div class="sheet">
         <div class="running">
           <span>{project.title}</span>
-          <span>{latest ? `Ch. ${chapters.findIndex((chapter) => chapter.id === latest.id) + 1}` : ""}</span>
+          <span>{latest ? t("chapterShort", { n: chapters.findIndex((chapter) => chapter.id === latest.id) + 1 }) : ""}</span>
         </div>
         <div class="excerpt">
           {#if previousLine}
             <p class="faded">{clip(previousLine, 140)}</p>
           {/if}
           <p>
-            {currentLine ? clip(currentLine, 160) : "The page is still blank."}<span class="caret" aria-hidden="true"></span>
+            {currentLine ? clip(currentLine, 160) : t("blankPage")}<span class="caret" aria-hidden="true"></span>
           </p>
         </div>
         <div class="foot">
           <span>{latest ? `${latest.title} · ${edited(latest.updatedAt)}` : saveLabel}</span>
-          <button type="button" class="go" onclick={() => onContinue(latest?.id ?? null)}>{t(prefs.uiLanguage, "continue")}</button>
+          <button type="button" class="go" onclick={() => onContinue(latest?.id ?? null)}>{t("continue")} <Icon name="arrowRight" /></button>
         </div>
       </div>
     </div>
@@ -193,27 +183,28 @@
 
   <div class="projects">
     <div class="projects-head">
-      <h2>{t(prefs.uiLanguage, "projects")}</h2>
+      <h2>{t("projects")}</h2>
       <span class="count">{Math.max(books.length, 1)}</span>
-      <select bind:value={template} aria-label="Project template">
-        <option value="novel">{t(prefs.uiLanguage, "novel")}</option>
-        <option value="stories">{t(prefs.uiLanguage, "stories")}</option>
-        <option value="article">{t(prefs.uiLanguage, "article")}</option>
+      <select bind:value={template} aria-label={t("projectTemplate")}>
+        <option value="novel">{t("novel")}</option>
+        <option value="stories">{t("stories")}</option>
+        <option value="article">{t("article")}</option>
       </select>
-      <button type="button" class="open" onclick={() => onStartProject(template)}>{t(prefs.uiLanguage, "start")}</button>
-      <button type="button" class="open" onclick={onOpenProject}>{t(prefs.uiLanguage, "open")}</button>
+      <button type="button" class="open" onclick={() => onStartProject(template)}>{t("start")}</button>
+      <button type="button" class="open" onclick={onOpenProject}>{t("open")}</button>
     </div>
     <div class="grid">
       <article>
         <div class="card" class:stacked={chapters.length > 1}>
           <button type="button" class="face" onclick={() => onContinue(latest?.id ?? null)}>
-            <span class="kind">{project.language === "sl" ? "Knjiga" : "Book"}</span>
-            <span class="hint">Continue</span>
+            <!-- The kind is named in the book's own language, as on the design's cards. -->
+            <span class="kind">{translate(project.language, KINDS[project.kind])}</span>
+            <span class="hint">{t("continueShort")}</span>
           </button>
           {#if renaming}
             <input
               class="title-edit"
-              aria-label="Project title"
+              aria-label={t("projectTitle")}
               bind:this={titleInput}
               bind:value={titleDraft}
               onkeydown={(event) => {
@@ -229,7 +220,7 @@
               }}
             />
           {:else}
-            <button type="button" class="title" title="Rename this book" onclick={() => {
+            <button type="button" class="title" title={t("renameBook")} onclick={() => {
               titleDraft = project.title;
               renaming = true;
             }}>{project.title}</button>
@@ -237,35 +228,35 @@
         </div>
         <div class="bar" aria-hidden="true"><span style:width="{Math.round(progress * 100)}%"></span></div>
         <p class="meta">
-          <span>{words.toLocaleString("en")} words</span>
+          <span>{plural("words", words)}</span>
           <span>{latest ? when(latest.updatedAt) : ""}</span>
         </p>
       </article>
       {#each books.filter((book) => book.path !== currentPath) as book (book.path)}
         <button type="button" class="card other" onclick={() => onOpenBook(book.path)}>
-          <span class="kind">Book</span>
+          <span class="kind">{t("book")}</span>
           <span class="title">{book.title}</span>
         </button>
       {/each}
-      <button type="button" class="new-tile" onclick={() => onStartProject(template)}>{t(prefs.uiLanguage, "start")}</button>
+      <button type="button" class="new-tile" onclick={() => onStartProject(template)}>{t("start")}</button>
     </div>
   </div>
 
   {#if snapshots.length > 0 || message}
     <div class="snapshots">
-      <h2>{t(prefs.uiLanguage, "snapshots")}</h2>
+      <h2>{t("snapshots")}</h2>
       {#if message}
         <p class="error" role="alert">{message}</p>
       {/if}
       <ul>
         {#each snapshots as snapshot (snapshot.id)}
           <li>
-            <span>{snapshotLabel(snapshot.kind)} · {new Date(snapshot.createdAt).toLocaleString()}</span>
+            <span>{snapshotName(snapshot.kind)} · {new Date(snapshot.createdAt).toLocaleString(locale(), { dateStyle: "medium", timeStyle: "short" })}</span>
             {#if pendingRestore === snapshot.id}
-              <button type="button" onclick={() => void restore(snapshot.id)}>Restore this</button>
-              <button type="button" onclick={() => (pendingRestore = null)}>Cancel</button>
+              <button type="button" onclick={() => void restore(snapshot.id)}>{t("restoreThis")}</button>
+              <button type="button" onclick={() => (pendingRestore = null)}>{t("cancel")}</button>
             {:else}
-              <button type="button" onclick={() => (pendingRestore = snapshot.id)}>Restore</button>
+              <button type="button" onclick={() => (pendingRestore = snapshot.id)}>{t("restore")}</button>
             {/if}
           </li>
         {/each}
@@ -439,6 +430,9 @@
   }
 
   .go {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     height: 36px;
     border: 0;
     border-radius: var(--pv-radius-sm);
@@ -446,6 +440,11 @@
     background: var(--pv-ink-accent);
     color: var(--pv-on-accent);
     font-weight: 600;
+  }
+
+  .go :global(svg) {
+    width: 15px;
+    height: 15px;
   }
 
   .projects,

@@ -8,7 +8,9 @@ import {
   type WritingLanguage,
 } from "$lib/model";
 import { loadPrefs, savePrefs } from "$lib/prefs";
-import { firstChapters } from "$lib/chapters/welcome";
+import { chapterTitle, firstChapters } from "$lib/chapters/welcome";
+import { translate } from "$lib/i18n";
+import { t } from "$lib/ui.svelte";
 import type { Storage } from "./types";
 import type { Note, Task } from "./organize";
 import { readNotesWith, readTasksWith, writeNoteWith, writeTaskWith } from "./noteRows";
@@ -90,7 +92,7 @@ async function database(): Promise<Database> {
 
 async function openDatabase(): Promise<Database> {
   if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
-    throw new Error("Open the Pensieve window to save. This page cannot write the project file.");
+    throw new Error(t("errNoWindow"));
   }
   const db = await Database.load(connectionUrl());
   await db.select("PRAGMA journal_mode = WAL");
@@ -103,8 +105,8 @@ async function openDatabase(): Promise<Database> {
   if (version !== SCHEMA_VERSION) {
     throw new Error(
       version == null || Number.isNaN(version)
-        ? "The project file has no schema version"
-        : `This project uses schema version ${version}, and this app only opens version ${SCHEMA_VERSION}`,
+        ? t("errNoSchema")
+        : t("errSchemaVersion", { version: String(version), expected: String(SCHEMA_VERSION) }),
     );
   }
   return db;
@@ -270,7 +272,7 @@ async function writeProject(db: Database, project: Project): Promise<void> {
   );
 
   if (project.chapters.length === 0) {
-    throw new Error("A project needs at least one chapter");
+    throw new Error(t("errNeedsChapter"));
   }
 
   for (const chapter of project.chapters) {
@@ -402,12 +404,12 @@ function toChapter(row: ChapterRow): Chapter {
       typeof row.content_json === "string" ? JSON.parse(row.content_json) : row.content_json
     ) as DocumentJson;
     if (!parsed || typeof parsed !== "object" || parsed.type !== "doc") {
-      throw new Error("Chapter content is not a document");
+      throw new Error(t("errChapterNotDocument"));
     }
     contentJson = parsed;
   } catch (error) {
     throw new Error(
-      `Could not read “${row.title}”: ${error instanceof Error ? error.message : "invalid content"}`,
+      t("errChapterUnreadable", { title: row.title, reason: error instanceof Error ? error.message : t("errInvalidContent") }),
     );
   }
   return {
@@ -441,7 +443,7 @@ export function snapshotSavedProject(projectId: string): Promise<void> {
   return enqueue(async () => {
     const db = await database();
     const project = await readProject(db, projectId);
-    if (!project) throw new Error("The book for this note is missing");
+    if (!project) throw new Error(t("errNoteBookMissing"));
     await insertSnapshot(db, project, "manual");
   });
 }
@@ -495,7 +497,7 @@ export function restoreFromBackup(backup: {
   return enqueue(async () => {
     const db = await database();
     const current = await readProject(db);
-    if (!current) throw new Error("Open a book before restoring a backup");
+    if (!current) throw new Error(t("errOpenBookFirst"));
     await insertSnapshot(db, current, "before-restore");
     const restored = projectFromBackup(current, backup.project);
     await writeProject(db, restored);
@@ -534,15 +536,15 @@ async function readSnapshotPayload(
     [snapshotId],
   );
   const row = rows[0];
-  if (!row?.payload) throw new Error("That snapshot could not be found");
+  if (!row?.payload) throw new Error(t("errSnapshotMissing"));
+  let payload: SnapshotPayload;
   try {
-    const payload = JSON.parse(row.payload) as SnapshotPayload;
-    if (!payload.chapters?.length) throw new Error("That snapshot has no chapters");
-    return { projectId: row.project_id, payload };
-  } catch (error) {
-    if (error instanceof Error && error.message === "That snapshot has no chapters") throw error;
-    throw new Error("That snapshot is unreadable");
+    payload = JSON.parse(row.payload) as SnapshotPayload;
+  } catch {
+    throw new Error(t("errSnapshotUnreadable"));
   }
+  if (!payload.chapters?.length) throw new Error(t("errSnapshotEmpty"));
+  return { projectId: row.project_id, payload };
 }
 
 export function readSnapshotChapters(snapshotId: string): Promise<Chapter[]> {
@@ -557,9 +559,9 @@ export function restoreChapter(snapshotId: string, chapterId: string): Promise<P
     const db = await database();
     const { projectId, payload } = await readSnapshotPayload(db, snapshotId);
     const older = payload.chapters.find((chapter) => chapter.id === chapterId);
-    if (!older) throw new Error("That chapter is not in this snapshot");
+    if (!older) throw new Error(t("errChapterNotInSnapshot"));
     const current = await readProject(db, projectId);
-    if (!current) throw new Error("The project for that snapshot is missing");
+    if (!current) throw new Error(t("errSnapshotProjectMissing"));
     await insertSnapshot(db, current, "before-restore");
     const restored = withRestoredChapter(current, older);
     await writeProject(db, restored);
@@ -580,10 +582,19 @@ export function rememberPersonalWord(language: WritingLanguage, word: string): P
   });
 }
 
-/** A brand-new book file, including the one made on first launch, opens on the welcome page. */
+/**
+ * A brand-new book file, including the one made on first launch, opens on the welcome page.
+ * It starts in the interface language: someone using Pensieve in Slovenian likely writes in it too.
+ */
 function newBook(): Project {
+  const language = loadPrefs().uiLanguage;
   const project = createProject();
-  return { ...project, chapters: firstChapters(project.id, project.kind, project.title) };
+  return {
+    ...project,
+    title: translate(language, "untitled"),
+    language,
+    chapters: firstChapters(project.id, project.kind, project.title, language),
+  };
 }
 
 export const sqliteStorage: Storage = {
@@ -605,7 +616,7 @@ export const sqliteStorage: Storage = {
           {
             id: crypto.randomUUID(),
             projectId: project.id,
-            title: "Chapter 1",
+            title: chapterTitle(project.kind, project.language, 1),
             position: 0,
             contentJson: { type: "doc", content: [{ type: "paragraph" }] },
             plainText: "",
@@ -655,18 +666,18 @@ export const sqliteStorage: Storage = {
         [snapshotId],
       );
       const row = rows[0];
-      if (!row?.payload) throw new Error("That snapshot could not be found");
+      if (!row?.payload) throw new Error(t("errSnapshotMissing"));
 
       let payload: SnapshotPayload;
       try {
         payload = JSON.parse(row.payload) as SnapshotPayload;
       } catch {
-        throw new Error("That snapshot is unreadable");
+        throw new Error(t("errSnapshotUnreadable"));
       }
-      if (!payload.chapters?.length) throw new Error("That snapshot has no chapters");
+      if (!payload.chapters?.length) throw new Error(t("errSnapshotEmpty"));
 
       const current = await readProject(db, row.project_id);
-      if (!current) throw new Error("The project for that snapshot is missing");
+      if (!current) throw new Error(t("errSnapshotProjectMissing"));
 
       await insertSnapshot(db, current, "before-restore");
       const restored = projectFromSnapshot(current, payload);

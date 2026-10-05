@@ -42,6 +42,7 @@ function richChapter(): DocumentJson {
         text(" line one"),
         { type: "hardBreak" },
         text("line two"),
+        { type: "footnote", attrs: { text: "A note on č, š and ž." } },
       ),
       { type: "paragraph", attrs: { textAlign: "center" }, content: [text("* *")] },
       { type: "blockquote", content: [para(text("A quoted letter."))] },
@@ -103,6 +104,7 @@ describe("Word export", () => {
     expect(xml).toContain('w:pStyle w:val="PensieveDropCap"');
     expect(xml).toContain('w:dropCap="drop"');
     expect(xml).toContain('<w:type w:val="nextPage"/>');
+    expect(xml).toContain("<w:footnoteReference");
     const numIds = new Set([...xml.matchAll(/w:numId w:val="(\d+)"/g)].map((match) => match[1]));
     expect(numIds.size).toBe(3);
   });
@@ -174,6 +176,7 @@ describe("Word import", () => {
     expect(nodes.find((node) => node.content?.[0]?.text === "indented")?.attrs?.indent).toBe(2);
     expect(nodes.find((node) => node.type === "heading")?.attrs?.level).toBe(1);
     expect(result.chapters[0].plainText).toContain("Čaša, šal, žaba.");
+    expect(all(nodes).find((node) => node.type === "footnote")?.attrs?.text).toBe("A note on č, š and ž.");
     expect(result.chapters[1].plainText).toBe("Ana climbed the stairs.");
   });
 
@@ -233,8 +236,9 @@ describe("Word import", () => {
     expect(marked(nodes, "underline")).toContain("underlined");
     expect(first.plainText).toContain("line one\nline two");
     expect(first.plainText).toContain("cell A\tcell B");
-    expect(first.plainText).toContain("A footnote about the keys.");
-    expect(marked(nodes, "superscript")).toContain("1");
+    // A Word footnote comes back as a footnote, not as a number with a list of notes.
+    expect(all(nodes).find((node) => node.type === "footnote")?.attrs?.text).toBe("A footnote about the keys.");
+    expect(first.plainText).not.toContain("A footnote about the keys.");
     expect(result.chapters[1].plainText).toBe("Čaša, šal, žaba.");
   });
 

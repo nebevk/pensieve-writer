@@ -2,6 +2,7 @@ import type { DocumentJson } from "$lib/model";
 import { createSaveQueue } from "$lib/save/queue";
 import { readNotesWith, readTasksWith, writeNoteWith, writeTaskWith } from "./noteRows";
 import { withDb } from "./sqlite";
+import { t } from "$lib/ui.svelte";
 
 export type TodoState = "todo" | "doing" | "done";
 export type NoteCategory = "ideas" | "characters" | "places" | "research";
@@ -56,7 +57,7 @@ const saves = createSaveQueue<Change>({
       else await db.execute(`DELETE FROM tasks WHERE id = $1`, [change.id]);
     }),
   onError: (error) => {
-    saveError?.(error instanceof Error ? error.message : "Could not save the notes and to-dos");
+    saveError?.(error instanceof Error ? error.message : t("notesSaveFailed"));
   },
 });
 

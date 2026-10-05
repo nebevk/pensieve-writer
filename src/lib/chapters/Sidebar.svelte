@@ -1,14 +1,15 @@
 <script lang="ts">
   import type { Chapter } from "$lib/model";
   import { compactWords, wordsFor } from "$lib/editor/counts";
-  import { t, type UiLanguage } from "$lib/i18n";
+  import type { UiKey } from "$lib/i18n";
+  import { t } from "$lib/ui.svelte";
+  import Icon from "$lib/editor/Icon.svelte";
 
   let {
     chapters,
     activeId,
     collapsed,
     hidden = false,
-    uiLanguage = "en",
     onSelect,
     onCreate,
     onRename,
@@ -22,7 +23,6 @@
     activeId: string | null;
     collapsed: boolean;
     hidden?: boolean;
-    uiLanguage?: UiLanguage;
     onSelect: (id: string) => void;
     onCreate: () => void;
     onRename: (id: string, title: string) => void;
@@ -41,6 +41,8 @@
   let draggingId = $state<string | null>(null);
   let dropTargetId = $state<string | null>(null);
   let previousActiveId = $state<string | null | undefined>(undefined);
+
+  const STATUS: Record<Chapter["status"], UiKey> = { draft: "statusDraft", revised: "statusRevised", final: "statusFinal" };
 
   const active = $derived(chapters.find((chapter) => chapter.id === activeId) ?? null);
   const rows = $derived.by(() => {
@@ -82,7 +84,7 @@
     }
     if (!editingId) return;
     const id = editingId;
-    const title = draftTitle.trim() || "Untitled";
+    const title = draftTitle.trim() || t("untitled");
     editingId = null;
     onRename(id, title);
   }
@@ -102,8 +104,8 @@
 <aside class="sidebar" inert={collapsed}>
   <div class="sidebar-inner">
     <div class="sidebar-head">
-      <h2>{t(uiLanguage, "chapters")}</h2>
-      <button type="button" onclick={onCreate}>{t(uiLanguage, "newChapter")}</button>
+      <h2>{t("chapters")}</h2>
+      <button type="button" class="add" title={t("newChapterTitle")} aria-label={t("newChapterTitle")} onclick={onCreate}><Icon name="plus" /></button>
     </div>
     <ul>
       {#each rows as row (row.chapter.id)}
@@ -128,7 +130,7 @@
             <input
               bind:this={renameInput}
               bind:value={draftTitle}
-              aria-label="Chapter title"
+              aria-label={t("chapterTitle")}
               onblur={commitRename}
               onkeydown={onRenameKeydown}
             />
@@ -147,7 +149,7 @@
             >
               <span class="num">{row.index + 1}</span>
               <span class="name">{chapter.title}</span>
-              <span class="dot" class:final={chapter.status === "final"} class:revised={chapter.status === "revised"} class:empty={!chapter.plainText.trim()} aria-label={chapter.status}></span>
+              <span class="dot" class:final={chapter.status === "final"} class:revised={chapter.status === "revised"} class:empty={!chapter.plainText.trim()} aria-label={t(STATUS[chapter.status])}></span>
               <span class="count">{compactWords(words)}{chapter.wordGoal > 0 ? `/${compactWords(chapter.wordGoal)}` : ""}</span>
             </button>
           {/if}
@@ -156,44 +158,44 @@
     </ul>
     <div class="chapter-actions">
       <label>
-        Part
+        {t("part")}
         <input
           value={active?.part ?? ""}
           disabled={!active}
-          aria-label="Part"
+          aria-label={t("part")}
           onchange={(event) => active && onPatch(active.id, { part: event.currentTarget.value })}
         />
       </label>
       <label>
-        Goal
+        {t("goal")}
         <input
           type="number"
           min="0"
           value={active?.wordGoal ?? 0}
           disabled={!active}
-          aria-label="Chapter word goal"
+          aria-label={t("chapterGoal")}
           onchange={(event) =>
             active && onPatch(active.id, { wordGoal: Number(event.currentTarget.value) || 0 })}
         />
       </label>
       <button type="button" disabled={!active} onclick={() => active && onDuplicate(active.id)}>
-        Duplicate
+        {t("duplicate")}
       </button>
-      <button type="button" disabled={!active} onclick={onHistory}>Earlier versions</button>
+      <button type="button" disabled={!active} onclick={onHistory}>{t("earlierVersions")}</button>
       <button
         type="button"
         disabled={!active || chapters.length < 2}
-        title={chapters.length < 2 ? "A project keeps at least one chapter" : "Delete this chapter"}
+        title={chapters.length < 2 ? t("keepsOneChapter") : t("deleteChapter")}
         onclick={() => (confirmDelete = true)}
       >
-        Delete
+        {t("delete")}
       </button>
     </div>
     {#if confirmDelete && active}
       <div class="confirm">
-        <p>Delete “{active.title}”?</p>
-        <button type="button" class="danger" onclick={() => onDelete(active.id)}>Delete</button>
-        <button type="button" onclick={() => (confirmDelete = false)}>Cancel</button>
+        <p>{t("deleteQuestion", { title: active.title })}</p>
+        <button type="button" class="danger" onclick={() => onDelete(active.id)}>{t("delete")}</button>
+        <button type="button" onclick={() => (confirmDelete = false)}>{t("cancel")}</button>
       </div>
     {/if}
   </div>
@@ -239,9 +241,16 @@
   }
 
   .sidebar-head button {
-    padding: 2px 6px;
+    display: grid;
+    place-items: center;
+    padding: 3px;
     color: var(--pv-accent);
     font-size: var(--pv-text-md);
+  }
+
+  .sidebar-head button :global(svg) {
+    width: 16px;
+    height: 16px;
   }
 
   .sidebar-head button:hover,

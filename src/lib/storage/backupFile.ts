@@ -1,5 +1,6 @@
 import type { Project } from "$lib/model";
 import type { Note, Task } from "./organize";
+import { t } from "$lib/ui.svelte";
 
 export type BackupFile = {
   kind: "pensieve-backup";
@@ -61,15 +62,15 @@ export function parseBackup(text: string): BackupContent {
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error("That file isn't a Pensieve backup.");
+    throw new Error(t("errNotBackup"));
   }
   const file = data as Partial<BackupFile> | null;
   const chapters = file?.project?.chapters;
   if (!file || file.kind !== "pensieve-backup" || !Array.isArray(chapters) || chapters.length === 0) {
-    throw new Error("That file isn't a Pensieve backup.");
+    throw new Error(t("errNotBackup"));
   }
   if (chapters.some((chapter) => !chapter || chapter.contentJson?.type !== "doc")) {
-    throw new Error("That backup has a chapter Pensieve can't read.");
+    throw new Error(t("errBackupChapter"));
   }
   return {
     savedAt: typeof file.savedAt === "string" ? file.savedAt : "",

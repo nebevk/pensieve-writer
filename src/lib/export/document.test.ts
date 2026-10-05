@@ -61,6 +61,23 @@ describe("Book view and text exports", () => {
     expect(plain).toContain("* * *");
   });
 
+  it("numbers footnotes and lists them after the chapter", () => {
+    const withNotes = documentToBlocks({
+      type: "doc",
+      content: [
+        para(text("The keys"), { type: "footnote", attrs: { text: "Brass, eleven of them." } }, text(" hung there.")),
+        para(text("Č"), { type: "footnote", attrs: { text: "Second note." } }),
+      ],
+    });
+    expect(blocksToHtml(withNotes)).toContain('The keys<sup class="footnote">1</sup> hung there.');
+    expect(blocksToHtml(withNotes)).toContain('<ol class="footnotes"><li>Brass, eleven of them.</li><li>Second note.</li></ol>');
+    const markdown = blocksToMarkdown(withNotes, "2-");
+    expect(markdown).toContain("The keys[^2-1] hung there.");
+    expect(markdown).toContain("[^2-1]: Brass, eleven of them.\n[^2-2]: Second note.");
+    expect(blocksToPlain(withNotes)).toContain("The keys[1] hung there.");
+    expect(blocksToPlain(withNotes)).toContain("[2] Second note.");
+  });
+
   it("leaves out pictures that aren't stored in the book or on the web", () => {
     const html = blocksToHtml(documentToBlocks({ type: "doc", content: [{ type: "image", attrs: { src: "file:///C:/secret.png" } }] }));
     expect(html).toBe("");

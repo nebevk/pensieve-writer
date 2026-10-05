@@ -1,3 +1,5 @@
+import { num } from "$lib/ui.svelte";
+
 export function countWords(text: string): number {
   const trimmed = text.trim();
   if (!trimmed) return 0;
@@ -19,7 +21,7 @@ export function compactWords(words: number): string {
   if (words < 1000) return String(words);
   const thousands = words / 1000;
   const rounded = thousands >= 10 ? Math.round(thousands) : Math.round(thousands * 10) / 10;
-  return `${rounded}k`;
+  return `${num(rounded)}k`;
 }
 
 export function formatCount(words: number, characters: number): string {

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Editor from "$lib/editor/Editor.svelte";
+  import Icon from "$lib/editor/Icon.svelte";
   import type { Chapter, DocumentJson } from "$lib/model";
   import { emptyDocument } from "$lib/model";
   import {
@@ -19,6 +20,9 @@
     type TodoState,
   } from "$lib/storage/organize";
   import { snapshotSavedProject } from "$lib/storage/sqlite";
+  import type { UiKey } from "$lib/i18n";
+  import { ago, t } from "$lib/ui.svelte";
+  import type { NoteTarget } from "$lib/editor/noteLinks";
 
   let {
     projectId,
@@ -29,6 +33,7 @@
     onSaveError,
     onShowTodos,
     createRequest = 0,
+    openRequest = null,
   }: {
     projectId: string;
     chapters: Chapter[];
@@ -38,6 +43,8 @@
     onSaveError?: (message: string) => void;
     onShowTodos?: () => void;
     createRequest?: number;
+    /** A note to open, from a link clicked in the manuscript. */
+    openRequest?: (NoteTarget & { at: number }) | null;
   } = $props();
 
   let notes = $state<Note[]>([]);
@@ -47,25 +54,20 @@
   let message = $state("");
   let confirmDelete = $state<string | null>(null);
   let seenRequest = 0;
+  let seenOpen = 0;
+  let loaded = $state(false);
 
   const orderedChapters = $derived([...chapters].sort((a, b) => a.position - b.position));
   const active = $derived(notes.find((note) => note.id === activeId) ?? null);
   const openTodos = $derived(tasks.filter((task) => task.todoState !== "done").length + notes.filter((note) => note.todoState && note.todoState !== "done").length);
   const noteTodos = $derived(active ? tasks.filter((task) => task.noteId === active.id) : []);
 
-  const groups: { id: NoteCategory; label: string }[] = [
-    { id: "characters", label: "Characters" },
-    { id: "places", label: "Places" },
-    { id: "research", label: "Research" },
-    { id: "ideas", label: "Ideas" },
+  const groups: { id: NoteCategory; key: UiKey }[] = [
+    { id: "characters", key: "groupCharacters" },
+    { id: "places", key: "groupPlaces" },
+    { id: "research", key: "groupResearch" },
+    { id: "ideas", key: "groupIdeas" },
   ];
-
-  function kindLabel(category: NoteCategory): string {
-    if (category === "characters") return "Character";
-    if (category === "places") return "Place";
-    if (category === "research") return "Research";
-    return "Note";
-  }
 
   function subtitle(note: Note): string {
     return note.tags.trim() || note.fields.find((field) => field.value.trim())?.value || "";
@@ -82,14 +84,7 @@
   }
 
   function edited(iso: string): string {
-    const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-    if (minutes < 1) return "Edited just now";
-    if (minutes < 60) return `Edited ${minutes} min ago`;
-    const hours = Math.round(minutes / 60);
-    if (hours < 24) return `Edited ${hours} h ago`;
-    const days = Math.round(hours / 24);
-    if (days === 1) return "Edited yesterday";
-    return `Edited ${days} d ago`;
+    return t("editedAgo", { ago: ago(iso) });
   }
 
   function mentions(text: string, title: string): number {
@@ -107,11 +102,23 @@
     return count;
   }
 
+  /** How many passages of a chapter are linked to the note with "Link a note". */
+  function linksTo(doc: DocumentJson, noteId: string): number {
+    let count = 0;
+    const walk = (node: { marks?: { type?: string; attrs?: { noteId?: string } }[]; content?: unknown[] }) => {
+      if (node.marks?.some((mark) => mark.type === "noteLink" && mark.attrs?.noteId === noteId)) count += 1;
+      for (const child of node.content ?? []) walk(child as typeof node);
+    };
+    walk(doc as Parameters<typeof walk>[0]);
+    return count;
+  }
+
   const appears = $derived.by(() => {
     if (!active) return [];
     return orderedChapters.flatMap((chapter, index) => {
-      const count = mentions(chapter.plainText, active.title);
-      const linked = active.chapterIds.includes(chapter.id);
+      const links = linksTo(chapter.contentJson, active.id);
+      const count = Math.max(mentions(chapter.plainText, active.title), links);
+      const linked = active.chapterIds.includes(chapter.id) || links > 0;
       if (!linked && count === 0) return [];
       return [{ id: chapter.id, label: `${index + 1} · ${chapter.title}`, count }];
     });
@@ -154,12 +161,33 @@
     }
   });
 
+  $effect(() => {
+    // Wait for the notes to load, then open the one the manuscript link points to.
+    if (!openRequest || openRequest.at === seenOpen || !loaded) return;
+    seenOpen = openRequest.at;
+    openLinked(openRequest, false);
+  });
+
+  /**
+   * Opens the note a link points to: by id when the link carries one, otherwise by title. A [[link]]
+   * in a note to a note that doesn't exist yet creates it, as in a wiki.
+   */
+  function openLinked(target: NoteTarget, createMissing: boolean) {
+    const title = target.title.trim();
+    const found =
+      (target.id ? notes.find((note) => note.id === target.id) : undefined) ??
+      notes.find((note) => note.title.trim().toLowerCase() === title.toLowerCase());
+    if (found) activeId = found.id;
+    else if (createMissing && title) void create(title);
+  }
+
   async function refresh() {
     try {
       [notes, tasks] = await Promise.all([listNotes(projectId), listTasks(projectId)]);
       if (!activeId) activeId = notes[0]?.id ?? null;
+      loaded = true;
     } catch (error) {
-      message = error instanceof Error ? error.message : "Could not load notes";
+      message = error instanceof Error ? error.message : t("notesLoadFailed");
     }
   }
 
@@ -185,12 +213,12 @@
     updateActive({ fields });
   }
 
-  async function create() {
+  async function create(title = "") {
     const now = new Date().toISOString();
     const note: Note = {
       id: crypto.randomUUID(),
       projectId,
-      title: "New note",
+      title: title || t("newNoteTitle"),
       contentJson: emptyDocument(),
       plainText: "",
       category: "characters",
@@ -206,7 +234,7 @@
     try {
       await saveNote(note);
     } catch (error) {
-      message = error instanceof Error ? error.message : "Could not create the note";
+      message = error instanceof Error ? error.message : t("noteCreateFailed");
     }
   }
 
@@ -221,7 +249,7 @@
       tasks = tasks.filter((task) => task.noteId !== id);
       if (activeId === id) activeId = notes[0]?.id ?? null;
     } catch (error) {
-      message = error instanceof Error ? error.message : "Could not delete the note";
+      message = error instanceof Error ? error.message : t("noteDeleteFailed");
     }
   }
 
@@ -245,11 +273,17 @@
     try {
       await saveTask(next);
     } catch (error) {
-      message = error instanceof Error ? error.message : "Could not update that to-do";
+      message = error instanceof Error ? error.message : t("todoUpdateFailed");
     }
   }
 
-  async function addNoteTodo(title: string) {
+  /** "3 · Grandmother's Keys" for a to-do's chapter, or nothing when it belongs to the whole book. */
+  function chapterLabel(chapterId: string): string {
+    const index = orderedChapters.findIndex((chapter) => chapter.id === chapterId);
+    return index < 0 ? "" : `${index + 1} · ${orderedChapters[index].title}`;
+  }
+
+  async function addNoteTodo(title: string, chapterId = "") {
     if (!active) return;
     const task: Task = {
       id: crypto.randomUUID(),
@@ -257,25 +291,28 @@
       title,
       todoState: "todo",
       updatedAt: new Date().toISOString(),
-      chapterId: "",
+      chapterId,
       noteId: active.id,
     };
     tasks = [task, ...tasks];
     try {
       await saveTask(task);
     } catch (error) {
-      message = error instanceof Error ? error.message : "Could not add that to-do";
+      message = error instanceof Error ? error.message : t("todoAddFailed");
     }
   }
 </script>
 
 <section class="notes" class:compact>
   <aside>
-    <div class="switch" role="tablist" aria-label="Notes or to-dos">
-      <button type="button" class="on" role="tab" aria-selected="true">Notes <span>{notes.length}</span></button>
-      <button type="button" role="tab" onclick={() => onShowTodos?.()}>To-dos <span>{openTodos}</span></button>
+    <div class="switch" role="tablist" aria-label={t("notesOrTodos")}>
+      <button type="button" class="on" role="tab" aria-selected="true">{t("notes")} <span>{notes.length}</span></button>
+      <button type="button" role="tab" onclick={() => onShowTodos?.()}>{t("todos")} <span>{openTodos}</span></button>
     </div>
-    <input class="search" placeholder="Search notes" aria-label="Search notes" bind:value={query} />
+    <label class="search">
+      <Icon name="search" />
+      <input placeholder={t("searchNotes")} aria-label={t("searchNotes")} bind:value={query} />
+    </label>
     <div class="list">
       {#each groups as group (group.id)}
         {@const items = notes
@@ -287,12 +324,12 @@
             return aHit - bHit;
           })}
         {#if items.length > 0}
-          <p class="eyebrow">{group.label}</p>
+          <p class="eyebrow">{t(group.key)}</p>
           {#each items as note (note.id)}
             <button type="button" class="row" class:active={note.id === activeId} onclick={() => (activeId = note.id)}>
               <span class="name">{note.title}</span>
               {#if focusChapterId && note.chapterIds.includes(focusChapterId)}
-                <span class="sub">This chapter</span>
+                <span class="sub">{t("thisChapter")}</span>
               {/if}
               {#if subtitle(note)}
                 <span class="sub">{subtitle(note)}</span>
@@ -302,7 +339,7 @@
         {/if}
       {/each}
     </div>
-    <button type="button" class="add" onclick={() => void create()}>+ New note</button>
+    <button type="button" class="add" onclick={() => void create()}>{t("newNoteButton")}</button>
   </aside>
 
   <div class="desk">
@@ -311,48 +348,48 @@
       <article class="card">
         <header>
           <select
-            aria-label="Kind"
+            aria-label={t("noteKind")}
             value={note.category}
             onchange={(event) =>
               updateActive({ category: (event.currentTarget as HTMLSelectElement).value as NoteCategory })}
           >
-            <option value="characters">Character</option>
-            <option value="places">Place</option>
-            <option value="research">Research</option>
-            <option value="ideas">Note</option>
+            <option value="characters">{t("kindCharacter")}</option>
+            <option value="places">{t("kindPlace")}</option>
+            <option value="research">{t("kindResearch")}</option>
+            <option value="ideas">{t("kindNote")}</option>
           </select>
           <span>{edited(note.updatedAt)}</span>
         </header>
         <input
           class="title"
-          aria-label="Note title"
+          aria-label={t("noteTitle")}
           value={note.title}
           oninput={(event) => updateActive({ title: (event.currentTarget as HTMLInputElement).value })}
         />
         <input
           class="tags"
-          aria-label="Short description"
-          placeholder="A line about this note"
+          aria-label={t("shortDescription")}
+          placeholder={t("shortDescriptionHint")}
           value={note.tags}
           oninput={(event) => updateActive({ tags: (event.currentTarget as HTMLInputElement).value })}
         />
         <div class="fields">
           {#each note.fields as field, index (index)}
             <input
-              aria-label="Field name"
+              aria-label={t("fieldName")}
               value={field.key}
-              placeholder="Age"
+              placeholder={t("fieldNameHint")}
               oninput={(event) => updateField(index, { key: (event.currentTarget as HTMLInputElement).value })}
             />
             <input
-              aria-label="Field value"
+              aria-label={t("fieldValue")}
               value={field.value}
               placeholder="34"
               oninput={(event) => updateField(index, { value: (event.currentTarget as HTMLInputElement).value })}
             />
           {/each}
           <button type="button" class="text" onclick={() => updateActive({ fields: [...note.fields, { key: "", value: "" }] })}>
-            + Add a field
+            {t("addField")}
           </button>
         </div>
         {#key note.id}
@@ -364,32 +401,54 @@
               id ? updateNote(id, { contentJson: json, plainText: text }) : updateActive({ contentJson: json, plainText: text })}
             onEditor={() => {}}
             onActivity={() => {}}
+            noteLinkBrackets
+            plain
+            onOpenNote={(target) => openLinked(target, true)}
           />
         {/key}
         <div class="todos">
-          <p class="eyebrow">To-dos</p>
+          <p class="eyebrow">{t("todos")}</p>
           {#each noteTodos as task (task.id)}
             <button type="button" class="todo" class:done={task.todoState === "done"} onclick={() => void cycleTask(task)}>
-              <span class="box" class:doing={task.todoState === "doing"} class:done={task.todoState === "done"}></span>
-              <span>{task.title}</span>
+              <span class="box" class:doing={task.todoState === "doing"} class:done={task.todoState === "done"}>
+                {#if task.todoState === "done"}
+                  <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.6 6.3 5 8.6l4.4-5" /></svg>
+                {/if}
+              </span>
+              <span class="todo-text">
+                <span>{task.title}</span>
+                {#if chapterLabel(task.chapterId)}
+                  <span class="meta">{chapterLabel(task.chapterId)}</span>
+                {/if}
+              </span>
             </button>
           {/each}
           <form
+            class="add-todo"
             onsubmit={(event) => {
               event.preventDefault();
-              const input = event.currentTarget.elements.namedItem("todo");
+              const fields = event.currentTarget.elements;
+              const input = fields.namedItem("todo");
+              const chapter = fields.namedItem("chapter");
               if (!(input instanceof HTMLInputElement)) return;
               const title = input.value.trim();
               if (!title) return;
               input.value = "";
-              void addNoteTodo(title);
+              void addNoteTodo(title, chapter instanceof HTMLSelectElement ? chapter.value : "");
             }}
           >
-            <input name="todo" placeholder="Add a to-do…" aria-label="Add a to-do" />
+            <input name="todo" placeholder={t("addTodoHint")} aria-label={t("addTodo")} />
+            <!-- A to-do written on a character can belong to one chapter, as on the design's card. -->
+            <select name="chapter" aria-label={t("chapter")} value={focusChapterId}>
+              <option value="">{t("wholeBook")}</option>
+              {#each orderedChapters as chapter, index (chapter.id)}
+                <option value={chapter.id}>{index + 1} · {chapter.title}</option>
+              {/each}
+            </select>
           </form>
         </div>
         <div class="chapters">
-          <p class="eyebrow">Linked chapters</p>
+          <p class="eyebrow">{t("linkedChapters")}</p>
           {#each orderedChapters as chapter (chapter.id)}
             <label>
               <input type="checkbox" checked={note.chapterIds.includes(chapter.id)} onchange={() => toggleChapter(chapter.id)} />
@@ -398,17 +457,17 @@
           {/each}
         </div>
         {#if confirmDelete === note.id}
-          <div class="confirm" role="alertdialog" aria-label="Delete note">
-            <p>Delete “{note.title}” and its to-dos? A snapshot is kept first, so you can restore it from Home.</p>
-            <button type="button" class="danger" onclick={() => void remove(note.id)}>Delete</button>
-            <button type="button" class="text" onclick={() => (confirmDelete = null)}>Cancel</button>
+          <div class="confirm" role="alertdialog" aria-label={t("deleteNote")}>
+            <p>{t("deleteNoteQuestion", { title: note.title })}</p>
+            <button type="button" class="danger" onclick={() => void remove(note.id)}>{t("delete")}</button>
+            <button type="button" class="text" onclick={() => (confirmDelete = null)}>{t("cancel")}</button>
           </div>
         {:else}
-          <button type="button" class="danger" onclick={() => (confirmDelete = note.id)}>Delete note</button>
+          <button type="button" class="danger" onclick={() => (confirmDelete = note.id)}>{t("deleteNote")}</button>
         {/if}
       </article>
     {:else}
-      <p class="quiet">Create a note for a character, place, or idea.</p>
+      <p class="quiet">{t("noNoteYet")}</p>
     {/if}
     {#if message}
       <p class="error" role="alert">{message}</p>
@@ -418,15 +477,15 @@
   {#if !compact && active}
     <aside class="context">
       {#if appears.length > 0}
-        <p class="eyebrow">Appears in</p>
+        <p class="eyebrow">{t("appearsIn")}</p>
         <ul>
           {#each appears as item (item.id)}
-            <li><span>{item.label}</span><span>{item.count ? `${item.count}×` : "Linked"}</span></li>
+            <li><span>{item.label}</span><span>{item.count ? `${item.count}×` : t("linked")}</span></li>
           {/each}
         </ul>
       {/if}
       {#if linkedNotes.length > 0}
-        <p class="eyebrow">Linked notes</p>
+        <p class="eyebrow">{t("linkedNotes")}</p>
         <ul>
           {#each linkedNotes as link (link.id)}
             <li>
@@ -436,7 +495,7 @@
         </ul>
       {/if}
       {#if backlinks.length > 0}
-        <p class="eyebrow">Linked from</p>
+        <p class="eyebrow">{t("linkedFrom")}</p>
         <ul>
           {#each backlinks as link (link.id)}
             <li>
@@ -445,7 +504,7 @@
           {/each}
         </ul>
       {/if}
-      <p class="hint">Write [[Note title]] in the text to link another note.</p>
+      <p class="hint">{t("linkHint")}</p>
     </aside>
   {/if}
 </section>
@@ -511,7 +570,7 @@
     opacity: 0.6;
   }
 
-  .search,
+  .search input,
   .tags,
   .fields input,
   .todos input,
@@ -522,11 +581,35 @@
   }
 
   .search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     height: 32px;
-    padding: 0 8px;
+    padding: 0 10px;
     border-radius: var(--pv-radius-xs);
     background: var(--pv-field);
+    color: var(--pv-text-faint);
+  }
+
+  .search:focus-within {
+    outline: 2px solid var(--pv-accent);
+    outline-offset: 2px;
+  }
+
+  .search :global(svg) {
+    flex: none;
+    width: 13px;
+    height: 13px;
+  }
+
+  .search input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    font: inherit;
     color: var(--pv-text);
+    outline: none;
   }
 
   .list {
@@ -708,14 +791,54 @@
   }
 
   .box.done {
+    display: grid;
+    place-items: center;
     border: 0;
     background: var(--pv-ink-success);
   }
 
-  .todos input {
-    width: 100%;
+  .box svg {
+    width: 11px;
+    height: 11px;
+    fill: none;
+    stroke: var(--pv-paper);
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .todo-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .todo .meta {
+    font-family: var(--pv-font-ui);
+    font-size: var(--pv-text-sm);
+    color: var(--pv-ink-muted);
+  }
+
+  .add-todo {
+    display: flex;
+    gap: 8px;
+    align-items: center;
     margin-top: 8px;
+  }
+
+  .todos input {
+    flex: 1;
+    min-width: 0;
     color: var(--pv-ink);
+  }
+
+  .add-todo select {
+    max-width: 11rem;
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-xs);
+    background: transparent;
+    color: var(--pv-ink-2);
+    font-size: var(--pv-text-sm);
   }
 
   .chapters {

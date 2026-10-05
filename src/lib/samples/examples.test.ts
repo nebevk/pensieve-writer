@@ -45,6 +45,13 @@ describe("example books", () => {
     expect(new Set(project.chapters.map((chapter) => chapter.part).filter(Boolean)).size).toBe(2);
     expect(new Set(notes.map((note) => note.category))).toEqual(new Set(["characters", "places", "research", "ideas"]));
     expect(new Set(tasks.map((task) => task.todoState))).toEqual(new Set(["todo", "doing", "done"]));
+    // Names in the chapters link to their notes, and some passages carry footnotes.
+    const text = JSON.stringify(project.chapters.map((chapter) => chapter.contentJson));
+    const linked = [...text.matchAll(/"noteId":"([^"]+)"/g)].map((match) => match[1]);
+    expect(linked.length).toBeGreaterThan(2);
+    for (const id of linked) expect(notes.some((note) => note.id === id)).toBe(true);
+    expect(text).toContain('"type":"footnote"');
+    expect(text).not.toContain("[[");
   });
 
   it("keeps Slovenian letters in the story collection", () => {

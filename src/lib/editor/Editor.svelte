@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/ui.svelte";
   import { onDestroy, onMount } from "svelte";
   import { Editor, type JSONContent } from "@tiptap/core";
   import StarterKit from "@tiptap/starter-kit";
@@ -6,6 +7,8 @@
   import type { DocumentJson, WritingLanguage } from "$lib/model";
   import { Highlight, ImageBlock, Indent, LinkMark, Superscript, TextColor } from "./marks";
   import { TextLanguage } from "./textLanguage";
+  import { NoteLinkMark, NoteLinks, type NoteTarget } from "./noteLinks";
+  import { Footnote } from "./footnote";
 
   let {
     docId,
@@ -18,6 +21,9 @@
     live = true,
     language = "en",
     typewriter = false,
+    noteLinkBrackets = false,
+    onOpenNote,
+    plain = false,
   }: {
     /** The chapter or note this editor opened. Every change is handed back with it. */
     docId?: string;
@@ -31,6 +37,12 @@
     live?: boolean;
     language?: WritingLanguage;
     typewriter?: boolean;
+    /** Draw [[Title]] as links, as notes do; the manuscript links with a mark instead. */
+    noteLinkBrackets?: boolean;
+    /** Opens the note a clicked link points to. */
+    onOpenNote?: (target: NoteTarget) => void;
+    /** Plain text for notes: no drop cap or first-line indents, which belong to the manuscript page. */
+    plain?: boolean;
   } = $props();
 
   let typewriterOn = false;
@@ -45,6 +57,7 @@
   let editor = $state<Editor | null>(null);
   let publish: (json: DocumentJson, text: string, docId?: string) => void = () => {};
   let notify = () => {};
+  let openNote: ((target: NoteTarget) => void) | undefined;
 
   $effect(() => {
     publish = onChange;
@@ -54,6 +67,7 @@
     liveOn = live;
     reportText = onText;
     markEdited = onEdit;
+    openNote = onOpenNote;
     if (editor && !editor.isDestroyed) editor.view.dom.setAttribute("lang", lang);
   });
 
@@ -76,6 +90,9 @@
         LinkMark,
         ImageBlock,
         Indent,
+        NoteLinkMark,
+        Footnote,
+        NoteLinks.configure({ brackets: noteLinkBrackets, onOpen: (target) => openNote?.(target) }),
       ],
       content: initialContent as JSONContent,
       autofocus: "end",
@@ -83,7 +100,7 @@
         attributes: {
           spellcheck: "true",
           lang: language === "sl" ? "sl" : "en",
-          "aria-label": "Chapter text",
+          "aria-label": t("chapterText"),
         },
       },
       onUpdate: ({ editor: current }) => {
@@ -116,7 +133,7 @@
   });
 </script>
 
-<div class="editor-host" bind:this={host}></div>
+<div class="editor-host" class:plain bind:this={host}></div>
 
 <style>
   .editor-host {
@@ -144,6 +161,19 @@
     line-height: 0.8;
     padding: 0.08em 0.08em 0 0;
     color: var(--pv-ink-accent);
+  }
+
+  .editor-host.plain :global(.ProseMirror > p:first-child::first-letter) {
+    float: none;
+    font-size: inherit;
+    line-height: inherit;
+    padding: 0;
+    color: inherit;
+  }
+
+  .editor-host.plain :global(.ProseMirror p + p) {
+    text-indent: 0;
+    margin-top: 0.6em;
   }
 
   .editor-host :global(.ProseMirror p + p) {
@@ -184,6 +214,42 @@
   .editor-host :global(.ProseMirror img) {
     max-width: 100%;
     height: auto;
+  }
+
+  /* Footnotes number themselves in page order. */
+  .editor-host :global(.ProseMirror) {
+    counter-reset: footnote;
+  }
+
+  .editor-host :global(sup.footnote) {
+    color: var(--pv-ink-accent);
+    font-family: var(--pv-font-ui);
+    font-size: 0.7em;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0 1px;
+  }
+
+  .editor-host :global(sup.footnote::after) {
+    counter-increment: footnote;
+    content: counter(footnote);
+  }
+
+  .editor-host :global(sup.footnote.ProseMirror-selectednode) {
+    outline: 1px solid var(--pv-ink-accent);
+    border-radius: 2px;
+  }
+
+  .editor-host :global(.note-link) {
+    color: var(--pv-ink-accent);
+    text-decoration: underline;
+    text-decoration-color: var(--pv-ink-link-underline);
+    text-underline-offset: 2px;
+    cursor: pointer;
+  }
+
+  .editor-host :global(.note-link-bracket) {
+    opacity: 0.35;
   }
 
   .editor-host :global(.ProseMirror a) {

@@ -2,6 +2,7 @@ import type { DocumentJson, Project } from "$lib/model";
 import type { ManuscriptFont, Prefs } from "$lib/prefs";
 // Types only: the writer and its docx library load on the first export, not at startup.
 import type { FontFace, WordFont, WordImage, WordLook } from "./word";
+import { t } from "$lib/ui.svelte";
 
 /** Browser-side preparation for Word files: the manuscript font's static styles and measured pictures. */
 
@@ -38,7 +39,7 @@ async function fontsFor(font: ManuscriptFont): Promise<WordFont[]> {
     fonts = Promise.all(
       FACES.map(async ([face, suffix]) => {
         const response = await fetch(`/fonts/word/${family.file}-${suffix}.ttf`);
-        if (!response.ok) throw new Error(`The ${family.name} font file is missing`);
+        if (!response.ok) throw new Error(t("errFontMissing", { font: family.name }));
         return { family: family.name, face, data: new Uint8Array(await response.arrayBuffer()) };
       }),
     );

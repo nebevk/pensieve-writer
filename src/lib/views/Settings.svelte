@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { ManuscriptFont, PageWidth, Prefs, ThemeName } from "$lib/prefs";
   import type { WritingLanguage } from "$lib/model";
-  import { t, type UiKey } from "$lib/i18n";
+  import type { UiKey } from "$lib/i18n";
+  import { ago, plural, t } from "$lib/ui.svelte";
+  import Icon from "$lib/editor/Icon.svelte";
 
   let {
     prefs,
@@ -71,16 +73,6 @@
     onClose: () => void;
   } = $props();
 
-  function ago(iso: string): string {
-    const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-    if (Number.isNaN(minutes)) return "";
-    if (minutes < 1) return "just now";
-    if (minutes < 60) return `${minutes} min ago`;
-    const hours = Math.round(minutes / 60);
-    if (hours < 24) return `${hours} h ago`;
-    return new Date(iso).toLocaleDateString();
-  }
-
   type Section = "General" | "Writing & goals" | "Appearance" | "Ambience" | "Backup & export" | "Language" | "Shortcuts";
 
   const sections: { id: Section; key: UiKey }[] = [
@@ -93,11 +85,11 @@
     { id: "Shortcuts", key: "shortcuts" },
   ];
 
-  const themes: { id: ThemeName; label: string }[] = [
-    { id: "daylight", label: "Daylight" },
-    { id: "candlelit", label: "Candlelit" },
-    { id: "moonlit", label: "Moonlit" },
-    { id: "sunset", label: "Follow sunset" },
+  const themes: { id: ThemeName; key: UiKey }[] = [
+    { id: "daylight", key: "themeDaylight" },
+    { id: "candlelit", key: "themeCandlelit" },
+    { id: "moonlit", key: "themeMoonlit" },
+    { id: "sunset", key: "themeSunset" },
   ];
 
   const fonts: { id: ManuscriptFont; label: string; family: string; size: number }[] = [
@@ -109,9 +101,9 @@
   const widths: PageWidth[] = ["narrow", "book", "wide"];
 
   function widthLabel(width: PageWidth): string {
-    if (width === "narrow") return "Narrow";
-    if (width === "wide") return "Wide";
-    return "Book";
+    if (width === "narrow") return t("widthNarrow");
+    if (width === "wide") return t("widthWide");
+    return t("widthBook");
   }
 
   let section = $state<Section>("Appearance");
@@ -158,13 +150,13 @@
     onkeydown={trap}
   >
     <header>
-      <span id="settings-title">Settings</span>
-      <button type="button" class="close" title="Close" aria-label="Close" onclick={onClose}>×</button>
+      <span id="settings-title">{t("settings")}</span>
+      <button type="button" class="close" title={t("close")} aria-label={t("close")} onclick={onClose}><Icon name="x" /></button>
     </header>
     <div class="body">
       <nav>
         {#each sections as item (item.id)}
-          <button type="button" class:active={section === item.id} onclick={() => (section = item.id)}>{t(prefs.uiLanguage, item.key)}</button>
+          <button type="button" class:active={section === item.id} onclick={() => (section = item.id)}>{t(item.key)}</button>
         {/each}
         <span class="blob one" aria-hidden="true"></span>
         <span class="blob two" aria-hidden="true"></span>
@@ -172,8 +164,8 @@
 
       <div class="pane">
         {#if section === "Appearance"}
-          <h2>Appearance</h2>
-          <p class="lab">Theme</p>
+          <h2>{t("appearance")}</h2>
+          <p class="lab">{t("theme")}</p>
           <div class="swatches">
             {#each themes as theme (theme.id)}
               <button
@@ -190,12 +182,12 @@
                     <span class="mini" data-theme={theme.id}></span>
                   {/if}
                 </span>
-                <span class:chosen={prefs.theme === theme.id}>{theme.label}</span>
+                <span class:chosen={prefs.theme === theme.id}>{t(theme.key)}</span>
               </button>
             {/each}
           </div>
 
-          <p class="lab">Manuscript font</p>
+          <p class="lab">{t("manuscriptFont")}</p>
           <div class="fonts">
             {#each fonts as font (font.id)}
               <button
@@ -206,14 +198,14 @@
                 onclick={() => onChange({ manuscriptFont: font.id })}
               >
                 <span style:font-family={font.family} style:font-size="{font.size}px">Aa</span>
-                <span class="font-name">{font.label}</span>
+                <span class="font-name">{font.id === "typewriter" ? t("fontTypewriter") : font.label}</span>
               </button>
             {/each}
           </div>
 
           <div class="split">
             <label class="slider">
-              <span>Text size <b>{prefs.manuscriptSize} px</b></span>
+              <span>{t("textSize")} <b>{prefs.manuscriptSize} px</b></span>
               <input
                 type="range"
                 min="13"
@@ -226,8 +218,8 @@
               />
             </label>
             <div>
-              <p class="lab">Page width</p>
-              <div class="segment" role="radiogroup" aria-label="Page width">
+              <p class="lab">{t("pageWidth")}</p>
+              <div class="segment" role="radiogroup" aria-label={t("pageWidth")}>
                 {#each widths as width (width)}
                   <button
                     type="button"
@@ -245,54 +237,51 @@
 
           <div class="rows">
             <div class="row">
-              <span>Paper grain</span>
-              <button type="button" class="toggle" class:on={prefs.grain} role="switch" aria-checked={prefs.grain} aria-label="Paper grain" onclick={() => onChange({ grain: !prefs.grain })}>
+              <span>{t("paperGrain")}</span>
+              <button type="button" class="toggle" class:on={prefs.grain} role="switch" aria-checked={prefs.grain} aria-label={t("paperGrain")} onclick={() => onChange({ grain: !prefs.grain })}>
                 <span></span>
               </button>
             </div>
             <div class="row">
-              <span>Running head and page numbers</span>
-              <button type="button" class="toggle" class:on={prefs.runningHead} role="switch" aria-checked={prefs.runningHead} aria-label="Running head" onclick={() => onChange({ runningHead: !prefs.runningHead })}>
+              <span>{t("runningHeadRow")}</span>
+              <button type="button" class="toggle" class:on={prefs.runningHead} role="switch" aria-checked={prefs.runningHead} aria-label={t("runningHead")} onclick={() => onChange({ runningHead: !prefs.runningHead })}>
                 <span></span>
               </button>
             </div>
             <div class="row last">
-              <span>Typewriter scrolling <em>· keeps the current line centred</em></span>
-              <button type="button" class="toggle" class:on={prefs.typewriter} role="switch" aria-checked={prefs.typewriter} aria-label="Typewriter scrolling" onclick={() => onChange({ typewriter: !prefs.typewriter })}>
+              <span>{t("typewriterScrolling")} <em>· {t("typewriterScrollingNote")}</em></span>
+              <button type="button" class="toggle" class:on={prefs.typewriter} role="switch" aria-checked={prefs.typewriter} aria-label={t("typewriterScrolling")} onclick={() => onChange({ typewriter: !prefs.typewriter })}>
                 <span></span>
               </button>
             </div>
           </div>
         {:else if section === "General"}
-          <h2>General</h2>
+          <h2>{t("general")}</h2>
           <div class="rows">
             <div class="row last">
-              <span>Gentle mode <em>· turns off particles and keeps motion quiet</em></span>
-              <button type="button" class="toggle" class:on={prefs.gentle} role="switch" aria-checked={prefs.gentle} aria-label="Gentle mode" onclick={() => onChange({ gentle: !prefs.gentle })}>
+              <span>{t("gentleMode")} <em>· {t("gentleModeNote")}</em></span>
+              <button type="button" class="toggle" class:on={prefs.gentle} role="switch" aria-checked={prefs.gentle} aria-label={t("gentleMode")} onclick={() => onChange({ gentle: !prefs.gentle })}>
                 <span></span>
               </button>
             </div>
           </div>
-          <p class="lab">Interface language</p>
-          <div class="segment" role="radiogroup" aria-label="Interface language">
+          <p class="lab">{t("interfaceLanguage")}</p>
+          <div class="segment" role="radiogroup" aria-label={t("interfaceLanguage")}>
             <button type="button" class:on={prefs.uiLanguage === "en"} onclick={() => onChange({ uiLanguage: "en" })}>English</button>
             <button type="button" class:on={prefs.uiLanguage === "sl"} onclick={() => onChange({ uiLanguage: "sl" })}>Slovenščina</button>
           </div>
-          <p class="lab">Example books</p>
-          <p class="hint">
-            A novel, a short-story collection in Slovenian and an article, with notes and to-dos, to see how
-            Pensieve fills up. They're saved as separate books, so your own books stay as they are.
-          </p>
+          <p class="lab">{t("exampleBooks")}</p>
+          <p class="hint">{t("exampleBooksHint")}</p>
           <div class="actions">
-            <button type="button" onclick={onAddExamples}>Add example books</button>
+            <button type="button" onclick={onAddExamples}>{t("addExampleBooks")}</button>
           </div>
           {#if backupMessage}
             <p class="hint">{backupMessage}</p>
           {/if}
         {:else if section === "Writing & goals"}
-          <h2>Writing & goals</h2>
+          <h2>{t("goals")}</h2>
           <label class="field">
-            Daily word goal
+            {t("dailyGoal")}
             <input
               type="number"
               min="0"
@@ -301,25 +290,25 @@
                 onChange({ dailyGoal: Number((event.currentTarget as HTMLInputElement).value) || 0 })}
             />
           </label>
-          <p class="hint">Shown on Home beside the words already in the book. Leave it at 0 to hide the goal.</p>
+          <p class="hint">{t("dailyGoalHint")}</p>
         {:else if section === "Ambience"}
-          <h2>Ambience</h2>
+          <h2>{t("ambience")}</h2>
           <label class="field">
-            Sound
+            {t("sound")}
             <select
               value={prefs.ambience}
               onchange={(event) =>
                 onChange({ ambience: (event.currentTarget as HTMLSelectElement).value as Prefs["ambience"] })}
             >
-              <option value="off">Off</option>
-              <option value="rain">Rain</option>
-              <option value="fire">Fireplace</option>
-              <option value="cafe">Café</option>
-              <option value="piano">Piano</option>
+              <option value="off">{t("soundOff")}</option>
+              <option value="rain">{t("soundRain")}</option>
+              <option value="fire">{t("soundFireplace")}</option>
+              <option value="cafe">{t("soundCafe")}</option>
+              <option value="piano">{t("soundPiano")}</option>
             </select>
           </label>
           <label class="slider">
-            <span>Volume <b>{Math.round(prefs.ambienceVolume * 100)}</b></span>
+            <span>{t("volume")} <b>{Math.round(prefs.ambienceVolume * 100)}</b></span>
             <input
               type="range"
               min="0"
@@ -332,18 +321,18 @@
             />
           </label>
         {:else if section === "Backup & export"}
-          <h2>Backup & export</h2>
-          <p class="hint">The live manuscript stays on this computer. Snapshots are the files that can sit in Google Drive.</p>
-          <p class="path">{projectLocation || "App folder"}</p>
+          <h2>{t("backup")}</h2>
+          <p class="hint">{t("backupHint")}</p>
+          <p class="path">{projectLocation || t("appFolder")}</p>
           <div class="actions">
-            <button type="button" onclick={onMoveProject}>Move project…</button>
-            <button type="button" onclick={onExport}>Export Word…</button>
-            <button type="button" onclick={() => onExportText("markdown")}>Markdown…</button>
-            <button type="button" onclick={() => onExportText("plain")}>Plain text…</button>
-            <button type="button" onclick={onCopyHtml}>Copy HTML</button>
-            <button type="button" onclick={onPrint}>Print / PDF</button>
+            <button type="button" onclick={onMoveProject}>{t("moveProject")}</button>
+            <button type="button" onclick={onExport}>{t("exportWord")}</button>
+            <button type="button" onclick={() => onExportText("markdown")}>{t("exportMarkdown")}</button>
+            <button type="button" onclick={() => onExportText("plain")}>{t("exportPlain")}</button>
+            <button type="button" onclick={onCopyHtml}>{t("copyHtml")}</button>
+            <button type="button" onclick={onPrint}>{t("printPdf")}</button>
             <label class="file">
-              Import Word
+              {t("importWord")}
               <input
                 type="file"
                 accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -357,69 +346,64 @@
           </div>
           {#if importPreview}
             {@const words = importPreview.chapters.reduce((sum, chapter) => sum + chapter.words, 0)}
-            <div class="offer" role="alertdialog" aria-label="Import a Word file">
+            <div class="offer" role="alertdialog" aria-label={t("importWordLabel")}>
               <p>
-                “{importPreview.fileName}” has {importPreview.chapters.length}
-                {importPreview.chapters.length === 1 ? "chapter" : "chapters"} and {words.toLocaleString()} words:
+                {t("importSummary", {
+                  file: importPreview.fileName,
+                  chapters: plural("chapters", importPreview.chapters.length),
+                  words: plural("words", words),
+                })}
               </p>
               <ol class="found">
                 {#each importPreview.chapters.slice(0, 12) as chapter, index (index)}
-                  <li>{chapter.title} <span>· {chapter.words.toLocaleString()} words</span></li>
+                  <li>{chapter.title} <span>· {plural("words", chapter.words)}</span></li>
                 {/each}
               </ol>
               {#if importPreview.chapters.length > 12}
-                <p class="hint">…and {importPreview.chapters.length - 12} more.</p>
+                <p class="hint">{t("andMore", { n: importPreview.chapters.length - 12 })}</p>
               {/if}
-              <p class="hint">
-                Replacing keeps a snapshot first. Chapters with the same title keep their notes, status and goal.
-              </p>
+              <p class="hint">{t("importHint")}</p>
               <div class="actions">
-                <button type="button" onclick={() => onConfirmImport("replace")}>Replace this book's chapters</button>
-                <button type="button" onclick={() => onConfirmImport("append")}>Add as new chapters</button>
-                <button type="button" onclick={onCancelImport}>Cancel</button>
+                <button type="button" onclick={() => onConfirmImport("replace")}>{t("replaceChapters")}</button>
+                <button type="button" onclick={() => onConfirmImport("append")}>{t("addAsNewChapters")}</button>
+                <button type="button" onclick={onCancelImport}>{t("cancel")}</button>
               </div>
             </div>
           {/if}
-          <p class="lab">Word copy</p>
-          <p class="hint">
-            Pensieve keeps “{bookTitle || "Untitled"}.docx” in this folder up to date whenever you leave the window,
-            switch books or close the app. It's a copy to open in Word; bring changes made there back with Import Word.
-          </p>
-          <p class="path">{prefs.wordCopyFolder || "No folder chosen, so there's no Word copy yet."}</p>
+          <p class="lab">{t("wordCopy")}</p>
+          <p class="hint">{t("wordCopyHint", { file: bookTitle || t("untitled") })}</p>
+          <p class="path">{prefs.wordCopyFolder || t("noWordCopyFolder")}</p>
           <div class="actions">
-            <button type="button" onclick={onChooseWordFolder}>Choose folder…</button>
-            <button type="button" onclick={onUpdateWordCopy} disabled={!prefs.wordCopyFolder}>Update now</button>
+            <button type="button" onclick={onChooseWordFolder}>{t("chooseFolderEllipsis")}</button>
+            <button type="button" onclick={onUpdateWordCopy} disabled={!prefs.wordCopyFolder}>{t("updateNow")}</button>
             {#if prefs.wordCopyFolder}
-              <button type="button" onclick={onStopWordCopy}>Stop</button>
+              <button type="button" onclick={onStopWordCopy}>{t("stop")}</button>
             {/if}
           </div>
           {#if prefs.wordCopyFolder && prefs.wordCopyError}
             <p class="hint problem" role="alert">{prefs.wordCopyError}</p>
           {:else if prefs.wordCopyFolder && prefs.wordCopyAt}
-            <p class="hint">Updated {ago(prefs.wordCopyAt)}.</p>
+            <p class="hint">{t("updatedAgo", { ago: ago(prefs.wordCopyAt) })}</p>
           {/if}
-          <p class="lab">Backups</p>
-          <p class="path">{prefs.backupFolder || "No backup folder chosen"}</p>
+          <p class="lab">{t("backups")}</p>
+          <p class="path">{prefs.backupFolder || t("noBackupFolder")}</p>
           <div class="actions">
-            <button type="button" onclick={onChooseFolder}>Choose folder</button>
-            <button type="button" onclick={onBackup} disabled={!prefs.backupFolder}>Back up now</button>
-            <button type="button" onclick={onPickBackup}>Restore from a backup…</button>
+            <button type="button" onclick={onChooseFolder}>{t("chooseFolder")}</button>
+            <button type="button" onclick={onBackup} disabled={!prefs.backupFolder}>{t("backUpNow")}</button>
+            <button type="button" onclick={onPickBackup}>{t("restoreFromBackup")}</button>
           </div>
           {#if backupOffer}
-            <div class="offer" role="alertdialog" aria-label="Restore from a backup">
+            <div class="offer" role="alertdialog" aria-label={t("restoreFromBackupLabel")}>
               <p>
-                Restore “{backupOffer.title}” from the backup saved {backupOffer.savedAt}?
+                {t("restoreQuestion", { title: backupOffer.title, date: backupOffer.savedAt })}
                 {#if backupOffer.otherBook}
-                  This backup is of a different book than the one open now.
+                  {t("otherBookBackup")}
                 {/if}
               </p>
-              <p class="hint">
-                The open book's chapters are replaced by the backup's, and notes or to-dos it no longer has come back.
-                A “Before restore” snapshot of the open book is kept first.
-              </p>
+              <p class="hint">{t("restoreHint")}</p>
               <div class="actions">
-                <button type="button" onclick={onRestoreBackup}>Restore</button>
-                <button type="button" onclick={onCancelBackup}>Cancel</button>
+                <button type="button" onclick={onRestoreBackup}>{t("restore")}</button>
+                <button type="button" onclick={onCancelBackup}>{t("cancel")}</button>
               </div>
             </div>
           {/if}
@@ -427,14 +411,14 @@
             <p class="hint">{backupMessage}</p>
           {/if}
         {:else if section === "Language"}
-          <h2>Language</h2>
-          <p class="lab">Project language</p>
-          <div class="segment" role="radiogroup" aria-label="Project language">
-            <button type="button" class:on={projectLanguage === "en"} onclick={() => onProjectLanguage("en")}>English</button>
-            <button type="button" class:on={projectLanguage === "sl"} onclick={() => onProjectLanguage("sl")}>Slovenian</button>
+          <h2>{t("language")}</h2>
+          <p class="lab">{t("projectLanguage")}</p>
+          <div class="segment" role="radiogroup" aria-label={t("projectLanguage")}>
+            <button type="button" class:on={projectLanguage === "en"} onclick={() => onProjectLanguage("en")}>{t("english")}</button>
+            <button type="button" class:on={projectLanguage === "sl"} onclick={() => onProjectLanguage("sl")}>{t("slovenian")}</button>
           </div>
-          <p class="hint">Chapters can override this from the toolbar. A selection can too.</p>
-          <p class="lab">Personal dictionary</p>
+          <p class="hint">{t("projectLanguageHint")}</p>
+          <p class="lab">{t("personalDictionary")}</p>
           <form
             class="actions"
             onsubmit={(event) => {
@@ -443,34 +427,34 @@
               dictionaryDraft = "";
             }}
           >
-            <select bind:value={dictionaryLanguage} aria-label="Dictionary language">
-              <option value="en">English</option>
-              <option value="sl">Slovenian</option>
+            <select bind:value={dictionaryLanguage} aria-label={t("dictionaryLanguage")}>
+              <option value="en">{t("english")}</option>
+              <option value="sl">{t("slovenian")}</option>
             </select>
-            <input bind:value={dictionaryDraft} aria-label="Word to keep" placeholder="Add a word" />
-            <button type="submit">Add</button>
+            <input bind:value={dictionaryDraft} aria-label={t("wordToKeep")} placeholder={t("addAWord")} />
+            <button type="submit">{t("add")}</button>
           </form>
           <ul>
             {#each dictionary as entry (`${entry.language}:${entry.word}`)}
               <li>
-                {entry.language === "sl" ? "Slovenian" : "English"} · {entry.word}
-                <button type="button" onclick={() => onRemoveWord(entry.language, entry.word)}>Remove</button>
+                {entry.language === "sl" ? t("slovenian") : t("english")} · {entry.word}
+                <button type="button" onclick={() => onRemoveWord(entry.language, entry.word)}>{t("remove")}</button>
               </li>
             {/each}
           </ul>
-          <p class="hint">Removing a word forgets it in Pensieve and in the Windows spell checker.</p>
+          <p class="hint">{t("dictionaryHint")}</p>
         {:else if section === "Shortcuts"}
-          <h2>Shortcuts</h2>
+          <h2>{t("shortcuts")}</h2>
           <ul class="keys">
-            <li><kbd>Ctrl</kbd> + <kbd>B</kbd> Bold</li>
-            <li><kbd>Ctrl</kbd> + <kbd>I</kbd> Italic</li>
-            <li><kbd>Ctrl</kbd> + <kbd>U</kbd> Underline</li>
-            <li><kbd>Ctrl</kbd> + <kbd>Z</kbd> Undo</li>
-            <li><kbd>Ctrl</kbd> + <kbd>Y</kbd> Redo</li>
-            <li><kbd>Ctrl</kbd> + <kbd>S</kbd> Save</li>
-            <li><kbd>Ctrl</kbd> + <kbd>F</kbd> Find</li>
-            <li><kbd>Ctrl</kbd> + <kbd>/</kbd> This list</li>
-            <li><kbd>Esc</kbd> Close settings, find, or Zen</li>
+            <li><kbd>Ctrl</kbd> + <kbd>B</kbd> {t("bold")}</li>
+            <li><kbd>Ctrl</kbd> + <kbd>I</kbd> {t("italic")}</li>
+            <li><kbd>Ctrl</kbd> + <kbd>U</kbd> {t("underline")}</li>
+            <li><kbd>Ctrl</kbd> + <kbd>Z</kbd> {t("undo")}</li>
+            <li><kbd>Ctrl</kbd> + <kbd>Y</kbd> {t("redo")}</li>
+            <li><kbd>Ctrl</kbd> + <kbd>S</kbd> {t("save")}</li>
+            <li><kbd>Ctrl</kbd> + <kbd>F</kbd> {t("find")}</li>
+            <li><kbd>Ctrl</kbd> + <kbd>/</kbd> {t("shortcutThisList")}</li>
+            <li><kbd>Esc</kbd> {t("shortcutEscape")}</li>
           </ul>
         {/if}
       </div>
@@ -515,13 +499,18 @@
   }
 
   .close {
+    display: grid;
+    place-items: center;
     border: 0;
     background: transparent;
     color: var(--pv-text-subtle);
     border-radius: var(--pv-radius-xs);
-    font-size: 18px;
-    line-height: 1;
-    padding: 2px 6px;
+    padding: 4px;
+  }
+
+  .close :global(svg) {
+    width: 15px;
+    height: 15px;
   }
 
   .close:hover,
@@ -904,9 +893,29 @@
     padding: 0 12px;
   }
 
+  .file {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+  }
+
+  .file:hover {
+    background: var(--pv-selected);
+  }
+
+  .file:focus-within {
+    outline: 2px solid var(--pv-accent);
+    outline-offset: 2px;
+  }
+
+  /* The label is the button; the browser's own file control stays reachable but out of sight. */
   .file input {
-    display: block;
-    margin-top: 4px;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    overflow: hidden;
   }
 
   ul {

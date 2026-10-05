@@ -4,6 +4,7 @@ import {
   Document,
   DropCapType,
   ExternalHyperlink,
+  FootnoteReferenceRun,
   FrameAnchorType,
   FrameWrap,
   Header,
@@ -136,6 +137,8 @@ type Context = {
   /** The chapter's language when it differs from the book's; the book's is the document default. */
   language?: { value: string };
   lists: { next: number };
+  /** Word's footnotes for the whole book, numbered across chapters. */
+  footnotes: { next: number; items: Record<string, { children: Paragraph[] }> };
 };
 
 type RunOptions = Exclude<ConstructorParameters<typeof TextRun>[0], string>;
@@ -193,6 +196,13 @@ function inlines(nodes: JsonNode[] | undefined, ctx: Context): Inline[] {
     } else if (node.type === "hardBreak") {
       closeLink();
       out.push(new TextRun({ text: "", break: 1, language: ctx.language }));
+    } else if (node.type === "footnote") {
+      closeLink();
+      const id = ctx.footnotes.next;
+      ctx.footnotes.next += 1;
+      const text = String(node.attrs?.text ?? "");
+      ctx.footnotes.items[id] = { children: [new Paragraph({ children: [new TextRun({ text, language: ctx.language })] })] };
+      out.push(new FootnoteReferenceRun(id));
     } else {
       closeLink();
       out.push(...inlines(node.content, ctx));
@@ -390,11 +400,13 @@ export function buildWordDocument(book: WordBook, look: WordLook, assets: WordAs
     margin: { top: 1440, bottom: 1440, left: m.side, right: m.side, header: 720, footer: 720 },
   };
   const lists = { next: 0 };
+  const footnotes: Context["footnotes"] = { next: 1, items: {} };
   const chapters = [...book.chapters].sort((a, b) => a.position - b.position);
   const contextFor = (chapter: WordBook["chapters"][number]): Context => ({
     m,
     assets,
     lists,
+    footnotes,
     language:
       chapter.language && chapter.language !== book.language ? { value: languageTag(chapter.language) } : undefined,
   });
@@ -448,6 +460,7 @@ export function buildWordDocument(book: WordBook, look: WordLook, assets: WordAs
 
   return new Document({
     title: book.title,
+    footnotes: footnotes.items,
     // Each style gets its own part with a space-free name; fontTable() then joins them into one family.
     fonts: assets.fonts?.map((entry) => ({ name: fontPartName(entry), data: entry.data as unknown as Buffer })),
     styles: {

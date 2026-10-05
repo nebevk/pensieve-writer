@@ -14,7 +14,10 @@ type ExampleChapter = {
   synopsis: string;
   part?: string;
   wordGoal?: number;
-  /** Lines of text: "## " heading, "> " quote, "* *" scene break, *italic* and **bold** inline. */
+  /**
+   * Lines of text: "## " heading, "> " quote, "* *" scene break, *italic* and **bold** inline,
+   * [[Note title|words]] for words linked to a note, and ^[text] for a footnote.
+   */
   lines: string[];
 };
 
@@ -41,13 +44,25 @@ export type ExampleBook = {
   tasks: ExampleTask[];
 };
 
-type JsonNode = { type: string; text?: string; marks?: { type: string }[]; attrs?: Record<string, unknown>; content?: JsonNode[] };
+type JsonMark = { type: string; attrs?: Record<string, unknown> };
+type JsonNode = { type: string; text?: string; marks?: JsonMark[]; attrs?: Record<string, unknown>; content?: JsonNode[] };
 
-function inline(text: string): JsonNode[] {
+/** Finds a note's id by its title, to link manuscript words to it. */
+type NoteLookup = (title: string) => string | undefined;
+
+function inline(text: string, notes?: NoteLookup): JsonNode[] {
   return text
-    .split(/(\*\*[^*]+\*\*|\*[^*\s][^*]*\*)/)
+    .split(/(\*\*[^*]+\*\*|\*[^*\s][^*]*\*|\[\[[^\]]+\]\]|\^\[[^\]]+\])/)
     .filter(Boolean)
-    .map((part) => {
+    .map((part): JsonNode => {
+      if (part.startsWith("^[") && part.endsWith("]")) return { type: "footnote", attrs: { text: part.slice(2, -1) } };
+      // In chapters, [[Title|words]] links the words to a note; notes keep [[Title]] as written.
+      if (notes && part.startsWith("[[") && part.endsWith("]]")) {
+        const [title, words = title] = part.slice(2, -2).split("|");
+        const noteId = notes(title);
+        if (noteId) return { type: "text", text: words, marks: [{ type: "noteLink", attrs: { noteId, title } }] };
+        return { type: "text", text: words };
+      }
       if (part.startsWith("**") && part.endsWith("**")) return { type: "text", text: part.slice(2, -2), marks: [{ type: "bold" }] };
       if (part.length > 2 && part.startsWith("*") && part.endsWith("*")) {
         return { type: "text", text: part.slice(1, -1), marks: [{ type: "italic" }] };
@@ -56,21 +71,21 @@ function inline(text: string): JsonNode[] {
     });
 }
 
-/** Turns readable lines into an editor document. */
-export function prose(lines: string[]): DocumentJson {
+/** Turns readable lines into an editor document; with `notes`, [[links]] become links to them. */
+export function prose(lines: string[], notes?: NoteLookup): DocumentJson {
   const content: JsonNode[] = [];
   for (const line of lines) {
     if (line === "* *" || line === "* * *") {
       content.push({ type: "paragraph", attrs: { textAlign: "center" }, content: [{ type: "text", text: "* *" }] });
     } else if (line.startsWith("## ")) {
-      content.push({ type: "heading", attrs: { level: 1 }, content: inline(line.slice(3)) });
+      content.push({ type: "heading", attrs: { level: 1 }, content: inline(line.slice(3), notes) });
     } else if (line.startsWith("> ")) {
       const last = content[content.length - 1];
-      const paragraph = { type: "paragraph", content: inline(line.slice(2)) };
+      const paragraph = { type: "paragraph", content: inline(line.slice(2), notes) };
       if (last?.type === "blockquote") last.content?.push(paragraph);
       else content.push({ type: "blockquote", content: [paragraph] });
     } else {
-      content.push({ type: "paragraph", content: inline(line) });
+      content.push({ type: "paragraph", content: inline(line, notes) });
     }
   }
   return content.length > 0 ? { type: "doc", content } : { type: "doc", content: [{ type: "paragraph" }] };
@@ -98,10 +113,10 @@ export const EXAMPLE_BOOKS: ExampleBook[] = [
         synopsis: "A letter from a notary calls Ana home after twelve years.",
         lines: [
           "The letter came on a Tuesday, in an envelope the colour of weak tea. Ana knew the handwriting before she knew the name on it, and for a long moment she did not open it at all.",
-          "It was from a notary in Krško. Her grandmother had died in March. The house by the river was to be divided, the letter said, *in accordance with the wishes of the deceased*, and the family was asked to attend on the first of May.",
+          "It was from a notary in Krško.^[A small town on the Sava, in eastern Slovenia.] [[Grandmother Marija|Her grandmother]] had died in March. The house by the river was to be divided, the letter said, *in accordance with the wishes of the deceased*, and the family was asked to attend on the first of May.",
           "Ana read it twice at the workbench, between a chair with a cracked rail and a cabinet that would not close. Then she put it face down under a tin of beeswax, as if that would keep it quiet.",
           "She had not been back in twelve years. Not since the night her father drove away with the headlights off, and her mother stood in the kitchen and said nothing, the way she said nothing about everything.",
-          "That evening she phoned her mother. Vera answered on the third ring.",
+          "That evening she phoned her mother. [[Vera, her mother|Vera]] answered on the third ring.",
           "“So you got it,” Vera said.",
           "“I got it.”",
           "“The first of May,” said her mother, and then, after a silence long enough to hear the river behind her voice: “The lamp is still lit. Someone has to see to it.”",
@@ -120,7 +135,7 @@ export const EXAMPLE_BOOKS: ExampleBook[] = [
           "* *",
           "Her father had left in fog like this. She had been twenty-two and home for the summer, and she had watched from the landing as his car rolled down to the road without a sound, the headlights switched off until the very last moment, as if leaving quietly made it less of a leaving.",
           "In the morning her mother made coffee for three and poured the third cup down the sink without a word.",
-          "Now the lamp swam up out of the fog, exactly where it had always been. Ana pulled onto the gravel, turned off the engine and sat with her hands on the wheel until the windows went white.",
+          "Now the lamp swam up out of the fog, exactly where it had always been: [[The Lantern House|the Lantern House]], one window lit. Ana pulled onto the gravel, turned off the engine and sat with her hands on the wheel until the windows went white.",
         ],
       },
       {
@@ -131,9 +146,9 @@ export const EXAMPLE_BOOKS: ExampleBook[] = [
         wordGoal: 800,
         synopsis: "Ana finds the ring of keys, and her mother sends her to the attic.",
         lines: [
-          "The keys hung on a nail behind the pantry door, eleven of them on a ring of brass gone soft and brown with handling. Nobody in the family could say what half of them opened.",
+          "The keys hung on a nail behind the pantry door, eleven of them on a ring of brass^[Farmhouses along the Sava kept their keys on one ring by the pantry, a habit older than any of the locks.] gone soft and brown with handling. Nobody in the family could say what half of them opened.",
           "Ana took them down the morning after the funeral. They were heavier than she expected, and colder, as if they had been waiting in the dark for someone to remember them.",
-          "“Start with the attic,” her mother said from the kitchen, without turning around.",
+          "“Start with [[The attic|the attic]],” her mother said from the kitchen, without turning around.",
           "Ana turned the ring over in her hands. Some of the keys she knew: the front door, the woodshed, the little one for the sewing box. Others had no lock left in the house to fit. One was long and black, with teeth like a comb, and it was *warm*, which made no sense at all.",
           "On the inside of the pantry door, just under the nail, someone had pencilled a line so faint she nearly missed it:",
           "> Some doors you open for the room, and some for the one who locked them.",
@@ -377,8 +392,9 @@ export function buildExample(
 ): { project: Project; notes: Note[]; tasks: Task[] } {
   const chapterIds = new Map(example.chapters.map((chapter) => [chapter.key, crypto.randomUUID()]));
   const noteIds = new Map(example.notes.map((note) => [note.key, crypto.randomUUID()]));
+  const noteByTitle = new Map(example.notes.map((note) => [note.title.toLowerCase(), noteIds.get(note.key)!]));
   const chapters: Chapter[] = example.chapters.map((chapter, position) => {
-    const contentJson = prose(chapter.lines);
+    const contentJson = prose(chapter.lines, (title) => noteByTitle.get(title.toLowerCase()));
     return {
       id: chapterIds.get(chapter.key)!,
       projectId,

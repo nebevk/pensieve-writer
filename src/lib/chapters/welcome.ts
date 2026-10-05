@@ -1,25 +1,19 @@
 import { createChapter, type Chapter, type DocumentJson, type ProjectKind } from "$lib/model";
+import { translate, type UiLanguage } from "$lib/i18n";
 
-const LINES = [
-  "This page is only here for the first sitting.",
-  "Chapters live in the list on the left. Notes and to-dos open beside the page.",
-  "Zen mode clears the desk. Backups are snapshot files in the folder you choose in Settings.",
-];
-
-export function welcomePlain(canDelete = true): string {
-  const lines = LINES.slice(0, 3);
-  lines.push(
-    canDelete
-      ? "Delete this page once you know your way around. The book keeps at least one chapter."
-      : "Erase these lines when you start writing.",
-  );
-  return lines.join("\n");
+export function welcomePlain(canDelete = true, language: UiLanguage = "en"): string {
+  return [
+    translate(language, "welcomeFirst"),
+    translate(language, "welcomeChapters"),
+    translate(language, "welcomeZen"),
+    translate(language, canDelete ? "welcomeDelete" : "welcomeErase"),
+  ].join("\n");
 }
 
-export function welcomeDocument(canDelete = true): DocumentJson {
+export function welcomeDocument(canDelete = true, language: UiLanguage = "en"): DocumentJson {
   return {
     type: "doc",
-    content: welcomePlain(canDelete)
+    content: welcomePlain(canDelete, language)
       .split("\n")
       .map((text) => ({
         type: "paragraph",
@@ -28,23 +22,26 @@ export function welcomeDocument(canDelete = true): DocumentJson {
   };
 }
 
-export function openingTitle(kind: ProjectKind, bookTitle: string): string {
-  if (kind === "article") return bookTitle || "Article";
-  if (kind === "stories") return "Welcome";
-  return "Welcome";
+export function openingTitle(kind: ProjectKind, bookTitle: string, language: UiLanguage = "en"): string {
+  if (kind === "article") return bookTitle || translate(language, "articleTitle");
+  return translate(language, "welcomeTitle");
 }
 
-export function nextTitle(kind: ProjectKind): string {
-  return kind === "stories" ? "Story 1" : "Chapter 1";
+/** The title a new chapter starts with, in the book's language: "Chapter 3", "Zgodba 3". */
+export function chapterTitle(kind: ProjectKind, language: UiLanguage, n: number): string {
+  return translate(language, kind === "stories" ? "defaultStory" : "defaultChapter", { n });
 }
 
-/** What a new book starts with: the welcome page, then an empty chapter (an article is one page). */
-export function firstChapters(projectId: string, kind: ProjectKind, bookTitle: string): Chapter[] {
+/**
+ * What a new book starts with: the welcome page, in the interface language, then an empty chapter
+ * (an article is one page).
+ */
+export function firstChapters(projectId: string, kind: ProjectKind, bookTitle: string, language: UiLanguage = "en"): Chapter[] {
   const now = new Date().toISOString();
   const welcome: Chapter = {
-    ...createChapter(projectId, openingTitle(kind, bookTitle), 0, now),
-    contentJson: welcomeDocument(kind !== "article"),
-    plainText: welcomePlain(kind !== "article"),
+    ...createChapter(projectId, openingTitle(kind, bookTitle, language), 0, now),
+    contentJson: welcomeDocument(kind !== "article", language),
+    plainText: welcomePlain(kind !== "article", language),
   };
-  return kind === "article" ? [welcome] : [welcome, createChapter(projectId, nextTitle(kind), 1, now)];
+  return kind === "article" ? [welcome] : [welcome, createChapter(projectId, chapterTitle(kind, language, 1), 1, now)];
 }

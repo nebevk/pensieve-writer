@@ -1,6 +1,7 @@
 <script lang="ts">
   import { blocksToHtml, documentToBlocks } from "$lib/export/document";
   import type { Chapter } from "$lib/model";
+  import { t } from "$lib/ui.svelte";
 
   let { chapters }: { chapters: Chapter[] } = $props();
 
@@ -20,13 +21,13 @@
 <section class="book" class:pocket={size === "pocket"}>
   <div class="bar">
     <label>
-      Page
+      {t("page")}
       <select bind:value={size}>
         <option value="a5">A5</option>
-        <option value="pocket">5 × 8 in</option>
+        <option value="pocket">{t("pocketSize")}</option>
       </select>
     </label>
-    <button type="button" onclick={() => window.print()}>Print or save as PDF</button>
+    <button type="button" onclick={() => window.print()}>{t("printOrPdf")}</button>
   </div>
   <div class="spread">
     {#each pages as page (page.id)}
@@ -88,6 +89,28 @@
     height: auto;
     margin: 0.8em auto;
     break-inside: avoid;
+  }
+
+  .page :global(sup.footnote) {
+    font-size: 0.7em;
+    line-height: 0;
+  }
+
+  /* A chapter's footnotes close it, under a short rule, as in a printed book. */
+  .page :global(ol.footnotes) {
+    margin-top: 1.8em;
+    padding-left: 1.4em;
+    font-family: var(--font-writing);
+    font-size: 0.82em;
+    line-height: 1.5;
+  }
+
+  .page :global(ol.footnotes)::before {
+    content: "";
+    display: block;
+    width: 30%;
+    margin: 0 0 0.7em -1.4em;
+    border-top: 1px solid rgba(60, 40, 20, 0.25);
   }
 
   h2 {

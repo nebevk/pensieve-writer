@@ -1,6 +1,7 @@
 import type { MammothDocument, MammothElement } from "mammoth";
 import { createChapter, emptyDocument, type Chapter, type DocumentJson, type Project } from "$lib/model";
 import { WORD_STYLES } from "./wordStyles";
+import { t } from "$lib/ui.svelte";
 
 /** A chapter read from a Word file, ready to become part of a book. */
 export type ImportedChapter = { title: string; contentJson: DocumentJson; plainText: string };
@@ -39,7 +40,7 @@ export async function readWordFile(data: ArrayBuffer, fallbackTitle = "Imported"
       },
     },
   );
-  if (!captured.document) throw new Error("Pensieve couldn't read that Word file.");
+  if (!captured.document) throw new Error(t("errWordUnreadable"));
   return wordToChapters(captured.document, await readPictures(captured.document), fallbackTitle);
 }
 
@@ -118,7 +119,8 @@ function textNode(text: string, marks: JsonMark[]): JsonNode {
 
 type Reader = {
   pictures: Map<MammothElement, string>;
-  addNote: (reference: MammothElement) => number | null;
+  /** A footnote's (or endnote's) text, read from the note the reference points to. */
+  noteText: (reference: MammothElement) => string | null;
 };
 
 function inlineNodes(elements: MammothElement[], marks: JsonMark[], out: JsonNode[], images: JsonNode[], reader: Reader) {
@@ -138,8 +140,8 @@ function inlineNodes(elements: MammothElement[], marks: JsonMark[], out: JsonNod
       const src = reader.pictures.get(element);
       if (src) images.push({ type: "image", attrs: { src, alt: element.altText ?? "" } });
     } else if (element.type === "noteReference") {
-      const number = reader.addNote(element);
-      if (number) out.push(textNode(String(number), withMark(marks, { type: "superscript" })));
+      const text = reader.noteText(element);
+      if (text !== null) out.push({ type: "footnote", attrs: { text } });
     } else if (element.children) {
       inlineNodes(element.children, marks, out, images, reader);
     }
@@ -173,7 +175,7 @@ export function documentText(nodes: JsonNode[]): string {
 }
 
 /** `implicit` marks the bucket for text that comes before the first chapter title. */
-type Building = { title: string; nodes: JsonNode[]; notes: string[]; implicit: boolean };
+type Building = { title: string; nodes: JsonNode[]; implicit: boolean };
 
 /** Turns mammoth's document model into chapters. Exported for tests. */
 export function wordToChapters(
@@ -196,7 +198,7 @@ export function wordToChapters(
   let pendingCap = "";
 
   const start = (name: string, implicit = false) => {
-    current = { title: name.trim() || "Untitled", nodes: [], notes: [], implicit };
+    current = { title: name.trim() || t("untitled"), nodes: [], implicit };
     chapters.push(current);
     lists = [];
     quote = null;
@@ -207,12 +209,9 @@ export function wordToChapters(
   };
   const reader: Reader = {
     pictures,
-    addNote: (reference) => {
+    noteText: (reference) => {
       const note = document.notes?.resolve(reference);
-      if (!note) return null;
-      const target = chapter();
-      target.notes.push(note.body.map(plainOf).join(" ").trim());
-      return target.notes.length;
+      return note ? note.body.map(plainOf).join(" ").trim() : null;
     },
   };
 
@@ -305,16 +304,9 @@ export function wordToChapters(
   }
 
   const built = chapters
-    .filter((entry) => !entry.implicit || entry.nodes.length > 0 || entry.notes.length > 0)
+    .filter((entry) => !entry.implicit || entry.nodes.length > 0)
     .map((entry) => {
-      const nodes = [...entry.nodes];
-      if (entry.notes.length > 0) {
-        nodes.push({ type: "paragraph", content: [textNode("Notes", [{ type: "bold" }])] });
-        nodes.push({
-          type: "orderedList",
-          content: entry.notes.map((note) => ({ type: "listItem", content: [{ type: "paragraph", content: [textNode(note, [])] }] })),
-        });
-      }
+      const nodes = entry.nodes;
       return {
         title: entry.title,
         contentJson: nodes.length > 0 ? ({ type: "doc", content: nodes } as DocumentJson) : emptyDocument(),
@@ -322,7 +314,7 @@ export function wordToChapters(
       };
     });
 
-  if (built.length === 0) throw new Error("That Word file has no text to import.");
+  if (built.length === 0) throw new Error(t("errWordEmpty"));
   return { title, chapters: built, fromPensieve };
 }
 

@@ -10,13 +10,14 @@ import {
   type BackupContent,
 } from "./backupFile";
 import { listNotes, listTasks } from "./organize";
+import { t } from "$lib/ui.svelte";
 
 export async function chooseProjectFile(): Promise<string | null> {
   const selected = await open({
     directory: false,
     multiple: false,
-    title: "Open a Pensieve project",
-    filters: [{ name: "Pensieve project", extensions: ["db"] }],
+    title: t("dialogOpenProject"),
+    filters: [{ name: t("dialogProjectFilter"), extensions: ["db"] }],
   });
   return typeof selected === "string" ? selected : null;
 }
@@ -25,17 +26,18 @@ export async function chooseImageFile(): Promise<string | null> {
   const selected = await open({
     directory: false,
     multiple: false,
-    title: "Choose an image",
-    filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "gif", "webp"] }],
+    title: t("dialogChooseImage"),
+    filters: [{ name: t("dialogImageFilter"), extensions: ["png", "jpg", "jpeg", "gif", "webp"] }],
   });
   return typeof selected === "string" ? selected : null;
 }
 
-export async function chooseBackupFolder(): Promise<string | null> {
+/** A folder picker; the title says what the folder is for. */
+export async function chooseBackupFolder(title = t("dialogBackupFolder")): Promise<string | null> {
   const selected = await open({
     directory: true,
     multiple: false,
-    title: "Choose a backup folder",
+    title,
   });
   return typeof selected === "string" ? selected : null;
 }
@@ -44,8 +46,8 @@ export async function chooseBackupFile(): Promise<string | null> {
   const selected = await open({
     directory: false,
     multiple: false,
-    title: "Restore from a backup",
-    filters: [{ name: "Pensieve backup", extensions: ["json"] }],
+    title: t("dialogRestoreBackup"),
+    filters: [{ name: t("dialogBackupFilter"), extensions: ["json"] }],
   });
   return typeof selected === "string" ? selected : null;
 }

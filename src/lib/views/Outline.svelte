@@ -1,6 +1,7 @@
 <script lang="ts">
   import { wordsFor } from "$lib/editor/counts";
   import type { Chapter, ChapterStatus } from "$lib/model";
+  import { num, plural, t } from "$lib/ui.svelte";
 
   let {
     chapters,
@@ -15,16 +16,16 @@
   {#each chapters as chapter (chapter.id)}
     <article>
       <h2>{chapter.title}</h2>
-      <p>{wordsFor(chapter.id, chapter.plainText)} words{chapter.wordGoal > 0 ? ` / ${chapter.wordGoal}` : ""}</p>
+      <p>{plural("words", wordsFor(chapter.id, chapter.plainText))}{chapter.wordGoal > 0 ? ` / ${num(chapter.wordGoal)}` : ""}</p>
       <label>
-        Part
+        {t("part")}
         <input
           value={chapter.part}
           onchange={(event) => onUpdate(chapter.id, { part: (event.currentTarget as HTMLInputElement).value })}
         />
       </label>
       <label>
-        Word goal
+        {t("wordGoal")}
         <input
           type="number"
           min="0"
@@ -34,7 +35,7 @@
         />
       </label>
       <label>
-        Status
+        {t("status")}
         <select
           value={chapter.status}
           onchange={(event) =>
@@ -42,13 +43,13 @@
               status: (event.currentTarget as HTMLSelectElement).value as ChapterStatus,
             })}
         >
-          <option value="draft">Draft</option>
-          <option value="revised">Revised</option>
-          <option value="final">Final</option>
+          <option value="draft">{t("statusDraft")}</option>
+          <option value="revised">{t("statusRevised")}</option>
+          <option value="final">{t("statusFinal")}</option>
         </select>
       </label>
       <label>
-        Synopsis
+        {t("synopsis")}
         <textarea
           rows="3"
           value={chapter.synopsis}

@@ -1,15 +1,15 @@
 <script lang="ts">
-  import { t, type UiLanguage } from "$lib/i18n";
+  import { t } from "$lib/ui.svelte";
+  import Icon from "./Icon.svelte";
 
   type ViewId = "write" | "notes" | "todos" | "outline" | "book" | "home" | "settings";
 
   let {
-    project = "Untitled",
+    project = "",
     view,
     saveLabel,
     saveState = "saved",
     language = "EN",
-    uiLanguage = "en",
     error = "",
     onView,
     onLanguage,
@@ -23,7 +23,6 @@
     saveLabel: string;
     saveState?: "saved" | "saving" | "unsaved" | "error";
     language?: string;
-    uiLanguage?: UiLanguage;
     error?: string;
     onView: (view: ViewId) => void;
     onLanguage: () => void;
@@ -34,20 +33,20 @@
   } = $props();
 
   const tabs = $derived([
-    { id: "write" as const, label: t(uiLanguage, "write") },
-    { id: "notes" as const, label: t(uiLanguage, "notes") },
-    { id: "todos" as const, label: t(uiLanguage, "todos") },
-    { id: "outline" as const, label: t(uiLanguage, "outline") },
-    { id: "book" as const, label: t(uiLanguage, "book") },
+    { id: "write" as const, label: t("write") },
+    { id: "notes" as const, label: t("notes") },
+    { id: "todos" as const, label: t("todos") },
+    { id: "outline" as const, label: t("outline") },
+    { id: "book" as const, label: t("book") },
   ]);
 </script>
 
 <header class="titlebar">
-  <button type="button" class="mark" title={t(uiLanguage, "home")} onclick={onHome}>
+  <button type="button" class="mark" title={t("home")} aria-label={t("home")} onclick={onHome}>
     <img src="/brand/{appearance}.png" alt="" width="22" height="22" />
   </button>
-  <span class="project">{project}</span>
-  <div class="tabs" role="tablist" aria-label="Views">
+  <span class="project">{project || t("untitled")}</span>
+  <div class="tabs" role="tablist" aria-label={t("views")}>
     {#each tabs as tab (tab.id)}
       <button
         type="button"
@@ -71,18 +70,9 @@
     {/if}
     {saveLabel}
   </p>
-  <button type="button" class="lang" title="Language. Select text first to mark just that passage." onclick={onLanguage}>{language}</button>
-  <button type="button" class="gear" title="Settings" aria-pressed={settingsOpen} onclick={onSettings}>
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="8" cy="8" r="2.1" fill="none" stroke="currentColor" stroke-width="1.4" />
-      <path
-        d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M12.6 3.4l-1.1 1.1M4.5 11.5l-1.1 1.1"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.4"
-        stroke-linecap="round"
-      />
-    </svg>
+  <button type="button" class="lang" title={t("languageHint")} onclick={onLanguage}>{language}</button>
+  <button type="button" class="gear" title={t("settings")} aria-label={t("settings")} aria-pressed={settingsOpen} onclick={onSettings}>
+    <Icon name="sliders" />
   </button>
 </header>
 
@@ -178,9 +168,9 @@
   }
 
   .save svg,
-  .gear svg {
-    width: 13px;
-    height: 13px;
+  .gear :global(svg) {
+    width: 14px;
+    height: 14px;
     display: block;
   }
 

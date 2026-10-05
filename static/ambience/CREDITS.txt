@@ -1,0 +1,30 @@
+Ambience recordings in Pensieve
+
+Each file was cut from the recording below, crossfaded into a seamless loop (the piano plays the
+whole piece with a short pause), evened out in loudness, and saved as Ogg Opus. Every file has a
+quarter second of its own sound before and after the loop, which the app doesn't play.
+
+rain.ogg
+  "Sirutėnai, Lithuania, rain on leaves" by alas23/sala, from radio aporee ::: maps.
+  Public Domain Mark 1.0.
+  https://archive.org/details/aporee_66409_76780
+  Used: 2:45 to 3:49, looped as 60 seconds.
+
+fire.ogg
+  "944 fireplace hiss and crackling" by Piotrek Zyla, from radio aporee ::: maps.
+  Public Domain Mark 1.0.
+  https://archive.org/details/aporee_60408_69385
+  Used: 0:07 to 1:10, looped as 60 seconds.
+
+cafe.ogg
+  "Coffee Shop at the Capucins" by Joseph Sardin, BigSoundBank.com.
+  CC0 1.0 (public domain).
+  https://bigsoundbank.com/coffee-shop-at-the-capucins-s2561.html
+  Used: 0:08 to 1:27, looped as 75 seconds.
+
+piano.ogg
+  Erik Satie, Gymnopédie No. 1, played by Robin Alciatore, recorded for Musopen.
+  Released into the public domain by the performer.
+  https://commons.wikimedia.org/wiki/File:Erik_Satie_-_gymnopedies_-_la_1_ere._lent_et_douloureux.ogg
+  The whole piece, in mono, with a three-second pause before it repeats.
+  With thanks to Musopen (musopen.org), as they ask.

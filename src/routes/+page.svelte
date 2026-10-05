@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Sidebar from "$lib/chapters/Sidebar.svelte";
@@ -28,11 +28,15 @@
   import Todos from "$lib/views/Todos.svelte";
   import { flushPrefs, loadPrefs, loadPrefsFile, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs, type KnownProject } from "$lib/prefs";
   import { duplicateChapterProject, patchChapter, removeChapter, renameChapterProject, reorderChapterList, setChapterText } from "$lib/chapters/mutate";
-  import { firstChapters } from "$lib/chapters/welcome";
+  import { chapterTitle, firstChapters } from "$lib/chapters/welcome";
   import { chapterName, roman } from "$lib/chapters/labels";
-  import { flushNoteSave, saveNote, saveTask } from "$lib/storage/organize";
+  import { isUntitled } from "$lib/i18n";
+  import { locale, snapshotName, t, ui } from "$lib/ui.svelte";
+  import { flushNoteSave, listNotes, saveNote, saveTask } from "$lib/storage/organize";
+  import type { NoteTarget } from "$lib/editor/noteLinks";
   import { checkpointDatabase, forgetPersonalWord, keepSnapshot, listPersonalWords, readSnapshotChapters, rememberPersonalWord, restoreChapter, restoreFromBackup, sqliteStorage, switchProjectFile } from "$lib/storage/sqlite";
   import type { Editor as TiptapEditor } from "@tiptap/core";
+  import { NodeSelection } from "@tiptap/pm/state";
 
   let project = $state<Project | null>(null);
   let activeId = $state<string | null>(null);
@@ -56,8 +60,15 @@
   let settingsReturn: HTMLElement | null = null;
   let noteRequest = $state(0);
   let todoRequest = $state(0);
+  // A note to open beside the page, from a linked passage clicked in the manuscript.
+  let noteOpenRequest = $state<(NoteTarget & { at: number }) | null>(null);
+  // The open chapter's footnotes, listed at the foot of the page.
+  let pageNotes = $state<string[]>([]);
   let findInput = $state<HTMLInputElement | undefined>(undefined);
-  let prefs = $state(loadPrefs());
+  const startPrefs = loadPrefs();
+  let prefs = $state(startPrefs);
+  // Set before the first paint, so a Slovenian interface never flashes English.
+  ui.language = startPrefs.uiLanguage;
   let zen = $state(false);
   let dock = $state<"notes" | "todos" | null>(null);
   // The app opens on Home, as in the design; "Continue writing" goes back to the last chapter.
@@ -116,6 +127,8 @@
     document.documentElement.dataset.running = prefs.runningHead ? "true" : "false";
     if (prefs.gentle) document.documentElement.dataset.gentle = "true";
     else delete document.documentElement.dataset.gentle;
+    ui.language = prefs.uiLanguage;
+    document.documentElement.lang = prefs.uiLanguage;
     savePrefs(prefs);
   });
 
@@ -128,13 +141,22 @@
     }
   });
 
+  // Plain values, so saving other settings (a backup time, say) doesn't restart the sound.
+  const ambienceKind = $derived(prefs.gentle ? "off" : prefs.ambience);
+  const ambienceVolume = $derived(prefs.ambienceVolume);
+
   $effect(() => {
-    if (prefs.gentle || prefs.ambience === "off") {
+    const kind = ambienceKind;
+    if (kind === "off") {
       ambience.stop();
       return;
     }
-    ambience.start(prefs.ambience, prefs.ambienceVolume);
+    ambience.start(kind, untrack(() => ambienceVolume));
     return () => ambience.stop();
+  });
+
+  $effect(() => {
+    ambience.setVolume(ambienceVolume);
   });
 
   onMount(() => {
@@ -377,6 +399,51 @@
   function updateChapterText(id: string, plainText: string) {
     if (!project) return;
     project = setChapterText(project, id, plainText);
+    refreshFootnotes();
+  }
+
+  /** Reads the footnotes back from the page, after typing pauses rather than on every key. */
+  function refreshFootnotes() {
+    const editor = textEditor;
+    if (!editor || editor.isDestroyed) {
+      pageNotes = [];
+      return;
+    }
+    const found: string[] = [];
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === "footnote") found.push(String(node.attrs.text ?? ""));
+    });
+    pageNotes = found;
+  }
+
+  /** The footnote selected on the page, with its number, while one is selected. */
+  const selectedFootnote = $derived.by(() => {
+    void editorRevision;
+    const editor = textEditor;
+    if (!editor || editor.isDestroyed) return null;
+    const { selection, doc } = editor.state;
+    if (!(selection instanceof NodeSelection) || selection.node.type.name !== "footnote") return null;
+    let number = 0;
+    doc.nodesBetween(0, selection.from + 1, (node, pos) => {
+      if (node.type.name === "footnote" && pos <= selection.from) number += 1;
+    });
+    return { pos: selection.from, number, text: String(selection.node.attrs.text ?? "") };
+  });
+
+  function setFootnoteText(pos: number, text: string) {
+    const editor = textEditor;
+    const node = editor && !editor.isDestroyed ? editor.state.doc.nodeAt(pos) : null;
+    if (!editor || node?.type.name !== "footnote") return;
+    const change = editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, text });
+    // Changing the note replaces the node; select it again, or the panel would close mid-word.
+    change.setSelection(NodeSelection.create(change.doc, pos));
+    editor.view.dispatch(change);
+    refreshFootnotes();
+  }
+
+  function deleteFootnote() {
+    textEditor?.chain().focus().deleteSelection().run();
+    refreshFootnotes();
   }
 
   async function selectChapter(id: string) {
@@ -398,7 +465,7 @@
     }
     const position =
       project.chapters.reduce((max, chapter) => Math.max(max, chapter.position), -1) + 1;
-    const chapter = createChapter(project.id, `Chapter ${position + 1}`, position);
+    const chapter = createChapter(project.id, chapterTitle(project.kind, project.language, position + 1), position);
     project = { ...project, chapters: [...project.chapters, chapter] };
     activeId = chapter.id;
     autosave.schedule();
@@ -481,7 +548,7 @@
       const path = await chooseSavePath(`${safeName(book.title)}.${kind}`, kind);
       if (!path) return;
       const written = await writeFileTo(path, await contents(book));
-      backupMessage = `Saved ${written.path}`;
+      backupMessage = t("savedTo", { path: written.path });
     } catch (error) {
       backupMessage = errorMessage(error);
     }
@@ -531,13 +598,13 @@
         };
       } catch (error) {
         const message = errorMessage(error);
-        const name = path.split(/[\\/]/).pop() || "The Word copy";
+        const name = path.split(/[\\/]/).pop() || t("theWordCopy");
         if (message === CHANGED_ELSEWHERE || message === ALREADY_EXISTS) wordCopyHeld = path;
         const wordCopyError =
           message === CHANGED_ELSEWHERE
-            ? `“${name}” was changed outside Pensieve, so it wasn't replaced. Import it to bring those changes in, then press Update now. Without the import, Update now replaces the file and those changes are lost.`
+            ? t("wordCopyChanged", { name })
             : message === ALREADY_EXISTS
-              ? `“${name}” is already in that folder and wasn't made by Pensieve, so it wasn't replaced. Rename it, pick another folder, or press Update now to replace it.`
+              ? t("wordCopyForeign", { name })
               : message;
         prefs = { ...prefs, wordCopyError };
       } finally {
@@ -549,7 +616,7 @@
 
   async function pickWordCopyFolder() {
     try {
-      const folder = await chooseBackupFolder();
+      const folder = await chooseBackupFolder(t("dialogWordCopyFolder"));
       if (!folder) return;
       wordCopyHeld = "";
       prefs = { ...prefs, wordCopyFolder: folder, wordCopyError: "" };
@@ -585,7 +652,7 @@
         if (mode === "replace") {
           await keepSnapshot(project);
           const next = replaceBookChapters(project, offer.result.chapters);
-          project = offer.result.title && project.title === "Untitled" ? { ...next, title: offer.result.title } : next;
+          project = offer.result.title && isUntitled(project.title) ? { ...next, title: offer.result.title } : next;
           activeId = project.chapters[0]?.id ?? null;
         } else {
           const before = new Set(project.chapters.map((chapter) => chapter.id));
@@ -607,7 +674,7 @@
     try {
       await autosave.flush();
       await navigator.clipboard.writeText(chaptersToHtml(project.title || "Pensieve", project.chapters));
-      backupMessage = "Copied clean HTML";
+      backupMessage = t("copiedHtml");
     } catch (error) {
       saveStatus = { state: "error", message: errorMessage(error) };
     }
@@ -641,7 +708,7 @@
       const match = older.find((chapter) => chapter.id === activeId);
       if (!match) {
         historyChapterId = "";
-        historyPreview = "This snapshot does not include the open chapter.";
+        historyPreview = t("snapshotLacksChapter");
         return;
       }
       historyChapterId = match.id;
@@ -723,8 +790,8 @@
     if (!backup || !project) return null;
     const saved = new Date(backup.savedAt);
     return {
-      title: backup.project.title || "Untitled",
-      savedAt: Number.isNaN(saved.getTime()) ? "an unknown date" : saved.toLocaleString(),
+      title: backup.project.title || t("untitled"),
+      savedAt: Number.isNaN(saved.getTime()) ? t("unknownDate") : saved.toLocaleString(locale()),
       otherBook: backup.project.id !== project.id,
     };
   }
@@ -773,7 +840,7 @@
     const bookPath = path.trim();
     if (!bookPath) return;
     const knownProjects = [
-      { path: bookPath, title: title.trim() || "Untitled" },
+      { path: bookPath, title: title.trim() || t("untitled") },
       ...prefs.knownProjects.filter((book) => book.path !== bookPath),
     ].slice(0, 8);
     prefs = { ...prefs, knownProjects };
@@ -781,7 +848,7 @@
 
   function renameProject(title: string) {
     if (!project) return;
-    const nextTitle = title.trim() || "Untitled";
+    const nextTitle = title.trim() || t("untitled");
     project = { ...project, title: nextTitle };
     rememberBook(projectLocation || prefs.projectPath, nextTitle);
     autosave.schedule();
@@ -851,7 +918,7 @@
       });
       const paths = new Set(added.map((book) => book.path));
       prefs = { ...prefs, knownProjects: [...prefs.knownProjects.filter((book) => !paths.has(book.path)), ...added] };
-      backupMessage = "The example books are on Home.";
+      backupMessage = t("examplesAdded");
     } catch (error) {
       backupMessage = errorMessage(error);
     }
@@ -861,7 +928,7 @@
     try {
       // Opening a missing file would quietly create an empty book in its place.
       if (!(await invoke<boolean>("project_file_exists", { path }))) {
-        throw new Error(`That book's file is missing: ${path}`);
+        throw new Error(t("bookFileMissing", { path }));
       }
       await useProjectFile(path);
     } catch (error) {
@@ -881,21 +948,21 @@
 
   async function startNewProject(kind: ProjectKind = "novel") {
     try {
-      const folder = await chooseBackupFolder();
+      const folder = await chooseBackupFolder(t("dialogNewBookFolder"));
       if (!folder) return;
       const backup = prefs.backupFolder.replace(/[\\/]+$/, "").toLowerCase();
       const chosen = folder.replace(/[\\/]+$/, "").toLowerCase();
       if (backup && (chosen === backup || chosen.startsWith(`${backup}\\`) || chosen.startsWith(`${backup}/`))) {
-        saveStatus = { state: "error", message: "Keep the live book outside the backup folder." };
+        saveStatus = { state: "error", message: t("keepOutsideBackup") };
         return;
       }
       const path = await invoke<string>("reserve_project_path", { folder });
       // Stay on Home until the welcome page is in place, or the editor would open on the
       // blank first chapter and save that blank text over the welcome page.
       await useProjectFile(path, false);
-      const folderName = folder.split(/[/\\]/).filter(Boolean).pop() || "New book";
+      const folderName = folder.split(/[/\\]/).filter(Boolean).pop() || t("newBookName");
       if (!project) return;
-      const chapters = firstChapters(project.id, kind, folderName);
+      const chapters = firstChapters(project.id, kind, folderName, ui.language);
       project = { ...project, title: folderName, kind, chapters };
       activeId = chapters[0].id;
       rememberBook(path, folderName);
@@ -943,7 +1010,7 @@
   async function moveProject() {
     if (!project) return;
     try {
-      const folder = await chooseBackupFolder();
+      const folder = await chooseBackupFolder(t("dialogMoveProject"));
       if (!folder) return;
       await flushNoteSave();
       await autosave.flush();
@@ -955,14 +1022,14 @@
       // The old file stays behind as a copy; keep it off Home so nobody edits the stale one.
       prefs = { ...prefs, knownProjects: prefs.knownProjects.filter((book) => book.path !== source) };
       rememberBook(destination, project.title);
-      backupMessage = `Project file moved to ${destination}`;
+      backupMessage = t("projectMoved", { path: destination });
     } catch (error) {
       backupMessage = errorMessage(error);
     }
   }
   async function pickBackupFolder() {
     try {
-      const folder = await chooseBackupFolder();
+      const folder = await chooseBackupFolder(t("dialogBackupFolder"));
       if (folder) prefs = { ...prefs, backupFolder: folder };
     } catch (error) {
       backupMessage = errorMessage(error);
@@ -989,12 +1056,12 @@
           lastBackupError: "",
           lastBackupSignature: result.signature,
         };
-        if (announce) backupMessage = result.path ? `Saved ${result.path}` : "Saved";
+        if (announce) backupMessage = result.path ? t("savedTo", { path: result.path }) : t("saved");
       } catch (error) {
         const message = errorMessage(error);
         prefs = { ...prefs, lastBackupError: message };
         if (announce) backupMessage = message;
-        else saveStatus = { state: "error", message: `Backup failed. ${message}` };
+        else saveStatus = { state: "error", message: t("backupFailedMessage", { message }) };
         throw error;
       } finally {
         driveBackup = null;
@@ -1012,10 +1079,10 @@
   }
 
   function statusText(status: SaveStatus): string {
-    if (status.state === "saving") return "Saving…";
-    if (status.state === "unsaved") return "Unsaved";
-    if (status.state === "error") return "Not saved";
-    return "Saved";
+    if (status.state === "saving") return t("saving");
+    if (status.state === "unsaved") return t("unsaved");
+    if (status.state === "error") return t("notSaved");
+    return t("saved");
   }
 </script>
 
@@ -1024,7 +1091,7 @@
 <Particles active={resolvedTheme(prefs.theme, new Date(clock)) === "candlelit" && !prefs.gentle} />
 <div class="app" class:zen>
   <TitleBar
-    project={project?.title ?? "Untitled"}
+    project={project?.title ?? t("untitled")}
     {view}
     saveLabel={statusText(saveStatus)}
     saveState={saveStatus.state}
@@ -1041,7 +1108,6 @@
     }}
     {settingsOpen}
     appearance={resolvedTheme(prefs.theme, new Date(clock))}
-    uiLanguage={prefs.uiLanguage}
     onSettings={() => {
       if (zen) void setZen(false);
       settingsSection = "Appearance";
@@ -1085,6 +1151,7 @@
       findMissing = false;
       view = "write";
     }}
+    loadNotes={() => (project ? listNotes(project.id) : Promise.resolve([]))}
   />
   {/if}
   {#if view === "write"}
@@ -1094,7 +1161,6 @@
     {activeId}
     {collapsed}
     hidden={project?.kind === "article"}
-    uiLanguage={prefs.uiLanguage}
     onSelect={selectChapter}
     onCreate={addChapter}
     onRename={renameChapter}
@@ -1116,21 +1182,21 @@
         <input
           bind:this={findInput}
           bind:value={findQuery}
-          aria-label={findScope === "book" ? "Find in book" : "Find in chapter"}
-          placeholder={findScope === "book" ? "Find in book" : "Find in chapter"}
+          aria-label={findScope === "book" ? t("findInBook") : t("findInChapter")}
+          placeholder={findScope === "book" ? t("findInBook") : t("findInChapter")}
           oninput={() => (findMissing = false)}
         />
         <button type="button" onclick={() => (findScope = findScope === "book" ? "chapter" : "book")}>
-          {findScope === "book" ? "Whole book" : "This chapter"}
+          {findScope === "book" ? t("wholeBook") : t("thisChapter")}
         </button>
-        <button type="submit">Find</button>
+        <button type="submit">{t("find")}</button>
         {#if replaceMode}
-          <input bind:value={replaceQuery} aria-label="Replace with" placeholder="Replace with" />
-          <button type="button" onclick={runReplace}>Replace</button>
-          <button type="button" onclick={() => void runReplaceAll()}>All</button>
+          <input bind:value={replaceQuery} aria-label={t("replaceWith")} placeholder={t("replaceWith")} />
+          <button type="button" onclick={runReplace}>{t("replace")}</button>
+          <button type="button" onclick={() => void runReplaceAll()}>{t("replaceAllShort")}</button>
         {/if}
         {#if findMissing}
-          <span>Not found</span>
+          <span>{t("notFound")}</span>
         {/if}
       </form>
       {#if findScope === "book" && findQuery.trim()}
@@ -1142,28 +1208,45 @@
               </button>
             </li>
           {:else}
-            <li>Not found</li>
+            <li>{t("notFound")}</li>
           {/each}
         </ul>
       {/if}
     {/if}
+    {#if selectedFootnote}
+      {@const note = selectedFootnote}
+      <div class="footnote-edit">
+        <label>
+          <span>{t("footnoteNumber", { n: note.number })}</span>
+          <!-- svelte-ignore a11y_autofocus -->
+          <textarea
+            rows="2"
+            value={note.text}
+            placeholder={t("footnoteHint")}
+            autofocus={!note.text}
+            oninput={(event) => setFootnoteText(note.pos, event.currentTarget.value)}
+          ></textarea>
+        </label>
+        <button type="button" onclick={deleteFootnote}>{t("deleteFootnote")}</button>
+      </div>
+    {/if}
     {#if historyOpen}
       <div class="history">
-        <p>Earlier versions of this chapter</p>
+        <p>{t("earlierVersionsTitle")}</p>
         {#each historyList as snap (snap.id)}
           <button type="button" onclick={() => void previewHistory(snap.id)}>
-            {snap.kind} · {snap.createdAt.slice(0, 16).replace("T", " ")}
+            {snapshotName(snap.kind)} · {new Date(snap.createdAt).toLocaleString(locale(), { dateStyle: "medium", timeStyle: "short" })}
           </button>
         {:else}
-          <p>No snapshots yet.</p>
+          <p>{t("noSnapshots")}</p>
         {/each}
         {#if historyPreview}
           <pre>{historyPreview}</pre>
           {#if historyChapterId}
-            <button type="button" onclick={() => void restoreHistoryChapter()}>Restore this chapter</button>
+            <button type="button" onclick={() => void restoreHistoryChapter()}>{t("restoreChapter")}</button>
           {/if}
         {/if}
-        <button type="button" onclick={() => (historyOpen = false)}>Close</button>
+        <button type="button" onclick={() => (historyOpen = false)}>{t("close")}</button>
       </div>
     {/if}
     <div class="stage">
@@ -1190,21 +1273,35 @@
                 onChange={(json, text, id) => updateChapter(id ?? chapter.id, json, text)}
                 onEdit={() => autosave.schedule()}
                 onText={(text, id) => updateChapterText(id ?? chapter.id, text)}
-                onEditor={(next) => (textEditor = next)}
+                onEditor={(next) => {
+                  textEditor = next;
+                  refreshFootnotes();
+                }}
                 onActivity={() => (editorRevision += 1)}
+                onOpenNote={(target) => {
+                  dock = "notes";
+                  noteOpenRequest = { ...target, at: Date.now() };
+                }}
               />
+              {#if pageNotes.length > 0}
+                <ol class="page-notes">
+                  {#each pageNotes as note, index (index)}
+                    <li>{note || "…"}</li>
+                  {/each}
+                </ol>
+              {/if}
             </article>
           </div>
         {/key}
       {:else}
-        <p class="opening">Opening…</p>
+        <p class="opening">{t("opening")}</p>
       {/if}
     </div>
     <div class="float-wrap">
       <StatusBar
         words={chapterWords}
         {projectWords}
-        language={project && activeChapter ? (effectiveLanguage(project, activeChapter) === "sl" ? "Slovenian" : "English") : "English"}
+        language={project && activeChapter && effectiveLanguage(project, activeChapter) === "sl" ? t("slovenian") : t("english")}
         saveLabel={statusText(saveStatus)}
         error={saveStatus.state === "error" ? saveStatus.message : ""}
         {zen}
@@ -1220,15 +1317,15 @@
     {#if zen}
       <div class="zen-hover">
         <div class="zen-bar">
-          <button type="button" onclick={() => void setZen(false)}>Leave zen</button>
+          <button type="button" onclick={() => void setZen(false)}>{t("leaveZen")}</button>
           <label>
-            Width
+            {t("width")}
             <input
               type="range"
               min="32"
               max="60"
               bind:value={prefs.columnRem}
-              aria-label="Column width"
+              aria-label={t("columnWidth")}
             />
           </label>
         </div>
@@ -1238,9 +1335,9 @@
   {#if dock && project && !zen}
     <aside class="dock">
       <div class="dock-tabs">
-        <button type="button" class:active={dock === "notes"} onclick={() => (dock = "notes")}>Notes</button>
-        <button type="button" class:active={dock === "todos"} onclick={() => (dock = "todos")}>To-dos</button>
-        <button type="button" class="close" onclick={() => (dock = null)}>Close</button>
+        <button type="button" class:active={dock === "notes"} onclick={() => (dock = "notes")}>{t("notes")}</button>
+        <button type="button" class:active={dock === "todos"} onclick={() => (dock = "todos")}>{t("todos")}</button>
+        <button type="button" class="close" onclick={() => (dock = null)}>{t("close")}</button>
       </div>
       {#if dock === "notes"}
         <Notes
@@ -1252,6 +1349,7 @@
           onSaveError={reportSaveError}
           onShowTodos={() => (dock = "todos")}
           createRequest={noteRequest}
+          openRequest={noteOpenRequest}
         />
       {:else}
         <Todos
@@ -1312,7 +1410,7 @@
     </div>
   {:else}
     <div class="alt home">
-      <p class="opening">Opening…</p>
+      <p class="opening">{t("opening")}</p>
     </div>
   {/if}
   {#if settingsOpen && project}
@@ -1761,6 +1859,63 @@
       opacity: 1;
       transform: none;
     }
+  }
+
+  .footnote-edit {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    margin: 8px auto 0;
+    width: min(100% - 32px, 40rem);
+    padding: 8px 10px;
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-sm);
+    background: var(--pv-chrome);
+  }
+
+  .footnote-edit label {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: var(--pv-text-sm);
+    color: var(--pv-text-subtle);
+  }
+
+  .footnote-edit textarea {
+    resize: vertical;
+    font: inherit;
+    font-size: var(--pv-text-md);
+    color: var(--pv-text);
+    background: var(--pv-field);
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-xs);
+    padding: 4px 6px;
+  }
+
+  .footnote-edit button {
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-xs);
+    background: transparent;
+    color: var(--pv-text-subtle);
+    padding: 4px 8px;
+  }
+
+  /* The open chapter's footnotes at the foot of the page, as in a printed book. */
+  .page-notes {
+    margin: 2.2em 0 0;
+    padding-left: 1.4em;
+    color: var(--pv-ink-2);
+    font-size: 0.82em;
+    line-height: 1.5;
+  }
+
+  .page-notes::before {
+    content: "";
+    display: block;
+    width: 30%;
+    margin: 0 0 0.8em -1.4em;
+    border-top: 1px solid var(--pv-ink-rule);
   }
 
   .opening {

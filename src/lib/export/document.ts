@@ -13,10 +13,12 @@ export type Inline = {
   href?: string;
   /** A line break inside the paragraph (Shift+Enter). */
   lineBreak?: boolean;
+  /** A footnote reference: its number in the chapter. */
+  footnote?: number;
 };
 
 export type Block = {
-  kind: "paragraph" | "h1" | "h2" | "h3" | "quote" | "bullet" | "number" | "image" | "rule";
+  kind: "paragraph" | "h1" | "h2" | "h3" | "quote" | "bullet" | "number" | "image" | "rule" | "notes";
   align?: string;
   inlines: Inline[];
   /** How deeply a list item is nested; 0 is the outer list. */
@@ -24,12 +26,14 @@ export type Block = {
   /** A picture's source and description. */
   src?: string;
   alt?: string;
+  /** The chapter's footnotes, in order, for the "notes" block at its end. */
+  notes?: string[];
 };
 
 type JsonNode = {
   type?: string;
   text?: string;
-  attrs?: { level?: number; textAlign?: string; src?: string; alt?: string };
+  attrs?: { level?: number; textAlign?: string; src?: string; alt?: string; text?: string };
   marks?: { type?: string; attrs?: { href?: string } }[];
   content?: JsonNode[];
 };
@@ -40,10 +44,17 @@ const ALIGNMENTS = new Set(["left", "center", "right", "justify"]);
 const SAFE_LINK = /^(https?:|mailto:)/i;
 const SAFE_PICTURE = /^(data:image\/|https?:)/i;
 
-function inlinesFrom(nodes: JsonNode[] | undefined): Inline[] {
+/** Footnotes met so far in a chapter; each reference gets the next number. */
+type Notes = string[];
+
+function inlinesFrom(nodes: JsonNode[] | undefined, notes: Notes): Inline[] {
   return (nodes ?? []).flatMap((node): Inline[] => {
     if (node.type === "hardBreak") return [BREAK];
-    if (node.type !== "text") return inlinesFrom(node.content);
+    if (node.type === "footnote") {
+      notes.push(node.attrs?.text ?? "");
+      return [{ text: "", footnote: notes.length }];
+    }
+    if (node.type !== "text") return inlinesFrom(node.content, notes);
     const marks = new Map((node.marks ?? []).map((mark) => [mark.type, mark]));
     return [
       {
@@ -67,27 +78,27 @@ function asLines(pieces: Inline[][]): Inline[] {
   return pieces.flatMap((piece, index) => (index > 0 ? [BREAK, ...piece] : piece));
 }
 
-function listBlocks(list: JsonNode, depth: number, into: Block[]) {
+function listBlocks(list: JsonNode, depth: number, into: Block[], notes: Notes) {
   const kind = list.type === "orderedList" ? "number" : "bullet";
   for (const item of list.content ?? []) {
     const parts = item.content ?? [];
     // An item's own paragraphs stay together; lists inside it follow, one level deeper.
-    into.push({ kind, depth, inlines: asLines(parts.filter((part) => !isList(part)).map((part) => inlinesFrom(part.content))) });
-    for (const part of parts) if (isList(part)) listBlocks(part, depth + 1, into);
+    into.push({ kind, depth, inlines: asLines(parts.filter((part) => !isList(part)).map((part) => inlinesFrom(part.content, notes))) });
+    for (const part of parts) if (isList(part)) listBlocks(part, depth + 1, into, notes);
   }
 }
 
-function blocksFrom(nodes: JsonNode[], into: Block[], inQuote = false) {
+function blocksFrom(nodes: JsonNode[], into: Block[], notes: Notes, inQuote = false) {
   const paragraph = inQuote ? "quote" : "paragraph";
   for (const node of nodes) {
     if (node.type === "heading") {
       const level = node.attrs?.level ?? 1;
       const kind = level === 1 ? "h1" : level === 2 ? "h2" : "h3";
-      into.push({ kind, align: node.attrs?.textAlign, inlines: inlinesFrom(node.content) });
+      into.push({ kind, align: node.attrs?.textAlign, inlines: inlinesFrom(node.content, notes) });
     } else if (node.type === "blockquote") {
-      blocksFrom(node.content ?? [], into, true);
+      blocksFrom(node.content ?? [], into, notes, true);
     } else if (isList(node)) {
-      listBlocks(node, 0, into);
+      listBlocks(node, 0, into, notes);
     } else if (node.type === "image") {
       into.push({ kind: "image", inlines: [], src: node.attrs?.src ?? "", alt: node.attrs?.alt ?? "" });
     } else if (node.type === "horizontalRule") {
@@ -96,14 +107,17 @@ function blocksFrom(nodes: JsonNode[], into: Block[], inQuote = false) {
       const text = (node.content ?? []).map((child) => child.text ?? "").join("");
       into.push({ kind: paragraph, inlines: asLines(text.split("\n").map((line) => [{ text: line }])) });
     } else {
-      into.push({ kind: paragraph, align: node.attrs?.textAlign, inlines: inlinesFrom(node.content) });
+      into.push({ kind: paragraph, align: node.attrs?.textAlign, inlines: inlinesFrom(node.content, notes) });
     }
   }
 }
 
 export function documentToBlocks(doc: DocumentJson): Block[] {
   const blocks: Block[] = [];
-  blocksFrom((doc.content ?? []) as JsonNode[], blocks);
+  const notes: Notes = [];
+  blocksFrom((doc.content ?? []) as JsonNode[], blocks, notes);
+  // The chapter's footnotes follow its text, numbered as in the text.
+  if (notes.length > 0) blocks.push({ kind: "notes", inlines: [], notes });
   return blocks;
 }
 
@@ -122,6 +136,7 @@ function inlineHtml(inlines: Inline[]): string {
   return inlines
     .map((inline) => {
       if (inline.lineBreak) return "<br />";
+      if (inline.footnote) return `<sup class="footnote">${inline.footnote}</sup>`;
       let text = escapeHtml(inline.text);
       if (inline.bold) text = `<strong>${text}</strong>`;
       if (inline.italic) text = `<em>${text}</em>`;
@@ -172,6 +187,8 @@ export function blocksToHtml(blocks: Block[]): string {
       }
     } else if (block.kind === "rule") {
       html += "<hr />";
+    } else if (block.kind === "notes") {
+      html += `<ol class="footnotes">${(block.notes ?? []).map((note) => `<li>${escapeHtml(note)}</li>`).join("")}</ol>`;
     } else if (block.kind === "h1" || block.kind === "h2" || block.kind === "h3") {
       html += `<${block.kind}${align}>${inner}</${block.kind}>`;
     } else {
@@ -190,10 +207,11 @@ function wrap(text: string, open: string, close = open): string {
 
 const markdownUrl = (url: string) => url.replaceAll(" ", "%20").replaceAll("(", "%28").replaceAll(")", "%29");
 
-function inlineMarkdown(inlines: Inline[]): string {
+function inlineMarkdown(inlines: Inline[], label: string): string {
   return inlines
     .map((inline) => {
       if (inline.lineBreak) return "\\\n";
+      if (inline.footnote) return `[^${label}${inline.footnote}]`;
       let text = inline.text;
       if (inline.bold) text = wrap(text, "**");
       if (inline.italic) text = wrap(text, "*");
@@ -207,8 +225,8 @@ function inlineMarkdown(inlines: Inline[]): string {
     .join("");
 }
 
-function blockMarkdown(block: Block): string {
-  const inner = inlineMarkdown(block.inlines);
+function blockMarkdown(block: Block, label: string): string {
+  const inner = inlineMarkdown(block.inlines, label);
   if (block.kind === "h1") return `# ${inner}`;
   if (block.kind === "h2") return `## ${inner}`;
   if (block.kind === "h3") return `### ${inner}`;
@@ -222,17 +240,19 @@ function blockMarkdown(block: Block): string {
     return block.src && SAFE_PICTURE.test(block.src) ? `![${block.alt ?? ""}](${markdownUrl(block.src)})` : "";
   }
   if (block.kind === "rule") return "---";
+  if (block.kind === "notes") return (block.notes ?? []).map((note, index) => `[^${label}${index + 1}]: ${note}`).join("\n");
   return inner;
 }
 
-export function blocksToMarkdown(blocks: Block[]): string {
+/** `label` keeps footnotes from different chapters apart in one Markdown file: [^2-1] is chapter 2's first. */
+export function blocksToMarkdown(blocks: Block[], label = ""): string {
   return blocks
     .map((block, index) => {
       const previous = blocks[index - 1];
-      if (!previous) return blockMarkdown(block);
+      if (!previous) return blockMarkdown(block, label);
       // Items of one list sit on consecutive lines; paragraphs of one quotation stay in it.
       const gap = isItem(block) && isItem(previous) ? "\n" : block.kind === "quote" && previous.kind === "quote" ? "\n>\n" : "\n\n";
-      return gap + blockMarkdown(block);
+      return gap + blockMarkdown(block, label);
     })
     .join("");
 }
@@ -241,7 +261,9 @@ export function blocksToPlain(blocks: Block[]): string {
   const numbers: number[] = [];
   return blocks
     .map((block, index) => {
-      const text = block.inlines.map((inline) => (inline.lineBreak ? "\n" : inline.text)).join("");
+      const text = block.inlines
+        .map((inline) => (inline.lineBreak ? "\n" : inline.footnote ? `[${inline.footnote}]` : inline.text))
+        .join("");
       const gap = index === 0 ? "" : isItem(block) && isItem(blocks[index - 1]) ? "\n" : "\n\n";
       if (isItem(block)) {
         const depth = block.depth ?? 0;
@@ -252,6 +274,7 @@ export function blocksToPlain(blocks: Block[]): string {
       numbers.length = 0;
       if (block.kind === "image") return `${gap}${block.alt ? `[Picture: ${block.alt}]` : "[Picture]"}`;
       if (block.kind === "rule") return `${gap}* * *`;
+      if (block.kind === "notes") return gap + (block.notes ?? []).map((note, index) => `[${index + 1}] ${note}`).join("\n");
       return gap + text;
     })
     .join("");
@@ -259,7 +282,7 @@ export function blocksToPlain(blocks: Block[]): string {
 
 export function chaptersToMarkdown(title: string, chapters: Chapter[]): string {
   const body = chapters
-    .map((chapter) => `## ${chapter.title}\n\n${blocksToMarkdown(documentToBlocks(chapter.contentJson))}`)
+    .map((chapter, index) => `## ${chapter.title}\n\n${blocksToMarkdown(documentToBlocks(chapter.contentJson), `${index + 1}-`)}`)
     .join("\n\n");
   return `# ${title}\n\n${body}\n`;
 }

@@ -1,8 +1,12 @@
 <script lang="ts">
+  import type { UiKey } from "$lib/i18n";
+  import { num, plural, t } from "$lib/ui.svelte";
+  import Icon from "./Icon.svelte";
+
   let {
     words,
     projectWords,
-    language = "English",
+    language = "",
     saveLabel,
     error = "",
     zen = false,
@@ -32,25 +36,22 @@
   let themesOpen = $state(false);
 
   const themes = [
-    { id: "daylight", label: "Daylight" },
-    { id: "candlelit", label: "Candlelit" },
-    { id: "moonlit", label: "Moonlit" },
-    { id: "sunset", label: "Follow sunset" },
+    { id: "daylight", key: "themeDaylight" },
+    { id: "candlelit", key: "themeCandlelit" },
+    { id: "moonlit", key: "themeMoonlit" },
+    { id: "sunset", key: "themeSunset" },
   ] as const;
 
-  const themeLabel = $derived(themes.find((item) => item.id === theme)?.label ?? "Daylight");
+  const themeLabel = $derived(t(themes.find((item) => item.id === theme)?.key ?? "themeDaylight"));
 
-  const ambienceLabel = $derived(
-    ambience === "rain"
-      ? "Rain"
-      : ambience === "fire"
-        ? "Fire"
-        : ambience === "cafe"
-          ? "Café"
-          : ambience === "piano"
-            ? "Piano"
-            : "Quiet",
-  );
+  const SOUNDS: Record<typeof ambience, UiKey> = {
+    off: "soundQuiet",
+    rain: "soundRain",
+    fire: "soundFireplace",
+    cafe: "soundCafe",
+    piano: "soundPiano",
+  };
+  const ambienceLabel = $derived(t(SOUNDS[ambience]));
   const progress = $derived(goal > 0 ? Math.max(0, Math.min(1, today / goal)) : 0);
 </script>
 
@@ -72,26 +73,29 @@
               themesOpen = false;
             }}
           >
-            {item.label}
+            {t(item.key)}
           </button>
         {/each}
       </div>
     {/if}
   </div>
   <span class="rule"></span>
-  <button type="button" class="quiet" onclick={onAmbience}>{ambienceLabel}</button>
+  <button type="button" class="quiet with-icon" onclick={onAmbience}>
+    {#if ambience === "rain"}<Icon name="rain" />{:else if ambience === "fire"}<Icon name="flame" />{/if}
+    {ambienceLabel}
+  </button>
   <span class="rule"></span>
-  <span>{words.toLocaleString("en")} words</span>
+  <span>{plural("words", words)}</span>
   <span class="rule"></span>
-  <span class="muted">{projectWords.toLocaleString("en")} in the book</span>
+  <span class="muted">{t("inTheBook", { n: projectWords })}</span>
   <span class="rule"></span>
   <span class="today">
-    Today
+    {t("today")}
     {#if goal > 0}
       <span class="meter" aria-hidden="true"><span style:width="{progress * 100}%"></span></span>
-      {today}/{goal}
+      {num(today)}/{num(goal)}
     {:else}
-      {today}
+      {num(today)}
     {/if}
   </span>
   <span class="rule"></span>
@@ -103,7 +107,7 @@
     <span class="rule"></span>
     <span class="muted">{saveLabel}</span>
   {/if}
-  <button type="button" class:on={zen} onclick={onZen}>Zen</button>
+  <button type="button" class="with-icon" class:on={zen} onclick={onZen}><Icon name="moon" />{t("zen")}</button>
 </div>
 
 <style>
@@ -215,5 +219,16 @@
 
   button.on {
     box-shadow: inset 0 0 0 1px var(--pv-on-accent);
+  }
+
+  .with-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .with-icon :global(svg) {
+    width: 13px;
+    height: 13px;
   }
 </style>

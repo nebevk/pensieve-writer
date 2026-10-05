@@ -1,3 +1,6 @@
+import { localizeError } from "$lib/i18n";
+import { t, ui } from "$lib/ui.svelte";
+
 export type SaveStatus =
   | { state: "saved" }
   | { state: "unsaved" }
@@ -71,12 +74,13 @@ export function createAutosave(options: AutosaveOptions): Autosave {
   return { schedule, flush };
 }
 
+/** A problem as the writer should read it, in the interface language where Pensieve knows it. */
 export function errorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "string" && error) return error;
+  if (error instanceof Error && error.message) return localizeError(ui.language, error.message);
+  if (typeof error === "string" && error) return localizeError(ui.language, error);
   try {
     return JSON.stringify(error);
   } catch {
-    return "Could not save";
+    return t("couldNotSave");
   }
 }

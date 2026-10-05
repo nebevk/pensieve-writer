@@ -1,17 +1,24 @@
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
+import type { UiKey } from "$lib/i18n";
+import { t } from "$lib/ui.svelte";
 
 export type ExportKind = "docx" | "md" | "txt";
 
-const FILTERS: Record<ExportKind, { name: string; extensions: string[] }> = {
-  docx: { name: "Word document", extensions: ["docx"] },
-  md: { name: "Markdown", extensions: ["md"] },
-  txt: { name: "Plain text", extensions: ["txt"] },
+const FILTERS: Record<ExportKind, { name: UiKey; extensions: string[] }> = {
+  docx: { name: "dialogWordFilter", extensions: ["docx"] },
+  md: { name: "dialogMarkdownFilter", extensions: ["md"] },
+  txt: { name: "dialogPlainFilter", extensions: ["txt"] },
 };
 
 /** The "Save as" dialog, starting with a suggested file name. */
 export async function chooseSavePath(suggested: string, kind: ExportKind): Promise<string | null> {
-  const path = await save({ title: "Save as", defaultPath: suggested, filters: [FILTERS[kind]] });
+  const filter = FILTERS[kind];
+  const path = await save({
+    title: t("dialogSaveAs"),
+    defaultPath: suggested,
+    filters: [{ name: t(filter.name), extensions: filter.extensions }],
+  });
   return typeof path === "string" ? path : null;
 }
 
