@@ -1,4 +1,4 @@
-import type { DocumentJson, ProjectKind } from "$lib/model";
+import { createChapter, type Chapter, type DocumentJson, type ProjectKind } from "$lib/model";
 
 const LINES = [
   "This page is only here for the first sitting.",
@@ -36,4 +36,15 @@ export function openingTitle(kind: ProjectKind, bookTitle: string): string {
 
 export function nextTitle(kind: ProjectKind): string {
   return kind === "stories" ? "Story 1" : "Chapter 1";
+}
+
+/** What a new book starts with: the welcome page, then an empty chapter (an article is one page). */
+export function firstChapters(projectId: string, kind: ProjectKind, bookTitle: string): Chapter[] {
+  const now = new Date().toISOString();
+  const welcome: Chapter = {
+    ...createChapter(projectId, openingTitle(kind, bookTitle), 0, now),
+    contentJson: welcomeDocument(kind !== "article"),
+    plainText: welcomePlain(kind !== "article"),
+  };
+  return kind === "article" ? [welcome] : [welcome, createChapter(projectId, nextTitle(kind), 1, now)];
 }

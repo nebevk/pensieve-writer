@@ -8,6 +8,7 @@ import {
   type WritingLanguage,
 } from "$lib/model";
 import { loadPrefs, savePrefs } from "$lib/prefs";
+import { firstChapters } from "$lib/chapters/welcome";
 import type { Storage } from "./types";
 import type { Note, Task } from "./organize";
 import { readNotesWith, readTasksWith, writeNoteWith, writeTaskWith } from "./noteRows";
@@ -579,6 +580,12 @@ export function rememberPersonalWord(language: WritingLanguage, word: string): P
   });
 }
 
+/** A brand-new book file, including the one made on first launch, opens on the welcome page. */
+function newBook(): Project {
+  const project = createProject();
+  return { ...project, chapters: firstChapters(project.id, project.kind, project.title) };
+}
+
 export const sqliteStorage: Storage = {
   save(project) {
     return enqueue(async () => {
@@ -591,7 +598,7 @@ export const sqliteStorage: Storage = {
       const db = await database();
       const existing = await readProject(db);
       if (existing && existing.chapters.length > 0) return existing;
-      const project = existing ?? createProject();
+      const project = existing ?? newBook();
       if (existing && existing.chapters.length === 0) {
         const now = new Date().toISOString();
         project.chapters = [

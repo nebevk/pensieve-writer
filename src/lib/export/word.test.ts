@@ -177,6 +177,16 @@ describe("Word import", () => {
     expect(result.chapters[1].plainText).toBe("Ana climbed the stairs.");
   });
 
+  it("labels a Slovenian story collection in Slovenian and reads it back", async () => {
+    const stories = { ...book(), kind: "stories" as const, language: "sl" as const };
+    const bytes = await wordFile(stories, look);
+    const xml = await documentXml(bytes);
+    expect(xml).toContain(">Prva zgodba<");
+    expect(xml).toContain(">Druga zgodba<");
+    const result = await readWordFile(arrayBufferOf(bytes));
+    expect(result.chapters.map((chapter) => chapter.title)).toEqual(["Grandmother's Keys", "The Attic"]);
+  });
+
   it("keeps an exported article in one piece", async () => {
     const article = { ...book(), kind: "article" as const, chapters: [book().chapters[0]] };
     const result = await readWordFile(arrayBufferOf(await wordFile(article, look)));
@@ -231,6 +241,10 @@ describe("Word import", () => {
   it("recognises chapter lines but not ordinary sentences", () => {
     expect(looksLikeChapterTitle("Chapter 3")).toBe(true);
     expect(looksLikeChapterTitle("Poglavje tri")).toBe(true);
+    expect(looksLikeChapterTitle("Prvo poglavje")).toBe(true);
+    expect(looksLikeChapterTitle("3. poglavje")).toBe(true);
+    expect(looksLikeChapterTitle("Četrta zgodba")).toBe(true);
+    expect(looksLikeChapterTitle("Zgodba se začne pri reki.")).toBe(false);
     expect(looksLikeChapterTitle("IV")).toBe(true);
     expect(looksLikeChapterTitle("12.")).toBe(true);
     expect(looksLikeChapterTitle("Chapter one was the hardest to write.")).toBe(false);

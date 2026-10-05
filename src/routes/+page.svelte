@@ -28,7 +28,7 @@
   import Todos from "$lib/views/Todos.svelte";
   import { flushPrefs, loadPrefs, loadPrefsFile, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs, type KnownProject } from "$lib/prefs";
   import { duplicateChapterProject, patchChapter, removeChapter, renameChapterProject, reorderChapterList, setChapterText } from "$lib/chapters/mutate";
-  import { nextTitle, openingTitle, welcomeDocument, welcomePlain } from "$lib/chapters/welcome";
+  import { firstChapters } from "$lib/chapters/welcome";
   import { chapterName, roman } from "$lib/chapters/labels";
   import { flushNoteSave, saveNote, saveTask } from "$lib/storage/organize";
   import { checkpointDatabase, forgetPersonalWord, keepSnapshot, listPersonalWords, readSnapshotChapters, rememberPersonalWord, restoreChapter, restoreFromBackup, sqliteStorage, switchProjectFile } from "$lib/storage/sqlite";
@@ -60,7 +60,8 @@
   let prefs = $state(loadPrefs());
   let zen = $state(false);
   let dock = $state<"notes" | "todos" | null>(null);
-  let view = $state<"write" | "home" | "notes" | "todos" | "outline" | "book" | "settings">("write");
+  // The app opens on Home, as in the design; "Continue writing" goes back to the last chapter.
+  let view = $state<"write" | "home" | "notes" | "todos" | "outline" | "book" | "settings">("home");
   let backupMessage = $state("");
   let projectLocation = $state("");
   let dictionary = $state<{ language: WritingLanguage; word: string }[]>([]);
@@ -894,21 +895,9 @@
       await useProjectFile(path, false);
       const folderName = folder.split(/[/\\]/).filter(Boolean).pop() || "New book";
       if (!project) return;
-      const welcome = project.chapters[0];
-      const opening = welcome
-        ? {
-            ...welcome,
-            title: openingTitle(kind, folderName),
-            contentJson: welcomeDocument(kind !== "article"),
-            plainText: welcomePlain(kind !== "article"),
-          }
-        : createChapter(project.id, openingTitle(kind, folderName), 0);
-      const chapters = [opening];
-      if (kind !== "article") {
-        chapters.push(createChapter(project.id, nextTitle(kind), 1));
-      }
+      const chapters = firstChapters(project.id, kind, folderName);
       project = { ...project, title: folderName, kind, chapters };
-      activeId = opening.id;
+      activeId = chapters[0].id;
       rememberBook(path, folderName);
       autosave.schedule();
       await autosave.flush();
@@ -941,6 +930,11 @@
     try {
       await forgetPersonalWord(language, word);
       dictionary = await listPersonalWords();
+      try {
+        await invoke("remove_personal_word", { language, word });
+      } catch {
+        // Pensieve has forgotten the word; only Windows' copy is left, and it does no harm.
+      }
     } catch (error) {
       backupMessage = errorMessage(error);
     }
@@ -1183,7 +1177,9 @@
                 <span>{project?.title}</span>
                 <span>{roman(chapters.findIndex((item) => item.id === chapter.id) + 1)}</span>
               </div>
-              <p class="chapter-label">{chapterName(chapters.findIndex((item) => item.id === chapter.id))}</p>
+              <p class="chapter-label">
+                {chapterName(chapters.findIndex((item) => item.id === chapter.id), project?.language, project?.kind)}
+              </p>
               <h2 class="chapter-title">{chapter.title}</h2>
               <Editor
                 docId={chapter.id}
@@ -1313,6 +1309,10 @@
       {:else if view === "book"}
         <Book {chapters} />
       {/if}
+    </div>
+  {:else}
+    <div class="alt home">
+      <p class="opening">Opening…</p>
     </div>
   {/if}
   {#if settingsOpen && project}
@@ -1765,7 +1765,7 @@
 
   .opening {
     text-align: center;
-    color: var(--muted);
+    color: var(--pv-text-subtle);
     margin-top: 4rem;
   }
 </style>

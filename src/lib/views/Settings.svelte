@@ -159,7 +159,7 @@
   >
     <header>
       <span id="settings-title">Settings</span>
-      <button type="button" class="close" title="Close" onclick={onClose}>×</button>
+      <button type="button" class="close" title="Close" aria-label="Close" onclick={onClose}>×</button>
     </header>
     <div class="body">
       <nav>
@@ -458,7 +458,7 @@
               </li>
             {/each}
           </ul>
-          <p class="hint">Removing a word forgets it in Pensieve. Windows may still remember it until the spell checker is reset.</p>
+          <p class="hint">Removing a word forgets it in Pensieve and in the Windows spell checker.</p>
         {:else if section === "Shortcuts"}
           <h2>Shortcuts</h2>
           <ul class="keys">

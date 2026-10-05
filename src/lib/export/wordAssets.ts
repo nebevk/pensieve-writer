@@ -1,6 +1,7 @@
 import type { DocumentJson, Project } from "$lib/model";
 import type { ManuscriptFont, Prefs } from "$lib/prefs";
-import { wordFile, type FontFace, type WordFont, type WordImage, type WordLook } from "./word";
+// Types only: the writer and its docx library load on the first export, not at startup.
+import type { FontFace, WordFont, WordImage, WordLook } from "./word";
 
 /** Browser-side preparation for Word files: the manuscript font's static styles and measured pictures. */
 
@@ -97,6 +98,7 @@ export async function wordFileFor(
   project: Pick<Project, "title" | "kind" | "language" | "chapters">,
   prefs: Pick<Prefs, "manuscriptFont" | "manuscriptSize" | "pageWidth" | "runningHead">,
 ): Promise<Uint8Array> {
+  const { wordFile } = await import("./word");
   const sources = new Set<string>();
   for (const chapter of project.chapters) pictureSources(chapter.contentJson, sources);
   const images = new Map<string, WordImage>();

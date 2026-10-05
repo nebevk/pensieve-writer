@@ -1,6 +1,6 @@
 import type { MammothDocument, MammothElement } from "mammoth";
 import { createChapter, emptyDocument, type Chapter, type DocumentJson, type Project } from "$lib/model";
-import { WORD_STYLES } from "./word";
+import { WORD_STYLES } from "./wordStyles";
 
 /** A chapter read from a Word file, ready to become part of a book. */
 export type ImportedChapter = { title: string; contentJson: DocumentJson; plainText: string };
@@ -75,13 +75,15 @@ const isDropCap = (p: MammothElement) => p.styleId === WORD_STYLES.dropCap || p.
 const isQuote = (p: MammothElement) => /^(intense )?quote$/i.test(p.styleName ?? "") || p.styleId === "Quote";
 
 const CHAPTER_LINE = /^(chapter|poglavje|prologue|prolog|epilogue|epilog)\b/i;
+// Slovenian puts the number first: "Prvo poglavje", "3. poglavje", "Prva zgodba".
+const SLOVENIAN_LABEL = /^(\d{1,3}\.|\p{L}+)\s+(poglavje|zgodba)$/iu;
 const NUMBER_LINE = /^(\d{1,3}|[IVXLCDM]{1,8})\.?$/;
 
-/** A short line such as "Chapter 3", "Poglavje tri" or "IV", in a file without heading styles. */
+/** A short line such as "Chapter 3", "Prvo poglavje" or "IV", in a file without heading styles. */
 export function looksLikeChapterTitle(text: string): boolean {
   const line = text.trim();
   if (!line || line.length > 60) return false;
-  if (NUMBER_LINE.test(line)) return true;
+  if (NUMBER_LINE.test(line) || SLOVENIAN_LABEL.test(line)) return true;
   return CHAPTER_LINE.test(line) && !/[.!?]$/.test(line);
 }
 

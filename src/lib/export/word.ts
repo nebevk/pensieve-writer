@@ -22,6 +22,7 @@ import {
 } from "docx";
 import type { Chapter, DocumentJson, Project, WritingLanguage } from "$lib/model";
 import { chapterName } from "$lib/chapters/labels";
+import { WORD_STYLES } from "./wordStyles";
 
 /**
  * Writes a book as a Word document that looks like the page in Pensieve: the manuscript font,
@@ -58,16 +59,6 @@ export type WordAssets = {
   /** Pictures by their `src`, measured and in a format Word reads. */
   images?: Map<string, WordImage>;
 };
-
-/** Paragraph and character styles the importer recognises when a Pensieve file comes back. */
-export const WORD_STYLES = {
-  title: "PensieveTitle",
-  chapterLabel: "PensieveChapterLabel",
-  dropCap: "PensieveDropCap",
-  quote: "Quote",
-  highlight: "PensieveHighlight",
-  accent: "PensieveAccent",
-} as const;
 
 const INK = "2A2622";
 const INK_2 = "3D3731";
@@ -437,7 +428,10 @@ export function buildWordDocument(book: WordBook, look: WordLook, assets: WordAs
           properties: { page, type: SectionType.NEXT_PAGE, titlePage: true },
           headers,
           children: [
-            new Paragraph({ style: WORD_STYLES.chapterLabel, children: [new TextRun(chapterName(index))] }),
+            new Paragraph({
+              style: WORD_STYLES.chapterLabel,
+              children: [new TextRun(chapterName(index, book.language, book.kind))],
+            }),
             new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun(chapter.title)] }),
             ...chapterBody(chapter.contentJson, contextFor(chapter)),
           ],

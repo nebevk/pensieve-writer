@@ -49,7 +49,8 @@ pub fn run() {
             project::read_prefs,
             project::write_prefs,
             spellcheck::probe_spellcheck,
-            spellcheck::add_personal_word
+            spellcheck::add_personal_word,
+            spellcheck::remove_personal_word
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

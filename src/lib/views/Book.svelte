@@ -82,6 +82,14 @@
     line-height: 1.6;
   }
 
+  .page :global(img) {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0.8em auto;
+    break-inside: avoid;
+  }
+
   h2 {
     font-family: var(--font-writing);
     font-weight: 500;

@@ -199,8 +199,8 @@
     <span class="rule"></span>
     {@render toolButton(blocks[0])}
     {@render toolButton(blocks[2])}
-    <button type="button" class="tool serif" title="Block quote" onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleBlockquote().run()}>“</button>
-    <button type="button" class="tool scene" title="Scene break" onmousedown={(event) => event.preventDefault()} onclick={sceneBreak}>* *</button>
+    <button type="button" class="tool serif" title="Block quote" aria-label="Block quote" onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleBlockquote().run()}>“</button>
+    <button type="button" class="tool scene" title="Scene break" aria-label="Scene break" onmousedown={(event) => event.preventDefault()} onclick={sceneBreak}>* *</button>
     <span class="rule"></span>
     <button type="button" class="more" onclick={() => (expanded = true)}>
       All tools
@@ -241,8 +241,8 @@
         {#each marks as tool (tool.title)}
           {@render toolButton(tool)}
         {/each}
-        <button type="button" class="tool" title="Superscript" onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleMark("superscript").run()}>x²</button>
-        <button type="button" class="tool color" title="Text colour" onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleMark("textColor").run()}>A</button>
+        <button type="button" class="tool" title="Superscript" aria-label="Superscript" onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleMark("superscript").run()}>x²</button>
+        <button type="button" class="tool color" title="Text colour" aria-label="Text colour" onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleMark("textColor").run()}>A</button>
         <button type="button" class="tool" title="Highlight" onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleMark("highlight").run()}>
           <span class="swatch"></span>
         </button>
@@ -257,16 +257,16 @@
         {#each blocks as tool (tool.title)}
           {@render toolButton(tool)}
         {/each}
-        <button type="button" class="tool" title="Decrease indent" onmousedown={(event) => event.preventDefault()} onclick={() => shiftIndent(-1)}>–</button>
-        <button type="button" class="tool" title="Increase indent" onmousedown={(event) => event.preventDefault()} onclick={() => shiftIndent(1)}>+</button>
+        <button type="button" class="tool" title="Decrease indent" aria-label="Decrease indent" onmousedown={(event) => event.preventDefault()} onclick={() => shiftIndent(-1)}>–</button>
+        <button type="button" class="tool" title="Increase indent" aria-label="Increase indent" onmousedown={(event) => event.preventDefault()} onclick={() => shiftIndent(1)}>+</button>
       </div>
       <p>Paragraph</p>
     </section>
     <section class="group">
       <div class="tools">
-        <button type="button" class="tool serif" title="Block quote" onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleBlockquote().run()}>“</button>
-        <button type="button" class="tool scene" title="Scene break" onmousedown={(event) => event.preventDefault()} onclick={sceneBreak}>* *</button>
-        <button type="button" class="tool" title="Image" onmousedown={(event) => event.preventDefault()} onclick={() => void askImage()}>Img</button>
+        <button type="button" class="tool serif" title="Block quote" aria-label="Block quote" onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleBlockquote().run()}>“</button>
+        <button type="button" class="tool scene" title="Scene break" aria-label="Scene break" onmousedown={(event) => event.preventDefault()} onclick={sceneBreak}>* *</button>
+        <button type="button" class="tool" title="Image" aria-label="Image" onmousedown={(event) => event.preventDefault()} onclick={() => void askImage()}>Img</button>
         <button type="button" class="tool" title="Link" onmousedown={(event) => event.preventDefault()} onclick={() => (linkOpen = !linkOpen)}>Link</button>
         {#if linkOpen}
           <form
@@ -317,6 +317,7 @@
     class:active={tool.pressed}
     class:serif={tool.glyph === "I" || tool.glyph === "“"}
     title={tool.title}
+    aria-label={tool.title}
     aria-pressed={tool.pressed}
     disabled={tool.disabled}
     onmousedown={(event) => event.preventDefault()}

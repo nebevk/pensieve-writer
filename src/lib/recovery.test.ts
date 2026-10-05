@@ -107,6 +107,26 @@ describe("note save queue", () => {
     await Promise.all([first, second]);
     expect(saved).toEqual(["a", "b"]);
   });
+
+  it("lets deleting a to-do replace its failed save, so the retry can't bring it back", async () => {
+    type Change = { kind: "save" | "delete"; id: string };
+    let fail = true;
+    const done: string[] = [];
+    const queue = createSaveQueue<Change>({
+      delayMs: 800,
+      key: (change) => change.id,
+      save: async (change) => {
+        if (fail) throw new Error("database is locked");
+        done.push(`${change.kind}:${change.id}`);
+      },
+    });
+    queue.schedule({ kind: "save", id: "task" });
+    await expect(queue.flush()).rejects.toThrow("database is locked");
+    fail = false;
+    queue.schedule({ kind: "delete", id: "task" });
+    await queue.flush();
+    expect(done).toEqual(["delete:task"]);
+  });
 });
 
 describe("notes in snapshots", () => {
