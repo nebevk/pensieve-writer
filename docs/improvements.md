@@ -1,6 +1,6 @@
 # Suggested improvements
 
-Ideas for making Pensieve safer, faster and nicer to write in, beyond matching the design. Written 2 October 2026; rechecked 5 October against commit `22d85eb` and updated several times that day, most recently after IMP-17, IMP-26, IMP-29, IMP-45, IMP-48 and IMP-49 were done.
+Ideas for making Pensieve safer, faster and nicer to write in, beyond matching the design. Written 2 October 2026; rechecked 5 October against commit `22d85eb` and updated several times that day, most recently with IMP-50 to IMP-55, found while building the design's rounds 5 and 6.
 
 - Design gaps live in `docs/design-gaps.md`; this list doesn't repeat them.
 - Requirement IDs in brackets point to `docs/requirements.md`.
@@ -10,9 +10,9 @@ Ideas for making Pensieve safer, faster and nicer to write in, beyond matching t
 
 ## Summary
 
-49 suggestions: 43 done, 4 partly done, 2 open. No P1 items are left.
+55 suggestions: 49 done, 4 partly done, 2 open. No P1 items are left.
 
-Every round of changes on 5 October passed the type check (no errors or warnings), the tests (54 now), `cargo check` and a production build. The Word work was also checked in Word 2021: exported books, drop caps at 13, 17 and 24 px in all three fonts, and an edit saved in Word and imported back. Removing a dictionary word was checked against the Windows spell checker itself. Nobody has clicked through the running app since then, so try these once by hand:
+Every round of changes on 5 October passed the type check (no errors or warnings), the tests (85 now), `cargo check` and a production build. The Word work was also checked in Word 2021: exported books, drop caps at 13, 17 and 24 px in all three fonts, and an edit saved in Word and imported back. Removing a dictionary word was checked against the Windows spell checker itself. The new screens were also clicked through in the built app in a browser, with a test stand-in for the window's database and example books. Nobody has tried the desktop window itself since then, so try these once by hand:
 
 1. Type in a note, switch to another note and type straight away; both notes keep their text.
 2. Delete a note, then restore the "Kept" snapshot on Home; the note comes back.
@@ -28,6 +28,8 @@ Every round of changes on 5 October passed the type check (no errors or warnings
 12. Type in a note that is also a to-do, switch to To-dos straight away and change its state; the note keeps the words you just typed.
 13. Put a picture in a chapter; it shows in the Book view and in print, and it's in the Markdown export and in "Copy HTML".
 14. Remove a word in Settings → Language; the page underlines it again (perhaps only after restarting Pensieve).
+15. Open Settings and press Esc; it closes.
+16. Type at the very end of a long chapter; the window bar stays at the top.
 
 ## 1. Never lose the writer's text
 
@@ -107,6 +109,12 @@ Every round of changes on 5 October passed the type check (no errors or warnings
 | IMP-47 Example books | Asked for on 5 October. Settings → General → "Add example books" adds a novel (*The Lantern House*), a Slovenian story collection (*Zgodbe ob reki*) and an article. Each is its own book file, with notes and to-dos, so every view has something in it. Clicking again doesn't make copies |
 | IMP-48 Chapter labels in the book's language | Labels follow the book's language ("Prvo poglavje", "13. poglavje"), and story collections label stories ("Story One", "Prva zgodba"), on the page and in Word. Word import also recognises Slovenian chapter lines such as "3. poglavje" |
 | IMP-49 Load the Word writer when it's needed | The `docx` library loads on the first Word export or Word copy update. The page's startup script went from 908 kB to 549 kB |
+| IMP-50 Esc in Settings | Found on 5 October: Settings kept every key to itself, Esc included, so Esc never closed it while the keyboard was inside it, which is always. Esc now closes it and puts the keyboard back where it was |
+| IMP-51 Window bar pushed off the top | Found on 5 October: the desk's lamp glow reached 134px below the writing area, so a scroll into view near the bottom (the editor following the caret, for one) could scroll the whole window and hide the title bar. The writing area and the window now clip instead of scrolling |
+| IMP-52 "New note" made notes twice | Found on 5 October: after one "New note" from the toolbar, every later visit to the Notes view made another note. The request is now handled once |
+| IMP-53 Footnotes written twice in Word | Found on 5 October: the Word writer wrote a chapter's second paragraph twice, which left a stray footnote in the file. Each chapter is now written once, in reading order, which comments also need |
+| IMP-54 Candlelit particles | They were drawn under the app's panels, where nobody saw them, and their loop ran all the time. As the owner asked, they now drift over the desk behind the page in Write, and the loop stops when they're off (Gentle mode, Windows' reduced motion, other themes) |
+| IMP-55 Settings saved every minute | The settings were written to disk every minute because Follow sunset reads the clock. They are now saved only when they change |
 
 ## Suggested order
 

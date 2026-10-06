@@ -63,6 +63,7 @@ Priority key (MoSCoW): **M** = Must (v1), **S** = Should (v1 if time allows), **
 | ED-11 | Spell check in **English and Slovenian** | M |
 | ED-13 | Language setting per project, chapter, or selection, with spell check switching accordingly; personal dictionary for added words | M |
 | ED-12 | Images, simple tables, footnotes | C |
+| ED-14 | Comments on selected words, as in Word: written, edited and deleted beside the page; a comment can become a to-do or a note; comments go to and from Word files | M |
 
 ### 4.2 Project and Chapter Organization
 
