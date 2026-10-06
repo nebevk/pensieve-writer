@@ -74,7 +74,7 @@ Priority key (MoSCoW): **M** = Must (v1), **S** = Should (v1 if time allows), **
 | CH-3 | Create, rename, delete, duplicate chapters | M |
 | CH-4 | Drag-and-drop reordering | M |
 | CH-5 | Optional grouping (parts/sections containing chapters, or scenes within chapters) | S |
-| CH-6 | Per-chapter metadata: status (draft / revised / final), synopsis, word goal | S |
+| CH-6 | Per-chapter metadata: status (draft / revising / final), synopsis, word goal | S |
 | CH-7 | Collapsible sidebar | M |
 | CH-8 | Project templates: Novel, Short story collection, Non-fiction book, Article / blog post (single document, no chapter sidebar needed) | S |
 
