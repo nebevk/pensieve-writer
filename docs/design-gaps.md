@@ -3,7 +3,7 @@
 What the app is still missing compared with the design system in `design-system/`. First review 2 October 2026; rechecked 2, 5 and 6 October.
 
 - **Design source:** the UI kit in `design-system/ui_kits/desktop/`, the components in `design-system/components/`, and rounds 3–6 of `Pensieve Directions.dc.html` (5a/5b: Write with the chapter panel; 6a/6b: the revamped Home). The owner updated the UI kit and components on 5 October; the Directions canvas in the repo is still the 2 October copy, so rounds 5 and 6 were read from the kit and components. Rounds 1a–2b are superseded and out of scope (confirmed by the owner on 5 October); see "Earlier rounds" at the end.
-- **App:** commit `22d85eb`, "feat: keep the manuscript safe and finish the writing tools", plus the work of 5 October: starting on Home, the Slovenian interface, recorded ambience, footnotes, note links, chapters on note to-dos, the design's icons, comments, the app's own window bar, the design's colours and motion everywhere, the chapter panel (round 5) and the revamped Home (round 6); and of 6 October: the P3 polish below, other names for notes, a faster start, and the owner's decisions on the greeting, the view tabs, "Revising" and ambience. The Word work, the example books and the long test book don't change any designed screen.
+- **App:** commit `22d85eb`, "feat: keep the manuscript safe and finish the writing tools", plus the work of 5 October: starting on Home, the Slovenian interface, recorded ambience, footnotes, note links, chapters on note to-dos, the design's icons, comments, the app's own window bar, the design's colours and motion everywhere, the chapter panel (round 5) and the revamped Home (round 6); and of 6 October: the P3 polish below, other names for notes, a faster start, the owner's decisions on the greeting, the view tabs, "Revising" and ambience, Home on the light background, no daily goals, and snapshots only in Write. The Word work, the example books and the long test book don't change any designed screen.
 - **IDs:** each gap has an ID (HOME-4, TOOL-2, …) so you can ask for it by name. IDs stay fixed; closed gaps move to "Closed" rather than being renumbered. Requirement IDs in brackets (ED-12, VW-4, …) point to `docs/requirements.md`.
 - **Not design:** data-safety findings and other suggestions are in `docs/improvements.md`.
 
@@ -13,7 +13,7 @@ What the app is still missing compared with the design system in `design-system/
 
 ## Summary
 
-8 open gaps: no P1, 1 P2, 7 P3. Since the first review, 37 gaps and 2 small fixes are closed, and 4 differences were accepted. The owner settled HOME-10, WIN-2, CHAP-4 and BAR-1 on 6 October.
+8 open gaps: no P1, 1 P2, 7 P3. Since the first review, 38 gaps and 2 small fixes are closed, and 5 differences were accepted. The owner settled HOME-10, WIN-2, CHAP-4 and BAR-1 on 6 October, and dropped daily goals.
 
 Already matching the design:
 
@@ -23,10 +23,10 @@ Already matching the design:
 - The 34px title bar as the only window bar, with the design's four view tabs, the quiet toolbar and the grouped "All tools" row, including Footnote, Comment and "Link a note".
 - The design's Lucide icons.
 - The chapter list with numbers, status dots and their legend, word counts, untitled chapters in faint italics, and the accent "+".
-- The floating bar with its ambience and Zen icons and today's goal meter.
+- The floating bar with its ambience and Zen icons.
 - Notes as index cards with fields, [[links]], to-dos tied to chapters, "Appears in" and "Linked notes", and the Notes / To-dos switch.
 - The To-dos board with column dots, filters, quick add, and chapter and note chips.
-- Home's own header, the greeting that names the chapter you'll continue, project cards with kind and progress, "Start something new" tile and "Continue writing" card.
+- Home on the design's light background, with its own header, the greeting that names the chapter you'll continue, project cards with kind and progress, "Start something new" tile and "Continue writing" card.
 - Settings as a window over a scrim, with Appearance (its theme swatches show a page and the lamp glow) and Shortcuts.
 - The lamp glow on the desk behind the page, the note card and the to-do board.
 - Decor circles only on Home and Settings, the accent focus ring, the design's motion and pressed states, and reduced motion.
@@ -47,6 +47,7 @@ Biggest open gap: the app's own window bar (WIN-1) is built but not yet checked 
 | HOME-7 Start on Home | The app opens on Home; "Continue writing" opens the chapter you worked on last | 5 Oct |
 | HOME-8 Project kind (CH-8) | Every card names its kind in the book's own language and in the design's tone: accent for a novel, sage for stories, muted for an article. Other books remember their kind from when they were last open; a book not opened since this change says "Book" until it is | 5 Oct |
 | HOME-13 Revamped Home (round 6) | Home follows rounds 6a/6b: a theme switch in the header; the date with the time; words today and words in the book; the open book's chapters as status bars that open each chapter; the Continue card with a Zen button and "Rain plays when you start · Change"; then Open to-dos (tick them here), Recent notes, and Projects as rows with a tiny title page, language and progress. "+ New" offers the three kinds and "Open another project…". The book's title in the chapter strip renames it | 5 Oct |
+| HOME-14 Home background | Home sits on the light chrome colour, as the design's Home does, instead of the darker desk colour that belongs behind the page. Found by the owner | 6 Oct |
 | HOME-10 Greeting | As designed, the greeting names the chapter Continue opens: "Good evening. The Attic is waiting.", and from 23:00 to 5:00 "Late again." An untitled chapter goes by its number ("Chapter 5 is waiting."), and a new book's welcome page gets the greeting alone. In Slovenian: "Dober večer. »Podstrešje« čaka." The Bible verse is gone, as the owner chose | 6 Oct |
 | HOME-9 Target and progress | A novel shows "48,930 / 80,000" against its book target (Settings → Writing & goals) or, without one, its chapter goals added up; stories show "6 of 12 stories"; an article shows "1,240 words · Final". The bar follows the same numbers, and a book in the other language adds " · SL" or " · EN" | 5 Oct |
 | WIN-2 Four view tabs | Write · Outline · Book · Notes, as designed. To-dos open from the Notes / To-dos switch, which keeps Notes lit, from Open to-dos on Home, and beside the page | 6 Oct |
@@ -125,7 +126,7 @@ Design: `components/chrome/FloatingBar.jsx`, Directions 3a, 3c and 4a. App: `src
 | Gap | Design | App today | Status | Pri |
 |---|---|---|---|---|
 | **BAR-3** Leaving Zen | In Zen the bar stays and its button reads "Exit Zen" | The bar hides in Zen; you leave with Esc or a bar that appears at the top edge (this meets ZN-5). The Zen layout isn't fully designed yet | Differs | P3 |
-| **BAR-4** Contents | Ambience · chapter words · today's goal · Zen. Save state and language live in the title bar | Also shows a theme menu, the book total, the language name and the save state | Differs | P3 |
+| **BAR-4** Contents | Ambience · chapter words · today's goal · Zen. Save state and language live in the title bar | Today's words without a goal (daily goals are gone, see Accepted differences), and also a theme menu, the book total, the language name and the save state | Differs | P3 |
 
 ## 7. Notes
 
@@ -156,6 +157,7 @@ No open gaps; LOOK-1 to LOOK-3 are closed. `tokens/base.css` itself isn't import
 These differ from the design on purpose and are not gaps.
 
 - **HOME-12 Day streak:** the design shows "9 day streak" on Home; the app dropped the streak.
+- **Daily goal (ST-3):** the design's floating bar has a meter for today's goal. The owner dropped daily goals (6 October), so the bar and Home show only the words written today.
 - **WIN-4 Brand mark:** the design now has the phoenix app icon (`design-system/assets/brand/`) for the taskbar and favicon, but keeps a "P" square in Young Serif inside the app's bars; the app shows the phoenix in its bars too, one PNG per theme (`static/brand/`, the same images as the design's exports).
 - **BAR-1 Ambience per theme:** the design pairs Rain with Daylight, Fireplace with Candlelit and Night rain with Moonlit. The owner keeps ambience a separate choice (Off, Rain, Fireplace, Café, Piano) that plays in any theme (6 October), so there's no Night rain and AT-5's theme bundles stay unbuilt.
 - **AT-4 Candlelit particles:** the design keeps decoration off the writing views; the owner wants the sparks drifting over the desk behind the page while writing (5 October). They stay off in Gentle mode and with Windows' reduced motion.
@@ -172,7 +174,7 @@ The design system doesn't cover these, so they aren't gaps. Each already works i
 - The list of notes that "Link a note" opens.
 - Comments beside the page, and turning one into a to-do or a note. The design shows only the Comment button.
 - The window buttons (minimise, maximise, close), which follow Windows' own look, and the book target in Settings → Writing & goals.
-- The snapshot list and restore (SV-3) on Home, and "Earlier versions" for one chapter (SV-4).
+- Snapshots and restoring (SV-3, SV-4): one "Earlier versions" panel in Write lists the book's snapshots and restores the open chapter or the whole book. Home stopped listing them on 6 October.
 - Starting a project: the template choice and the welcome page.
 - Editing a to-do on the board.
 - Error states such as "Not saved" or a failed backup. The system has no error colour; the app defines its own `--pv-danger`.

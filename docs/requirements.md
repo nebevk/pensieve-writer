@@ -148,7 +148,7 @@ Coziness is the top product priority. All effects must stay within the performan
 |----|-------------|----------|
 | ST-1 | Default font, size, line spacing, page margins | S |
 | ST-2 | Language selection | S |
-| ST-3 | Daily writing goal and simple streak display | C |
+| ST-3 | Daily writing goal and simple streak display. Dropped by the owner: the streak on 5 October, the daily goal on 6 October. Home and the floating bar still count the words written today | C |
 | ST-4 | Keyboard shortcut cheat sheet | C |
 
 ## 5. Non-Functional Requirements

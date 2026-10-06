@@ -1,6 +1,6 @@
 # Suggested improvements
 
-Ideas for making Pensieve safer, faster and nicer to write in, beyond matching the design. Written 2 October 2026; rechecked 5 October against commit `22d85eb` and updated several times that day, then with IMP-50 to IMP-55, found while building the design's rounds 5 and 6, and on 6 October with IMP-56 to IMP-61.
+Ideas for making Pensieve safer, faster and nicer to write in, beyond matching the design. Written 2 October 2026; rechecked 5 October against commit `22d85eb` and updated several times that day, then with IMP-50 to IMP-55, found while building the design's rounds 5 and 6, and on 6 October with IMP-56 to IMP-63.
 
 - Design gaps live in `docs/design-gaps.md`; this list doesn't repeat them.
 - Requirement IDs in brackets point to `docs/requirements.md`.
@@ -10,12 +10,12 @@ Ideas for making Pensieve safer, faster and nicer to write in, beyond matching t
 
 ## Summary
 
-61 suggestions: 55 done, 4 partly done, 2 open. No P1 items are left.
+63 suggestions: 57 done, 4 partly done, 2 open. No P1 items are left.
 
 Every round of changes on 5 October passed the type check (no errors or warnings), the tests (85 then), `cargo check` and a production build. The 6 October changes passed the type check, the tests (91 now) and a production build; no Rust code changed. The Word work was also checked in Word 2021: exported books, drop caps at 13, 17 and 24 px in all three fonts, and an edit saved in Word and imported back. Removing a dictionary word was checked against the Windows spell checker itself. The new screens were also clicked through in the built app in a browser, with a test stand-in for the window's database and example books. Nobody has tried the desktop window itself since then, so try these once by hand:
 
 1. Type in a note, switch to another note and type straight away; both notes keep their text.
-2. Delete a note, then restore the "Kept" snapshot on Home; the note comes back.
+2. Delete a note, then in Write open "Earlier versions", pick a snapshot from before and choose "Restore the whole book"; it asks first, and the note comes back.
 3. In "Earlier versions", restore the open chapter; the page shows the older text and keeps it after you type.
 4. Start a new project; it opens on the welcome page.
 5. Settings → Backup & export → "Restore from a backup…" with a recent backup file.
@@ -33,6 +33,7 @@ Every round of changes on 5 October passed the type check (no errors or warnings
 17. Turn a comment into a to-do; its card leaves the margin at once and the to-do appears beside the page.
 18. Settings → General → "Add the long test book", open it from Home and type in a chapter; typing stays instant (this is IMP-10).
 19. Close Pensieve with the long test book open and start it again; Home appears, and "Continue writing" opens the editor straight away.
+20. Home has the light background of the design, no snapshot list and no daily goal; Settings → Writing & goals has no daily goal either.
 
 ## 1. Never lose the writer's text
 
@@ -109,7 +110,7 @@ Every round of changes on 5 October passed the type check (no errors or warnings
 | IMP-44 Safer book switching and moving | Found while applying the fixes: switching books now saves pending note edits first, and the database switch waits for queued writes, so they can't land in the next book's file. After "Move project…", the old copy is dropped from Home's list. Opening a remembered book whose file is gone shows an error instead of creating an empty book. If the next book fails to open, the app now goes back to the one it left |
 | IMP-45 Pictures in exports and the Book view (ED-12) | Pictures reach Word, HTML, Markdown, plain text (as "[Picture]"), the Book view and printouts. The same pass keeps line breaks, links, superscript, highlights, horizontal rules, quotes with several paragraphs and nested lists, which were lost or run together before. Lists and quotes come out as one list or quote each, and only web and mail links reach the HTML |
 | IMP-46 Word files that open in Word (SV-6, SV-8) | Asked for on 5 October. "Export Word…" asks where to save and writes the book as it looks on the page: the manuscript font packed into the file, the app's text size and spacing, chapter labels, drop caps, first-line indents, each chapter on a new page, and a running head with page numbers. Word keeps the fonts when it saves the file again. A **Word copy** in a chosen folder is rewritten when the window loses focus, on a book switch and on close. Automatic updates stop, and say why, when the copy was changed in Word or a file Pensieve didn't write has its name. "Update now" replaces it; the message asks you to import the Word changes first. "Import Word…" lists the chapters it found, then either replaces the book's chapters (after a snapshot, keeping each chapter's status, goal and part) or adds them. Files from elsewhere are split at headings or chapter lines. Fonts: static Literata and EB Garamond from Google Fonts (SIL Open Font License) in `static/fonts/word/`. Word ignores variable fonts |
-| IMP-47 Example books | Asked for on 5 October. Settings → General → "Add example books" adds a novel (*The Lantern House*), a Slovenian story collection (*Zgodbe ob reki*) and an article. Each is its own book file, with notes and to-dos, so every view has something in it. Clicking again doesn't make copies. Since 6 October the button reads "Reset example books" once they're added and puts them back as they were; whatever was written in one is kept first as a "Kept" snapshot on Home. The novel and the Slovenian collection have comments beside the page |
+| IMP-47 Example books | Asked for on 5 October. Settings → General → "Add example books" adds a novel (*The Lantern House*), a Slovenian story collection (*Zgodbe ob reki*) and an article. Each is its own book file, with notes and to-dos, so every view has something in it. Clicking again doesn't make copies. Since 6 October the button reads "Reset example books" once they're added and puts them back as they were; whatever was written in one is kept first as a "Kept" snapshot, under "Earlier versions" in Write. The novel and the Slovenian collection have comments beside the page |
 | IMP-48 Chapter labels in the book's language | Labels follow the book's language ("Prvo poglavje", "13. poglavje"), and story collections label stories ("Story One", "Prva zgodba"), on the page and in Word. Word import also recognises Slovenian chapter lines such as "3. poglavje" |
 | IMP-49 Load the Word writer when it's needed | The `docx` library loads on the first Word export or Word copy update. The page's startup script went from 908 kB to 549 kB |
 | IMP-50 Esc in Settings | Found on 5 October: Settings kept every key to itself, Esc included, so Esc never closed it while the keyboard was inside it, which is always. Esc now closes it and puts the keyboard back where it was |
@@ -124,6 +125,8 @@ Every round of changes on 5 October passed the type check (no errors or warnings
 | IMP-59 Toolbar and margin a step behind | Found on 6 October: the editor only told the page when the cursor moved. After "To-do" or "Note" on a comment, its card stayed in the margin until you clicked in the text, and after Ctrl+B on a selection the B button stayed off. Every change now counts, and typing costs no more, since a keystroke moves the cursor too |
 | IMP-60 Other names for notes (NT-7) | Suggested on 5 October. A note card has an "Also called" line for other names, separated by commas, such as "her mother" for Vera. They count as mentions beside the page and in "Appears in", each passage once, so "Grandmother Marija" isn't also counted as "Grandmother". Note search and "Link a note" find them. They are kept in a new `aliases` column, which older books get when they open |
 | IMP-61 Long test book (IMP-10) | Asked for on 6 October. Settings → General → "Add the long test book" adds a novel of 15 chapters and about 151,000 words, with 10 notes whose names appear in the text and 40 to-dos. It comes out the same every time; once added, the button resets it. It found IMP-57 |
+| IMP-62 Snapshots in one place (SV-3, SV-4) | Asked for on 6 October: Home no longer lists snapshots. Each book's snapshots are under "Earlier versions" in Write, which shows the open chapter as it was and restores either that chapter or, after asking, the whole book. The book as it was is kept first as a "Before restore" snapshot, and the open chapter stays open |
+| IMP-63 No daily goals (ST-3) | Asked for on 6 October: the daily word goal is gone from Settings, Home and the floating bar's meter. Home and the bar still count the words written today. Settings saved with a goal drop it when they load |
 
 ## Suggested order
 
