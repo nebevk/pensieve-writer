@@ -4,13 +4,12 @@
   import { compactWords, wordsFor } from "$lib/editor/counts";
   import { roman } from "$lib/chapters/labels";
   import type { AmbienceName, KnownProject, Prefs } from "$lib/prefs";
-  import type { Chapter, ChapterStatus, Project, ProjectKind, SnapshotInfo } from "$lib/model";
+  import type { Chapter, ChapterStatus, Project, ProjectKind } from "$lib/model";
   import { isUntitled, translate, type UiKey } from "$lib/i18n";
-  import { ago, locale, num, plural, snapshotName, t, ui } from "$lib/ui.svelte";
+  import { ago, locale, num, plural, t, ui } from "$lib/ui.svelte";
   import Icon from "$lib/editor/Icon.svelte";
   import { chapterTitle, isWelcomePage } from "$lib/chapters/welcome";
   import { listNotes, listTasks, saveTask, type Note, type NoteCategory, type Task } from "$lib/storage/organize";
-  import { sqliteStorage } from "$lib/storage/sqlite";
   import ChecklistItem from "./ChecklistItem.svelte";
   import NoteMini from "./NoteMini.svelte";
 
@@ -21,7 +20,6 @@
     wordsToday = 0,
     onContinue,
     onZen,
-    onRestore,
     onRename,
     onOpenProject,
     onStartProject,
@@ -41,8 +39,6 @@
     wordsToday?: number;
     onContinue: (chapterId: string | null) => void;
     onZen: (chapterId: string | null) => void;
-    /** Restores a snapshot after saving pending work; rejects if the restore fails. */
-    onRestore: (snapshotId: string) => Promise<void>;
     onRename: (title: string) => void;
     onOpenProject: () => void;
     onStartProject: (kind: ProjectKind) => void;
@@ -80,9 +76,7 @@
   let menuOpen = $state(false);
   let notes = $state<Note[]>([]);
   let tasks = $state<Task[]>([]);
-  let snapshots = $state<SnapshotInfo[]>([]);
   let message = $state("");
-  let pendingRestore = $state<string | null>(null);
 
   $effect(() => {
     if (renaming) titleInput?.focus();
@@ -201,19 +195,9 @@
 
   async function refresh() {
     try {
-      snapshots = await sqliteStorage.listSnapshots(project.id);
       [notes, tasks] = await Promise.all([listNotes(project.id), listTasks(project.id)]);
     } catch (error) {
       message = error instanceof Error ? error.message : t("homeLoadFailed");
-    }
-  }
-
-  async function restore(id: string) {
-    try {
-      await onRestore(id);
-      pendingRestore = null;
-    } catch (error) {
-      message = error instanceof Error ? error.message : t("restoreFailed");
     }
   }
 </script>
@@ -247,7 +231,7 @@
       <h1>{greeting(now)}</h1>
       <div class="stats">
         <div>
-          <p class="value">{num(wordsToday)}{#if prefs.dailyGoal > 0}<span>{` / ${num(prefs.dailyGoal)}`}</span>{/if}</p>
+          <p class="value">{num(wordsToday)}</p>
           <p class="label">{t("wordsToday")}</p>
         </div>
         <div>
@@ -414,26 +398,8 @@
     </div>
   </div>
 
-  {#if snapshots.length > 0 || message}
-    <div class="snapshots">
-      <h2>{t("snapshots")}</h2>
-      {#if message}
-        <p class="error" role="alert">{message}</p>
-      {/if}
-      <ul>
-        {#each snapshots as snapshot (snapshot.id)}
-          <li>
-            <span>{snapshotName(snapshot.kind)} · {new Date(snapshot.createdAt).toLocaleString(locale(), { dateStyle: "medium", timeStyle: "short" })}</span>
-            {#if pendingRestore === snapshot.id}
-              <button type="button" onclick={() => void restore(snapshot.id)}>{t("restoreThis")}</button>
-              <button type="button" onclick={() => (pendingRestore = null)}>{t("cancel")}</button>
-            {:else}
-              <button type="button" onclick={() => (pendingRestore = snapshot.id)}>{t("restore")}</button>
-            {/if}
-          </li>
-        {/each}
-      </ul>
-    </div>
+  {#if message}
+    <p class="error load" role="alert">{message}</p>
   {/if}
 </section>
 
@@ -858,7 +824,7 @@
     padding: 4px;
     border: 1px solid var(--pv-line-strong);
     border-radius: var(--pv-radius-sm);
-    background: var(--pv-chrome);
+    background: var(--pv-chrome-raised);
     box-shadow: var(--pv-shadow-window);
   }
 
@@ -988,45 +954,13 @@
     color: var(--pv-text-subtle);
   }
 
-  .snapshots {
-    padding: 36px 64px 28px;
-  }
-
-  .snapshots h2 {
-    margin: 0 0 16px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--pv-divider);
-    font-family: var(--pv-font-heading);
-    font-size: 19px;
-    font-weight: 400;
-  }
-
-  .snapshots ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-
-  .snapshots li {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    padding: 8px 0;
-    border-bottom: 1px solid var(--pv-line);
-    color: var(--pv-text-muted);
-    font-size: var(--pv-text-md);
-  }
-
-  .snapshots button {
-    border: 0;
-    padding: 0;
-    background: transparent;
-    color: var(--pv-accent);
-    font-size: var(--pv-text-md);
-  }
-
   .error {
     color: var(--pv-danger);
+  }
+
+  .load {
+    margin: 0;
+    padding: 28px 64px;
   }
 
   @keyframes blink {
@@ -1038,7 +972,7 @@
   @media (max-width: 1100px) {
     .hero,
     .columns,
-    .snapshots {
+    .load {
       padding-left: 28px;
       padding-right: 28px;
     }

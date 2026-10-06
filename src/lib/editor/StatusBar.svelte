@@ -13,7 +13,6 @@
     onZen,
     ambience = "off",
     today = 0,
-    goal = 0,
     onAmbience,
     theme = "daylight",
     onTheme,
@@ -27,7 +26,6 @@
     onZen: () => void;
     ambience?: "off" | "rain" | "fire" | "cafe" | "piano";
     today?: number;
-    goal?: number;
     onAmbience: () => void;
     theme?: "daylight" | "candlelit" | "moonlit" | "sunset";
     onTheme: (theme: "daylight" | "candlelit" | "moonlit" | "sunset") => void;
@@ -52,7 +50,6 @@
     piano: "soundPiano",
   };
   const ambienceLabel = $derived(t(SOUNDS[ambience]));
-  const progress = $derived(goal > 0 ? Math.max(0, Math.min(1, today / goal)) : 0);
 </script>
 
 <div class="float statusbar" class:problem={error.length > 0}>
@@ -89,15 +86,7 @@
   <span class="rule"></span>
   <span class="muted">{t("inTheBook", { n: projectWords })}</span>
   <span class="rule"></span>
-  <span class="today">
-    {t("today")}
-    {#if goal > 0}
-      <span class="meter" aria-hidden="true"><span style:width="{progress * 100}%"></span></span>
-      {num(today)}/{num(goal)}
-    {:else}
-      {num(today)}
-    {/if}
-  </span>
+  <span class="today">{t("today")} {num(today)}</span>
   <span class="rule"></span>
   <span class="muted">{language}</span>
   {#if error}
@@ -173,24 +162,6 @@
 
   .menu .quiet:hover {
     background: var(--pv-bar-line);
-  }
-
-  .today {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .meter {
-    width: 48px;
-    height: 2px;
-    background: var(--pv-bar-line);
-  }
-
-  .meter span {
-    display: block;
-    height: 100%;
-    background: var(--pv-progress);
   }
 
   .rule {

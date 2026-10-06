@@ -18,7 +18,6 @@ export type Prefs = {
   gentle: boolean;
   backupFolder: string;
   projectPath: string;
-  dailyGoal: number;
   ambience: AmbienceName;
   ambienceVolume: number;
   manuscriptFont: ManuscriptFont;
@@ -78,7 +77,6 @@ export const defaultPrefs = (): Prefs => ({
   gentle: false,
   backupFolder: "",
   projectPath: "",
-  dailyGoal: 0,
   ambience: "off",
   ambienceVolume: 0.4,
   manuscriptFont: "literata",
@@ -110,8 +108,10 @@ export function loadPrefs(): Prefs {
       theme?: string;
       streak?: number;
       lastWriteDay?: string;
+      dailyGoal?: number;
     };
-    const { streak: _streak, lastWriteDay: _lastWriteDay, ...rest } = stored;
+    // Settings the app no longer has: the streak and, since 6 October, the daily goal.
+    const { streak: _streak, lastWriteDay: _lastWriteDay, dailyGoal: _dailyGoal, ...rest } = stored;
     return { ...defaultPrefs(), ...rest, theme: normalizeTheme(stored.theme), uiLanguage: stored.uiLanguage === "sl" ? "sl" : "en" };
   } catch {
     return defaultPrefs();
@@ -138,8 +138,9 @@ export async function loadPrefsFile(): Promise<Prefs | null> {
     theme?: string;
     streak?: number;
     lastWriteDay?: string;
+    dailyGoal?: number;
   };
-  const { streak: _streak, lastWriteDay: _lastWriteDay, ...rest } = stored;
+  const { streak: _streak, lastWriteDay: _lastWriteDay, dailyGoal: _dailyGoal, ...rest } = stored;
   return {
     ...defaultPrefs(),
     ...rest,

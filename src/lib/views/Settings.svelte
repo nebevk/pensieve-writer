@@ -311,17 +311,6 @@
         {:else if section === "Writing & goals"}
           <h2>{t("goals")}</h2>
           <label class="field">
-            {t("dailyGoal")}
-            <input
-              type="number"
-              min="0"
-              value={prefs.dailyGoal}
-              oninput={(event) =>
-                onChange({ dailyGoal: Number((event.currentTarget as HTMLInputElement).value) || 0 })}
-            />
-          </label>
-          <p class="hint">{t("dailyGoalHint")}</p>
-          <label class="field">
             {t("bookGoal")}
             <input
               type="number"

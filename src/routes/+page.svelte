@@ -66,6 +66,8 @@
   let historyPreview = $state("");
   let historySnapshotId = $state("");
   let historyChapterId = $state("");
+  // Restoring the whole book asks once more before it happens.
+  let bookRestoreAsked = $state(false);
   let settingsSection = $state<"Appearance" | "Ambience" | "Shortcuts">("Appearance");
   let settingsReturn: HTMLElement | null = null;
   // One-shot requests to the Notes view: make a note (tied to the chapter being written), or open one.
@@ -883,6 +885,8 @@
     historyOpen = true;
     historyPreview = "";
     historyChapterId = "";
+    historySnapshotId = "";
+    bookRestoreAsked = false;
     try {
       historyList = await sqliteStorage.listSnapshots(project.id);
     } catch (error) {
@@ -892,6 +896,7 @@
 
   async function previewHistory(id: string) {
     historySnapshotId = id;
+    bookRestoreAsked = false;
     try {
       const older = await readSnapshotChapters(id);
       const match = older.find((chapter) => chapter.id === activeId);
@@ -939,13 +944,25 @@
     }
   }
 
-  async function restoreSnapshot(id: string): Promise<void> {
-    await withEditorClosed(async () => {
-      const restored = await sqliteStorage.restore(id);
-      project = restored;
-      activeId = restored.chapters[0]?.id ?? null;
-    });
-    view = "write";
+  /**
+   * Puts the whole book back as it was in the chosen snapshot (SV-3). The book as it is now is kept
+   * first as a "Before restore" snapshot, and the open chapter stays open if the snapshot has it.
+   */
+  async function restoreHistoryBook() {
+    const snapshotId = historySnapshotId;
+    if (!snapshotId) return;
+    try {
+      await withEditorClosed(async () => {
+        const restored = await sqliteStorage.restore(snapshotId);
+        project = restored;
+        activeId = restored.chapters.find((chapter) => chapter.id === activeId)?.id ?? restored.chapters[0]?.id ?? null;
+      });
+      historyOpen = false;
+    } catch (error) {
+      saveStatus = { state: "error", message: errorMessage(error) };
+    } finally {
+      bookRestoreAsked = false;
+    }
   }
 
   async function pickBackup() {
@@ -1486,18 +1503,31 @@
     {#if historyOpen}
       <div class="history">
         <p>{t("earlierVersionsTitle")}</p>
+        <p class="hint">{t("earlierVersionsHint")}</p>
         {#each historyList as snap (snap.id)}
-          <button type="button" onclick={() => void previewHistory(snap.id)}>
+          <button type="button" aria-pressed={snap.id === historySnapshotId} onclick={() => void previewHistory(snap.id)}>
             {snapshotName(snap.kind)} · {new Date(snap.createdAt).toLocaleString(locale(), { dateStyle: "medium", timeStyle: "short" })}
           </button>
         {:else}
           <p>{t("noSnapshots")}</p>
         {/each}
+        <!-- The restores come before the preview, so they stay in view however long the chapter is. -->
+        {#if historySnapshotId}
+          <div class="history-actions">
+            {#if bookRestoreAsked}
+              <p>{t("restoreBookConfirm")}</p>
+              <button type="button" onclick={() => void restoreHistoryBook()}>{t("restoreBook")}</button>
+              <button type="button" onclick={() => (bookRestoreAsked = false)}>{t("cancel")}</button>
+            {:else}
+              {#if historyChapterId}
+                <button type="button" onclick={() => void restoreHistoryChapter()}>{t("restoreChapter")}</button>
+              {/if}
+              <button type="button" onclick={() => (bookRestoreAsked = true)}>{t("restoreBook")}</button>
+            {/if}
+          </div>
+        {/if}
         {#if historyPreview}
           <pre>{historyPreview}</pre>
-          {#if historyChapterId}
-            <button type="button" onclick={() => void restoreHistoryChapter()}>{t("restoreChapter")}</button>
-          {/if}
         {/if}
         <button type="button" onclick={() => (historyOpen = false)}>{t("close")}</button>
       </div>
@@ -1584,7 +1614,6 @@
         onZen={() => void setZen(!zen)}
         ambience={prefs.ambience}
         today={wordsToday}
-        goal={prefs.dailyGoal}
         onAmbience={cycleAmbience}
         theme={prefs.theme}
         onTheme={(theme) => (prefs.theme = theme)}
@@ -1664,7 +1693,6 @@
           books={prefs.knownProjects}
           currentPath={projectLocation}
           onOpenBook={(path) => void openKnownBook(path)}
-          onRestore={restoreSnapshot}
         />
       {:else if view === "notes" && NotesPart.current}
         {@const Notes = NotesPart.current}
@@ -1806,9 +1834,11 @@
     background: var(--pv-desk);
   }
 
+  /* Home sits on the light chrome colour, as in the design; the darker desk is for the page and the cards. */
   .alt.home {
     display: flex;
     flex-direction: column;
+    background: var(--pv-chrome);
   }
 
   .alt.home::before,
@@ -1996,6 +2026,36 @@
     margin: 0;
     max-width: 40rem;
     color: var(--pv-text);
+  }
+
+  .history p {
+    margin: 0;
+  }
+
+  .history .hint {
+    color: var(--pv-text-faint);
+  }
+
+  /* The snapshot being looked at, so it's clear which one a restore takes. */
+  .history button[aria-pressed="true"] {
+    background: var(--pv-selected);
+    font-weight: 600;
+  }
+
+  .history-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.5rem;
+    align-items: center;
+  }
+
+  .history-actions p {
+    flex-basis: 100%;
+    color: var(--pv-text);
+  }
+
+  .history .history-actions button {
+    color: var(--pv-accent);
   }
 
   @media print {
