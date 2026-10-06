@@ -1,9 +1,9 @@
 # Design system gaps
 
-What the app is still missing compared with the design system in `design-system/`. First review 2 October 2026; rechecked 2 and 5 October.
+What the app is still missing compared with the design system in `design-system/`. First review 2 October 2026; rechecked 2, 5 and 6 October.
 
 - **Design source:** the UI kit in `design-system/ui_kits/desktop/`, the components in `design-system/components/`, and rounds 3–6 of `Pensieve Directions.dc.html` (5a/5b: Write with the chapter panel; 6a/6b: the revamped Home). The owner updated the UI kit and components on 5 October; the Directions canvas in the repo is still the 2 October copy, so rounds 5 and 6 were read from the kit and components. Rounds 1a–2b are superseded and out of scope (confirmed by the owner on 5 October); see "Earlier rounds" at the end.
-- **App:** commit `22d85eb`, "feat: keep the manuscript safe and finish the writing tools", plus the work of 5 October: starting on Home, the Slovenian interface, recorded ambience, footnotes, note links, chapters on note to-dos, the design's icons, comments, the app's own window bar, the design's colours and motion everywhere, the chapter panel (round 5) and the revamped Home (round 6). The Word work and example books don't change any designed screen.
+- **App:** commit `22d85eb`, "feat: keep the manuscript safe and finish the writing tools", plus the work of 5 October: starting on Home, the Slovenian interface, recorded ambience, footnotes, note links, chapters on note to-dos, the design's icons, comments, the app's own window bar, the design's colours and motion everywhere, the chapter panel (round 5) and the revamped Home (round 6); and of 6 October: the P3 polish below, other names for notes, and a faster start. The Word work, the example books and the long test book don't change any designed screen.
 - **IDs:** each gap has an ID (HOME-4, TOOL-2, …) so you can ask for it by name. IDs stay fixed; closed gaps move to "Closed" rather than being renumbered. Requirement IDs in brackets (ED-12, VW-4, …) point to `docs/requirements.md`.
 - **Not design:** data-safety findings and other suggestions are in `docs/improvements.md`.
 
@@ -13,7 +13,7 @@ What the app is still missing compared with the design system in `design-system/
 
 ## Summary
 
-18 open gaps: no P1, 1 P2, 17 P3. Since the first review, 28 gaps and 2 small fixes are closed, and 3 differences were accepted.
+12 open gaps: no P1, 1 P2, 11 P3. Since the first review, 34 gaps and 2 small fixes are closed, and 3 differences were accepted.
 
 Already matching the design:
 
@@ -22,12 +22,13 @@ Already matching the design:
 - The manuscript page: running head with folio, chapter label, centred title, drop cap, indents, the next sheet underneath, grain, vignette and lamp glow.
 - The 34px title bar as the only window bar, the quiet toolbar and the grouped "All tools" row, including Footnote, Comment and "Link a note".
 - The design's Lucide icons.
-- The chapter list with numbers, status dots, word counts and the accent "+".
+- The chapter list with numbers, status dots and their legend, word counts, untitled chapters in faint italics, and the accent "+".
 - The floating bar with its ambience and Zen icons and today's goal meter.
 - Notes as index cards with fields, [[links]], to-dos tied to chapters, "Appears in" and "Linked notes", and the Notes / To-dos switch.
 - The To-dos board with column dots, filters, quick add, and chapter and note chips.
 - Home's own header, project cards with kind and progress, "Start something new" tile and "Continue writing" card.
-- Settings as a window over a scrim, with Appearance and Shortcuts.
+- Settings as a window over a scrim, with Appearance (its theme swatches show a page and the lamp glow) and Shortcuts.
+- The lamp glow on the desk behind the page, the note card and the to-do board.
 - Decor circles only on Home and Settings, the accent focus ring, the design's motion and pressed states, and reduced motion.
 - Every surface on the `--pv-*` tokens: ink colours on paper, chrome colours on chrome.
 
@@ -53,15 +54,21 @@ Biggest open gap: the app's own window bar (WIN-1) is built but not yet checked 
 | TOOL-4 New note, Add to-do | Add to-do opens the chapter panel's add field. New note opens the Notes view with a note tied to the chapter you were writing, as the panel shows notes but doesn't edit them | 5 Oct |
 | PANEL-1 Chapter panel (NT-7, round 5) | A 300px panel beside the page, opened with the To-dos and Notes toggles in the toolbar (with counts): the chapter's to-dos (tick, add; "From note · …" when one came from a note) and the notes it mentions, most mentioned first. A character counts by first name, so Ana Novak counts every "Ana". The top note is open, with its fields and first paragraph; clicking a linked name in the text opens its note there; "Open in Notes →" goes to the full note. It replaces the old Notes and To-dos dock | 5 Oct |
 | TOOL-7 Image, link | Image opens a file picker and stores the picture in the chapter; Link uses a small field in the toolbar instead of a browser prompt | 2 Oct |
+| TOOL-8 Alignment in the quiet row | One "Alignment" button, showing the paragraph's alignment, opens left, centre, right and justify; it closes after a choice, with Esc or a click elsewhere | 6 Oct |
 | CHAP-2 Add button | An accent "+" beside the "Chapters" heading | 5 Oct |
+| CHAP-1 Status legend | Final · Revised · Draft with their dots at the bottom of the chapter list, above the chapter's controls. It uses the app's "Revised" until CHAP-4 is decided | 6 Oct |
+| CHAP-3 Untitled chapters | A chapter without a title shows "Untitled" in faint italics | 6 Oct |
+| PAGE-2 Lamp glow behind notes and the board | The note card and the to-do board sit on the same desk glow as the page in Candlelit and Moonlit. All three now fade out as the design's `Desk` does, so the glow shows around the card instead of hiding behind it | 6 Oct |
 | BAR-2 Icons | Rain and flame icons before the ambience name, and a moon on Zen. Café and Piano have no icon because the design has neither sound. The bar now says "Fireplace", as Settings does | 5 Oct |
 | NOTE-1 Links in the text (NT-6) | [[Title]] in a note shows in accent with an underline; clicking it opens that note, or starts a new note with that title. The brackets stay, faint, because note text is edited as written. "Appears in" also counts words linked to the note | 5 Oct |
 | NOTE-2 Chapter on a note's to-do | The add field on a note has a chapter list, set to the open chapter, and each to-do shows its chapter under it | 5 Oct |
 | NOTE-3 Done tick | A done box is sage with a white tick | 5 Oct |
 | NOTE-4 Search icon | The search field starts with a magnifier | 5 Oct |
+| NOTE-5 Right-column headings | "Appears in", "Linked notes" and "Linked from" are in Young Serif | 6 Oct |
 | TODO-1 Column dots | Hollow, accent and sage dots before To do, Doing and Done | 5 Oct |
 | TODO-2 "By chapter" list | Lists only the chapters that have open to-dos, with "Whole book" last | 5 Oct |
 | SET-1 Shortcuts | Settings → Shortcuts lists the keys, and Ctrl+/ opens it | 5 Oct |
+| SET-2 Theme previews | Each swatch shows a small page with three lines; Candlelit and Moonlit show the lamp glow, and Follow sunset is half Daylight, half Candlelit | 6 Oct |
 | LOOK-1 Icons | The toolbar, title bar, floating bar, chapter list, Notes, Settings and Home use the design's Lucide icons, copied from `components/core/Icon.jsx`, so no dependency was added. Icons the design doesn't draw, such as the Chapters toggle and the panel buttons, stay hand-drawn at a matching weight | 5 Oct |
 | LOOK-2 Motion and pressed states (AT-1) | Buttons fade their colour in 120ms and darken when pressed; solid buttons brighten and darken; cards and slips lift in 180ms; toggles slide; a theme change cross-fades in 400ms. Gentle mode and Windows' reduced motion turn all of it off | 5 Oct |
 | LOOK-3 Old styles left over | Outline, Book, the find bar, the Zen bar and the chapter list's controls use the `--pv-*` tokens, with ink colours on paper, so Outline cards read well in Candlelit and Moonlit. The old names are gone; the app's own problem colour is now `--pv-danger` | 5 Oct |
@@ -75,7 +82,7 @@ Design: Directions 2c, `HomeScreen` in `ui_kits/desktop/screens.js`, `components
 | Gap | Design | App today | Status | Pri |
 |---|---|---|---|---|
 | **HOME-10** Greeting | "Good evening." plus a short line about the book: "Ana is still in the kitchen." | "Good evening." followed by a short King James Bible verse instead of a line about the book. If that's deliberate, it can move to Accepted differences | Differs | P3 |
-| **HOME-11** Place on the card | "Ch. III · p. 47" | "Ch. 3" (no page numbers exist; see PAGE-1) | Partial | P3 |
+| **HOME-11** Place on the card | "Ch. III · p. 47" | "Ch. III", in roman numerals as designed, but no page: page numbers don't exist yet (see PAGE-1) | Partial | P3 |
 
 ## 2. Window and title bar
 
@@ -95,7 +102,6 @@ Design: `components/chrome/Toolbar.jsx` (quiet row and "All tools"), Directions 
 |---|---|---|---|---|
 | **TOOL-5** Text colour, highlight (ED-5) | "A" with a colour bar, and a highlight swatch, as in Word | Each applies one fixed colour; you can't pick another | Partial | P3 |
 | **TOOL-6** Font and size (ED-5) | Paragraph style, font and size dropdowns in the Text group | Font and size change the whole manuscript (same as Settings → Appearance), not the selected text as in Word | Differs | P3 |
-| **TOOL-8** Alignment in the quiet row | One button titled "Alignment" | It only aligns left; centre, right and justify are only in "All tools" | Partial | P3 |
 
 ## 4. Chapter list
 
@@ -103,8 +109,6 @@ Design: `components/navigation/ChapterList.jsx`, `ChapterItem.jsx`, `StatusDot.j
 
 | Gap | Design | App today | Status | Pri |
 |---|---|---|---|---|
-| **CHAP-1** Status legend | "Final · Revising · Draft" with dots at the bottom | No legend; the bottom now holds Duplicate, Delete, Part, Goal and "Earlier versions" | Missing | P3 |
-| **CHAP-3** Untitled chapters | A chapter without a title shows "Untitled" in faint italics | Saves the word "Untitled" as the title and shows it like any other | Partial | P3 |
 | **CHAP-4** Status names (CH-6) | Final, Revising, Draft, plus a hollow dot for empty chapters | Final, Revised, Draft (requirement CH-6 also says "revised") | Differs | P3 |
 
 ## 5. Page and desk
@@ -114,7 +118,6 @@ Design: `components/manuscript/Sheet.jsx`, `Paragraph.jsx`, `Desk.jsx`. App: `sr
 | Gap | Design | App today | Status | Pri |
 |---|---|---|---|---|
 | **PAGE-1** Page numbers | The setting is "Running head and page numbers"; Home shows "p. 47" | The running head shows the chapter numeral. Each chapter is one long sheet, so there are no page numbers anywhere | Partial | P3 |
-| **PAGE-2** Lamp glow behind notes and the board | The same desk, with its glow in Candlelit and Moonlit, sits behind the page, the note card and the to-do board | Only the writing desk has the glow | Partial | P3 |
 
 ## 6. Floating bar
 
@@ -130,9 +133,7 @@ Design: `components/chrome/FloatingBar.jsx`, Directions 3a, 3c and 4a. App: `src
 
 Design: Directions 4b, `NotesScreen` in `ui_kits/desktop/screens.js`, `components/notes/NoteCard.jsx`, `NoteLink.jsx`, `TodoItem.jsx`, `components/navigation/AsideList.jsx`. App: `src/lib/views/Notes.svelte`, `src/lib/storage/organize.ts`.
 
-| Gap | Design | App today | Status | Pri |
-|---|---|---|---|---|
-| **NOTE-5** Right-column headings | "Appears in" and "Linked notes" in Young Serif | Small uppercase labels | Differs | P3 |
+No open gaps; NOTE-1 to NOTE-5 are closed.
 
 ## 8. To-dos
 
@@ -144,9 +145,7 @@ No open gaps; TODO-1 and TODO-2 are closed.
 
 Design: Directions 3d, `SettingsWindow` in `ui_kits/desktop/screens.js`, `components/forms/`. App: `src/lib/views/Settings.svelte`.
 
-| Gap | Design | App today | Status | Pri |
-|---|---|---|---|---|
-| **SET-2** Theme previews | Each swatch shows a small page with three lines of text; dark themes show the lamp glow | Blank page, no glow | Partial | P3 |
+No open gaps; SET-1 and SET-2 are closed.
 
 ## 10. Across the app
 
@@ -168,7 +167,7 @@ The design system doesn't cover these, so they aren't gaps. Each already works i
 
 - Outline view (VW-3) and Book view (VW-2).
 - Zen layout (ZN-1 to ZN-5). The UI kit only hides the chrome and keeps the floating bar.
-- Settings sections other than Appearance: General, Writing & goals, Ambience, Backup & export, Language, and the new Shortcuts list. Backup & export now also holds Export Word, the Word copy and the Word import preview, and General has "Add example books".
+- Settings sections other than Appearance: General, Writing & goals, Ambience, Backup & export, Language, and the new Shortcuts list. Backup & export now also holds Export Word, the Word copy and the Word import preview, and General has the example books (add or reset) and the long test book.
 - The find and replace bar (ED-8), now with a whole-book mode and a list of matches, and the link field in "All tools".
 - Footnotes on the page, the panel for editing one, and the list of notes under the chapter. The design shows only the ¹ button.
 - The list of notes that "Link a note" opens.
@@ -188,6 +187,7 @@ Keep these; most come from `requirements.md`. They need a place in the design.
 - Duplicate, Delete, Part, Goal and "Earlier versions" under the chapter list (CH-3, CH-5, CH-6, SV-4), and drag-to-reorder (CH-4).
 - "Notes panel" and "To-dos panel" buttons in "All tools", which switch the chapter panel's two halves, as the toggles in the quiet row do (NT-7).
 - "Linked chapters" checkboxes, "Delete note" and "Linked from" on the note card (NT-3, NT-6).
+- Other names on the note card ("Also called: …"), under its one-line description. They count as mentions beside the page and in "Appears in", and search and "Link a note" find them.
 - The theme menu on the floating bar (the design changes themes only in Settings).
 - "Open another project…" in Home's "+ New" menu.
 - The interface language switch in Settings → General.

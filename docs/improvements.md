@@ -1,6 +1,6 @@
 # Suggested improvements
 
-Ideas for making Pensieve safer, faster and nicer to write in, beyond matching the design. Written 2 October 2026; rechecked 5 October against commit `22d85eb` and updated several times that day, most recently with IMP-50 to IMP-55, found while building the design's rounds 5 and 6.
+Ideas for making Pensieve safer, faster and nicer to write in, beyond matching the design. Written 2 October 2026; rechecked 5 October against commit `22d85eb` and updated several times that day, then with IMP-50 to IMP-55, found while building the design's rounds 5 and 6, and on 6 October with IMP-56 to IMP-61.
 
 - Design gaps live in `docs/design-gaps.md`; this list doesn't repeat them.
 - Requirement IDs in brackets point to `docs/requirements.md`.
@@ -10,9 +10,9 @@ Ideas for making Pensieve safer, faster and nicer to write in, beyond matching t
 
 ## Summary
 
-55 suggestions: 49 done, 4 partly done, 2 open. No P1 items are left.
+61 suggestions: 55 done, 4 partly done, 2 open. No P1 items are left.
 
-Every round of changes on 5 October passed the type check (no errors or warnings), the tests (85 now), `cargo check` and a production build. The Word work was also checked in Word 2021: exported books, drop caps at 13, 17 and 24 px in all three fonts, and an edit saved in Word and imported back. Removing a dictionary word was checked against the Windows spell checker itself. The new screens were also clicked through in the built app in a browser, with a test stand-in for the window's database and example books. Nobody has tried the desktop window itself since then, so try these once by hand:
+Every round of changes on 5 October passed the type check (no errors or warnings), the tests (85 then), `cargo check` and a production build. The 6 October changes passed the type check, the tests (91 now) and a production build; no Rust code changed. The Word work was also checked in Word 2021: exported books, drop caps at 13, 17 and 24 px in all three fonts, and an edit saved in Word and imported back. Removing a dictionary word was checked against the Windows spell checker itself. The new screens were also clicked through in the built app in a browser, with a test stand-in for the window's database and example books. Nobody has tried the desktop window itself since then, so try these once by hand:
 
 1. Type in a note, switch to another note and type straight away; both notes keep their text.
 2. Delete a note, then restore the "Kept" snapshot on Home; the note comes back.
@@ -30,6 +30,9 @@ Every round of changes on 5 October passed the type check (no errors or warnings
 14. Remove a word in Settings → Language; the page underlines it again (perhaps only after restarting Pensieve).
 15. Open Settings and press Esc; it closes.
 16. Type at the very end of a long chapter; the window bar stays at the top.
+17. Turn a comment into a to-do; its card leaves the margin at once and the to-do appears beside the page.
+18. Settings → General → "Add the long test book", open it from Home and type in a chapter; typing stays instant (this is IMP-10).
+19. Close Pensieve with the long test book open and start it again; Home appears, and "Continue writing" opens the editor straight away.
 
 ## 1. Never lose the writer's text
 
@@ -42,7 +45,7 @@ Every round of changes on 5 October passed the type check (no errors or warnings
 
 | ID | Suggestion | Why | Status | Pri |
 |---|---|---|---|---|
-| **IMP-10** Measure on the real laptop | Time typing in a 10,000-word chapter of a 150,000-word book on the writer's laptop, in Candlelit with particles on | IMP-8 and IMP-9 removed the main per-keystroke costs; this confirms it on the hardware that matters. The answers to open questions 1 and 2 in the requirements (laptop model and RAM) decide how much ambience the app can afford | Open | P2 |
+| **IMP-10** Measure on the real laptop | Time typing in a 10,000-word chapter of a 150,000-word book on the writer's laptop, in Candlelit with particles on | IMP-8 and IMP-9 removed the main per-keystroke costs; this confirms it on the hardware that matters. The answers to open questions 1 and 2 in the requirements (laptop model and RAM) decide how much ambience the app can afford. The long test book (IMP-61) is the book to time it in; time the start with it open too. If the start feels slow, the next step is reading a chapter's text only when it opens, as the requirements suggest, instead of the whole book at once | Open | P2 |
 
 ## 3. Writing features
 
@@ -60,7 +63,7 @@ Every round of changes on 5 October passed the type check (no errors or warnings
 
 | ID | Suggestion | Why | Status | Pri |
 |---|---|---|---|---|
-| **IMP-28** Split `+page.svelte` | Move find and replace, history and restores, projects, backups, the Word copy and Zen into their own modules | Done so far: chapter changes moved to `src/lib/chapters/mutate.ts`. The page is still the largest file in the app, at about 1,770 lines | Partial | P3 |
+| **IMP-28** Split `+page.svelte` | Move find and replace, history and restores, projects, backups, the Word copy and Zen into their own modules | Done so far: chapter changes moved to `src/lib/chapters/mutate.ts`. The page is still the largest file in the app, at about 2,260 lines (rounds 5 and 6 added comments, the chapter panel and the new Home) | Partial | P3 |
 
 ## Done
 
@@ -106,7 +109,7 @@ Every round of changes on 5 October passed the type check (no errors or warnings
 | IMP-44 Safer book switching and moving | Found while applying the fixes: switching books now saves pending note edits first, and the database switch waits for queued writes, so they can't land in the next book's file. After "Move project…", the old copy is dropped from Home's list. Opening a remembered book whose file is gone shows an error instead of creating an empty book. If the next book fails to open, the app now goes back to the one it left |
 | IMP-45 Pictures in exports and the Book view (ED-12) | Pictures reach Word, HTML, Markdown, plain text (as "[Picture]"), the Book view and printouts. The same pass keeps line breaks, links, superscript, highlights, horizontal rules, quotes with several paragraphs and nested lists, which were lost or run together before. Lists and quotes come out as one list or quote each, and only web and mail links reach the HTML |
 | IMP-46 Word files that open in Word (SV-6, SV-8) | Asked for on 5 October. "Export Word…" asks where to save and writes the book as it looks on the page: the manuscript font packed into the file, the app's text size and spacing, chapter labels, drop caps, first-line indents, each chapter on a new page, and a running head with page numbers. Word keeps the fonts when it saves the file again. A **Word copy** in a chosen folder is rewritten when the window loses focus, on a book switch and on close. Automatic updates stop, and say why, when the copy was changed in Word or a file Pensieve didn't write has its name. "Update now" replaces it; the message asks you to import the Word changes first. "Import Word…" lists the chapters it found, then either replaces the book's chapters (after a snapshot, keeping each chapter's status, goal and part) or adds them. Files from elsewhere are split at headings or chapter lines. Fonts: static Literata and EB Garamond from Google Fonts (SIL Open Font License) in `static/fonts/word/`. Word ignores variable fonts |
-| IMP-47 Example books | Asked for on 5 October. Settings → General → "Add example books" adds a novel (*The Lantern House*), a Slovenian story collection (*Zgodbe ob reki*) and an article. Each is its own book file, with notes and to-dos, so every view has something in it. Clicking again doesn't make copies |
+| IMP-47 Example books | Asked for on 5 October. Settings → General → "Add example books" adds a novel (*The Lantern House*), a Slovenian story collection (*Zgodbe ob reki*) and an article. Each is its own book file, with notes and to-dos, so every view has something in it. Clicking again doesn't make copies. Since 6 October the button reads "Reset example books" once they're added and puts them back as they were; whatever was written in one is kept first as a "Kept" snapshot on Home. The novel and the Slovenian collection have comments beside the page |
 | IMP-48 Chapter labels in the book's language | Labels follow the book's language ("Prvo poglavje", "13. poglavje"), and story collections label stories ("Story One", "Prva zgodba"), on the page and in Word. Word import also recognises Slovenian chapter lines such as "3. poglavje" |
 | IMP-49 Load the Word writer when it's needed | The `docx` library loads on the first Word export or Word copy update. The page's startup script went from 908 kB to 549 kB |
 | IMP-50 Esc in Settings | Found on 5 October: Settings kept every key to itself, Esc included, so Esc never closed it while the keyboard was inside it, which is always. Esc now closes it and puts the keyboard back where it was |
@@ -115,6 +118,12 @@ Every round of changes on 5 October passed the type check (no errors or warnings
 | IMP-53 Footnotes written twice in Word | Found on 5 October: the Word writer wrote a chapter's second paragraph twice, which left a stray footnote in the file. Each chapter is now written once, in reading order, which comments also need |
 | IMP-54 Candlelit particles | They were drawn under the app's panels, where nobody saw them, and their loop ran all the time. As the owner asked, they now drift over the desk behind the page in Write, and the loop stops when they're off (Gentle mode, Windows' reduced motion, other themes) |
 | IMP-55 Settings saved every minute | The settings were written to disk every minute because Follow sunset reads the clock. They are now saved only when they change |
+| IMP-56 Home before the editor | Asked for on 6 October. The editor (TipTap and ProseMirror), the comment margin, Notes, To-dos, Outline, Book and Settings load once Home is on screen, in the first idle moment and editor first, or as soon as one is opened. The scripts read before Home went from 704 kB to 283 kB, and the page's own from 633 kB to 130 kB. Measured honestly, in a browser with the CPU slowed 4×: Home appeared no sooner (746 against 748 ms, median of 12 starts each), because a stand-in database fills that time there. Compiling the scripts, which that slowdown doesn't reach, halved (33 to 17 ms at full speed). In the desktop window, where SQLite works in Rust, expect a few tens of milliseconds on the old laptop; IMP-10 will tell |
+| IMP-57 Counting words in big books | Found on 6 October with the long test book: before Home appeared, the whole book was counted three times (Home's card, the remembered book's summary, the book total), each time by splitting the text into a list of every word. Words are now counted in one pass without the list, 2.5× faster (4 ms instead of 11 for 151,000 words), and a chapter is counted again only when its text changes. With the long book open and the CPU slowed 4×, Home appeared about 100 ms sooner (756 against 854 ms, median of 10). The word count beside the page uses the same counter while you type |
+| IMP-58 Fewer trips to the database at start | Each start checked the tables' columns one column at a time: 13 queries, each a round trip through Rust. It now reads each table once, 5 queries, and makes the same changes in the same order |
+| IMP-59 Toolbar and margin a step behind | Found on 6 October: the editor only told the page when the cursor moved. After "To-do" or "Note" on a comment, its card stayed in the margin until you clicked in the text, and after Ctrl+B on a selection the B button stayed off. Every change now counts, and typing costs no more, since a keystroke moves the cursor too |
+| IMP-60 Other names for notes (NT-7) | Suggested on 5 October. A note card has an "Also called" line for other names, separated by commas, such as "her mother" for Vera. They count as mentions beside the page and in "Appears in", each passage once, so "Grandmother Marija" isn't also counted as "Grandmother". Note search and "Link a note" find them. They are kept in a new `aliases` column, which older books get when they open |
+| IMP-61 Long test book (IMP-10) | Asked for on 6 October. Settings → General → "Add the long test book" adds a novel of 15 chapters and about 151,000 words, with 10 notes whose names appear in the text and 40 to-dos. It comes out the same every time; once added, the button resets it. It found IMP-57 |
 
 ## Suggested order
 
