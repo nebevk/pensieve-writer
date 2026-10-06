@@ -6,9 +6,9 @@
   import type { AmbienceName, KnownProject, Prefs } from "$lib/prefs";
   import type { Chapter, ChapterStatus, Project, ProjectKind, SnapshotInfo } from "$lib/model";
   import { isUntitled, translate, type UiKey } from "$lib/i18n";
-  import { ago, locale, num, plural, snapshotName, t } from "$lib/ui.svelte";
+  import { ago, locale, num, plural, snapshotName, t, ui } from "$lib/ui.svelte";
   import Icon from "$lib/editor/Icon.svelte";
-  import { randomQuote } from "$lib/quotes";
+  import { chapterTitle, isWelcomePage } from "$lib/chapters/welcome";
   import { listNotes, listTasks, saveTask, type Note, type NoteCategory, type Task } from "$lib/storage/organize";
   import { sqliteStorage } from "$lib/storage/sqlite";
   import ChecklistItem from "./ChecklistItem.svelte";
@@ -57,7 +57,6 @@
     books?: KnownProject[];
   } = $props();
 
-  const quote = randomQuote();
   const KINDS: Record<ProjectKind, UiKey> = { novel: "novel", stories: "stories", article: "article" };
   const KIND_LIST: ProjectKind[] = ["novel", "stories", "article"];
   const STATUSES: Record<ChapterStatus, UiKey> = { draft: "statusDraft", revised: "statusRevised", final: "statusFinal" };
@@ -126,11 +125,20 @@
     return chapter.plainText.trim() ? chapter.status : "empty";
   }
 
+  /**
+   * "Good evening. The Attic is waiting." (HOME-10): the time of day, then the chapter Continue opens.
+   * Late at night it's "Late again."; a new book's welcome page gets the greeting alone.
+   */
   function greeting(at: number): string {
     const hour = new Date(at).getHours();
-    if (hour < 12) return t("morning");
-    if (hour < 18) return t("afternoon");
-    return t("evening");
+    const hello =
+      hour >= 23 || hour < 5 ? t("lateAgain") : hour < 12 ? t("morning") : hour < 18 ? t("afternoon") : t("evening");
+    const chapter = latest;
+    if (!chapter || isWelcomePage(chapter)) return `${hello}.`;
+    const name = isUntitled(chapter.title)
+      ? chapterTitle(project.kind, ui.language, chapters.findIndex((item) => item.id === chapter.id) + 1)
+      : chapter.title.trim();
+    return `${hello}. ${t("chapterWaiting", { chapter: name })}`;
   }
 
   function clip(text: string, max = 88): string {
@@ -236,11 +244,7 @@
         {new Date(now).toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long" })} ·
         {new Date(now).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })}
       </p>
-      <h1>{greeting(now)}.</h1>
-      <blockquote class="quote">
-        <p>{quote.text}</p>
-        <footer>{quote.reference}</footer>
-      </blockquote>
+      <h1>{greeting(now)}</h1>
       <div class="stats">
         <div>
           <p class="value">{num(wordsToday)}{#if prefs.dailyGoal > 0}<span>{` / ${num(prefs.dailyGoal)}`}</span>{/if}</p>
@@ -471,27 +475,7 @@
     font-size: 46px;
     font-weight: 400;
     line-height: 1.08;
-  }
-
-  .quote {
-    margin: 10px 0 0;
-    max-width: 34rem;
-  }
-
-  .quote p {
-    margin: 0;
-    font-family: var(--pv-font-manuscript);
-    font-size: 17px;
-    line-height: 1.45;
-    color: var(--pv-text-2);
-  }
-
-  .quote footer {
-    margin-top: 6px;
-    font-size: var(--pv-text-xs);
-    letter-spacing: var(--pv-track-eyebrow);
-    text-transform: uppercase;
-    color: var(--pv-text-faint);
+    text-wrap: pretty;
   }
 
   .stats {

@@ -33,13 +33,14 @@
     appearance?: "daylight" | "candlelit" | "moonlit";
   } = $props();
 
+  // Four tabs, as designed (WIN-2). To-dos open from the Notes / To-dos switch, so Notes stays lit there.
   const tabs = $derived([
     { id: "write" as const, label: t("write") },
-    { id: "notes" as const, label: t("notes") },
-    { id: "todos" as const, label: t("todos") },
     { id: "outline" as const, label: t("outline") },
     { id: "book" as const, label: t("book") },
+    { id: "notes" as const, label: t("notes") },
   ]);
+  const current = $derived(view === "todos" ? "notes" : view);
 </script>
 
 <!-- The only window bar (WIN-1): drag it to move the window, double-click it to maximise. -->
@@ -53,8 +54,8 @@
       <button
         type="button"
         role="tab"
-        aria-selected={view === tab.id}
-        class:active={view === tab.id}
+        aria-selected={current === tab.id}
+        class:active={current === tab.id}
         onclick={() => onView(tab.id)}
       >
         {tab.label}

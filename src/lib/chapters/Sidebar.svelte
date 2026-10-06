@@ -326,7 +326,9 @@
 
   .legend {
     display: flex;
-    gap: 12px;
+    /* A long label moves to the next row whole: Slovenian's "V popravljanju" doesn't fit one row. */
+    flex-wrap: wrap;
+    gap: 4px 12px;
     padding: 8px 20px 4px;
     font-size: 11px;
     color: var(--pv-text-subtle);
@@ -336,6 +338,7 @@
     display: flex;
     align-items: center;
     gap: 5px;
+    white-space: nowrap;
   }
 
   .count {

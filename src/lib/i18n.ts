@@ -71,7 +71,7 @@ const en = {
   deleteChapter: "Delete this chapter",
   deleteQuestion: "Delete “{title}”?",
   statusDraft: "Draft",
-  statusRevised: "Revised",
+  statusRevised: "Revising",
   statusFinal: "Final",
 
   // Writing page
@@ -159,6 +159,8 @@ const en = {
   morning: "Good morning",
   afternoon: "Good afternoon",
   evening: "Good evening",
+  lateAgain: "Late again",
+  chapterWaiting: "{chapter} is waiting.",
   projects: "Projects",
   start: "Start something new",
   open: "Open another project…",
@@ -511,7 +513,7 @@ const sl: Record<UiKey, string> = {
   deleteChapter: "Izbriši to poglavje",
   deleteQuestion: "Izbrišem »{title}«?",
   statusDraft: "Osnutek",
-  statusRevised: "Popravljeno",
+  statusRevised: "V popravljanju",
   statusFinal: "Končano",
 
   chapterText: "Besedilo poglavja",
@@ -596,6 +598,8 @@ const sl: Record<UiKey, string> = {
   morning: "Dobro jutro",
   afternoon: "Dober dan",
   evening: "Dober večer",
+  lateAgain: "Spet pozno",
+  chapterWaiting: "»{chapter}« čaka.",
   projects: "Projekti",
   start: "Začni nekaj novega",
   open: "Odpri drug projekt …",

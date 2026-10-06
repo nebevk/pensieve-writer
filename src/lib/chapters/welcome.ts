@@ -22,6 +22,12 @@ export function welcomeDocument(canDelete = true, language: UiLanguage = "en"): 
   };
 }
 
+/** Whether a chapter is the welcome page a new book starts with, going by its title in either language. */
+export function isWelcomePage(chapter: Pick<Chapter, "title">): boolean {
+  const title = chapter.title.trim();
+  return (["en", "sl"] as const).some((language) => translate(language, "welcomeTitle") === title);
+}
+
 export function openingTitle(kind: ProjectKind, bookTitle: string, language: UiLanguage = "en"): string {
   if (kind === "article") return bookTitle || translate(language, "articleTitle");
   return translate(language, "welcomeTitle");
