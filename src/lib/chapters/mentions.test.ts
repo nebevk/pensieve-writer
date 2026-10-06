@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Note } from "$lib/storage/organize";
-import { mentions, noteMentions, notesInChapter } from "./mentions";
+import { mentions, noteMentions, noteNames, notesInChapter } from "./mentions";
 
 function note(id: string, title: string, chapterIds: string[] = [], category: Note["category"] = "characters"): Note {
   return {
@@ -11,6 +11,7 @@ function note(id: string, title: string, chapterIds: string[] = [], category: No
     plainText: "",
     category,
     tags: "",
+    aliases: "",
     fields: [],
     todoState: null,
     chapterIds,
@@ -41,6 +42,15 @@ describe("notes in a chapter", () => {
     // Places and other notes need their whole title.
     expect(noteMentions("The attic was cold. The stairs creaked.", { title: "The attic", category: "places" })).toBe(1);
     expect(noteMentions("The stairs creaked.", { title: "The attic", category: "places" })).toBe(0);
+  });
+
+  it("counts a note's other names, each passage once", () => {
+    const marija = { title: "Grandmother Marija", category: "characters" as const, aliases: "her grandmother, Babica" };
+    expect(noteNames(marija)).toEqual(["Grandmother Marija", "her grandmother", "Babica", "Grandmother"]);
+    const text = "Her grandmother had died. Babica knew. Grandmother Marija kept the keys; the grandmother clock stopped.";
+    // "Grandmother Marija" counts once, not also as "Grandmother"; the clock is a grandmother too.
+    expect(noteMentions(text, marija)).toBe(4);
+    expect(noteMentions("Nothing here.", { title: "Vera", category: "places", aliases: " , " })).toBe(0);
   });
 
   it("lists mentioned, linked and attached notes, most mentioned first", () => {

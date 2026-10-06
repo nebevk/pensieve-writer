@@ -38,6 +38,9 @@
     onUpdateWordCopy,
     onStopWordCopy,
     onAddExamples,
+    examplesAdded = false,
+    onAddLongBook,
+    longBookAdded = false,
     onClose,
   }: {
     prefs: Prefs;
@@ -75,6 +78,10 @@
     onUpdateWordCopy: () => void;
     onStopWordCopy: () => void;
     onAddExamples: () => void;
+    /** The example books are already there, so the button puts them back as they were written. */
+    examplesAdded?: boolean;
+    onAddLongBook: () => void;
+    longBookAdded?: boolean;
     onClose: () => void;
   } = $props();
 
@@ -177,6 +184,13 @@
         {#if section === "Appearance"}
           <h2>{t("appearance")}</h2>
           <p class="lab">{t("theme")}</p>
+          {#snippet mini(theme: string, clip: string | undefined)}
+            <!-- A small desk in the theme's own colours: a page with three lines, and in the dark themes the lamp glow. -->
+            <span class="mini" data-theme={theme} style:clip-path={clip}>
+              <span class="glow"></span>
+              <span class="page"><i></i><i></i><i class="short"></i></span>
+            </span>
+          {/snippet}
           <div class="swatches">
             {#each themes as theme (theme.id)}
               <button
@@ -187,10 +201,10 @@
               >
                 <span class="preview">
                   {#if theme.id === "sunset"}
-                    <span class="mini" data-theme="daylight" style:clip-path="inset(0 50% 0 0)"></span>
-                    <span class="mini" data-theme="candlelit" style:clip-path="inset(0 0 0 50%)"></span>
+                    {@render mini("daylight", "inset(0 50% 0 0)")}
+                    {@render mini("candlelit", "inset(0 0 0 50%)")}
                   {:else}
-                    <span class="mini" data-theme={theme.id}></span>
+                    {@render mini(theme.id, undefined)}
                   {/if}
                 </span>
                 <span class:chosen={prefs.theme === theme.id}>{t(theme.key)}</span>
@@ -284,7 +298,12 @@
           <p class="lab">{t("exampleBooks")}</p>
           <p class="hint">{t("exampleBooksHint")}</p>
           <div class="actions">
-            <button type="button" onclick={onAddExamples}>{t("addExampleBooks")}</button>
+            <button type="button" onclick={onAddExamples}>{examplesAdded ? t("resetExampleBooks") : t("addExampleBooks")}</button>
+          </div>
+          <p class="lab">{t("longBook")}</p>
+          <p class="hint">{t("longBookHint")}</p>
+          <div class="actions">
+            <button type="button" onclick={onAddLongBook}>{longBookAdded ? t("resetLongBook") : t("addLongBook")}</button>
           </div>
           {#if backupMessage}
             <p class="hint">{backupMessage}</p>
@@ -678,16 +697,43 @@
     background: var(--pv-desk);
   }
 
-  .mini::before {
-    content: "";
+  .mini .glow {
+    position: absolute;
+    left: 50%;
+    top: 30px;
+    width: 160px;
+    height: 120px;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background: radial-gradient(closest-side, var(--pv-glow), transparent);
+  }
+
+  .mini[data-theme="daylight"] .glow {
+    display: none;
+  }
+
+  .mini .page {
     position: absolute;
     left: 50%;
     bottom: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     width: 70px;
     height: 72px;
+    padding: 10px;
     transform: translateX(-50%);
     background: var(--pv-paper);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  }
+
+  .mini .page i {
+    height: 2px;
+    background: var(--pv-ink-rule);
+  }
+
+  .mini .page i.short {
+    width: 70%;
   }
 
   .mini[data-theme="daylight"]::after {

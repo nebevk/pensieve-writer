@@ -43,6 +43,7 @@ export function normalizeNote(note: Note, projectId: string, now = new Date().to
     plainText: typeof note.plainText === "string" ? note.plainText : "",
     category,
     tags: typeof note.tags === "string" ? note.tags : "",
+    aliases: typeof note.aliases === "string" ? note.aliases : "",
     fields: Array.isArray(note.fields) ? note.fields : [],
     todoState,
     chapterIds: Array.isArray(note.chapterIds) ? note.chapterIds : [],

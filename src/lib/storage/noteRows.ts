@@ -15,6 +15,7 @@ type NoteRow = {
   tags: string;
   todo_state: string | null;
   fields_json?: string;
+  aliases?: string;
   created_at: string;
   updated_at: string;
 };
@@ -69,7 +70,7 @@ function parseDoc(raw: string): DocumentJson {
 
 export async function readNotesWith(db: Database, projectId: string): Promise<Note[]> {
   const rows = await db.select<NoteRow[]>(
-    `SELECT id, project_id, title, content_json, plain_text, category, tags, todo_state, fields_json, created_at, updated_at
+    `SELECT id, project_id, title, content_json, plain_text, category, tags, todo_state, fields_json, aliases, created_at, updated_at
      FROM notes WHERE project_id = $1 ORDER BY updated_at DESC`,
     [projectId],
   );
@@ -86,6 +87,7 @@ export async function readNotesWith(db: Database, projectId: string): Promise<No
     plainText: row.plain_text ?? "",
     category: asCategory(row.category),
     tags: row.tags ?? "",
+    aliases: row.aliases ?? "",
     fields: parseFields(row.fields_json),
     todoState: asTodo(row.todo_state),
     chapterIds: links.filter((link) => link.note_id === row.id).map((link) => link.chapter_id),
@@ -97,8 +99,8 @@ export async function readNotesWith(db: Database, projectId: string): Promise<No
 export async function writeNoteWith(db: Database, note: Note): Promise<void> {
   await db.execute(
     `INSERT INTO notes (
-       id, project_id, title, content_json, plain_text, category, tags, todo_state, fields_json, created_at, updated_at
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       id, project_id, title, content_json, plain_text, category, tags, todo_state, fields_json, aliases, created_at, updated_at
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      ON CONFLICT(id) DO UPDATE SET
        title = excluded.title,
        content_json = excluded.content_json,
@@ -107,6 +109,7 @@ export async function writeNoteWith(db: Database, note: Note): Promise<void> {
        tags = excluded.tags,
        todo_state = excluded.todo_state,
        fields_json = excluded.fields_json,
+       aliases = excluded.aliases,
        updated_at = excluded.updated_at`,
     [
       note.id,
@@ -118,6 +121,7 @@ export async function writeNoteWith(db: Database, note: Note): Promise<void> {
       note.tags,
       note.todoState,
       JSON.stringify(note.fields ?? []),
+      note.aliases ?? "",
       note.createdAt,
       note.updatedAt,
     ],

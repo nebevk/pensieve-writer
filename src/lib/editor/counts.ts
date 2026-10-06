@@ -1,9 +1,36 @@
 import { num } from "$lib/ui.svelte";
 
+/**
+ * Words are runs of anything but white space, the ones `text.trim().split(/\s+/)` would list. They are
+ * counted in one pass without making that list, which for a whole book is a hundred thousand strings.
+ */
 export function countWords(text: string): number {
-  const trimmed = text.trim();
-  if (!trimmed) return 0;
-  return trimmed.split(/\s+/).length;
+  let words = 0;
+  let inWord = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const space = isSpace(text.charCodeAt(index));
+    if (!space && !inWord) words += 1;
+    inWord = !space;
+  }
+  return words;
+}
+
+/** The characters `\s` matches. */
+function isSpace(code: number): boolean {
+  return (
+    code === 32 ||
+    (code >= 9 && code <= 13) ||
+    (code > 127 &&
+      (code === 0xa0 ||
+        code === 0x1680 ||
+        (code >= 0x2000 && code <= 0x200a) ||
+        code === 0x2028 ||
+        code === 0x2029 ||
+        code === 0x202f ||
+        code === 0x205f ||
+        code === 0x3000 ||
+        code === 0xfeff))
+  );
 }
 
 const wordMemory = new Map<string, { text: string; words: number }>();

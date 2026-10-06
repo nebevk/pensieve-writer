@@ -82,6 +82,7 @@
     return (
       note.title.toLowerCase().includes(needle) ||
       note.tags.toLowerCase().includes(needle) ||
+      note.aliases.toLowerCase().includes(needle) ||
       note.plainText.toLowerCase().includes(needle)
     );
   }
@@ -204,6 +205,7 @@
       plainText: "",
       category: "characters",
       tags: "",
+      aliases: "",
       fields: [],
       todoState: null,
       chapterIds: chapterId ? [chapterId] : [],
@@ -353,6 +355,14 @@
           placeholder={t("shortDescriptionHint")}
           value={note.tags}
           oninput={(event) => updateActive({ tags: (event.currentTarget as HTMLInputElement).value })}
+        />
+        <!-- Other names count as mentions, beside the page and in "Appears in". -->
+        <input
+          class="aliases"
+          aria-label={t("otherNames")}
+          placeholder={t("otherNamesHint")}
+          value={note.aliases}
+          oninput={(event) => updateActive({ aliases: (event.currentTarget as HTMLInputElement).value })}
         />
         <div class="fields">
           {#each note.fields as field, index (index)}
@@ -610,6 +620,21 @@
     font-weight: 600;
   }
 
+  /* "Appears in" and "Linked notes" are headings in Young Serif, as in the design's context column. */
+  .context .eyebrow {
+    margin: 20px 0 8px;
+    font-family: var(--pv-font-heading);
+    font-size: var(--pv-heading-sm);
+    font-weight: 400;
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--pv-text);
+  }
+
+  .context .eyebrow:first-child {
+    margin-top: 0;
+  }
+
   .row {
     display: flex;
     flex-direction: column;
@@ -695,6 +720,8 @@
     min-width: 0;
     overflow: auto;
     padding: 36px 24px 48px;
+    /* The same lamp glow as behind the page, in Candlelit and Moonlit (Daylight has none). */
+    background: radial-gradient(closest-side, var(--pv-glow), color-mix(in srgb, var(--pv-glow) 36%, transparent) 55%, transparent) 50% 120px / 900px 700px no-repeat;
   }
 
   .card {
@@ -740,8 +767,22 @@
 
   .tags {
     width: 100%;
-    margin: 4px 0 12px;
+    margin: 4px 0 2px;
     color: var(--pv-ink-muted);
+  }
+
+  .aliases {
+    width: 100%;
+    margin: 0 0 12px;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--pv-ink-muted);
+    font-size: var(--pv-text-md);
+  }
+
+  .aliases::placeholder {
+    color: var(--pv-ink-meta);
   }
 
   .fields {

@@ -16,7 +16,8 @@ type ExampleChapter = {
   wordGoal?: number;
   /**
    * Lines of text: "## " heading, "> " quote, "* *" scene break, *italic* and **bold** inline,
-   * [[Note title|words]] for words linked to a note, and ^[text] for a footnote.
+   * [[Note title|words]] for words linked to a note, ^[text] for a footnote, and {{words|comment}}
+   * for a comment on the words.
    */
   lines: string[];
 };
@@ -26,6 +27,8 @@ type ExampleNote = {
   title: string;
   category: NoteCategory;
   tags: string;
+  /** Other names, separated by commas, that count as mentions. */
+  aliases?: string;
   fields?: NoteField[];
   lines: string[];
   chapters?: string[];
@@ -54,10 +57,16 @@ type NoteLookup = (title: string) => string | undefined;
 
 function inline(text: string, notes?: NoteLookup): JsonNode[] {
   return text
-    .split(/(\*\*[^*]+\*\*|\*[^*\s][^*]*\*|\[\[[^\]]+\]\]|\^\[[^\]]+\])/)
+    .split(/(\*\*[^*]+\*\*|\*[^*\s][^*]*\*|\[\[[^\]]+\]\]|\^\[[^\]]+\]|\{\{[^}]+\}\})/)
     .filter(Boolean)
     .map((part): JsonNode => {
       if (part.startsWith("^[") && part.endsWith("]")) return { type: "footnote", attrs: { text: part.slice(2, -1) } };
+      // In chapters, {{words|comment}} puts a comment on the words, as one added beside the page.
+      if (notes && part.startsWith("{{") && part.endsWith("}}")) {
+        const [words, said = ""] = part.slice(2, -2).split("|");
+        const comment = { id: crypto.randomUUID(), text: said, createdAt: new Date().toISOString() };
+        return { type: "text", text: words, marks: [{ type: "comment", attrs: comment }] };
+      }
       // In chapters, [[Title|words]] links the words to a note; notes keep [[Title]] as written.
       if (notes && part.startsWith("[[") && part.endsWith("]]")) {
         const [title, words = title] = part.slice(2, -2).split("|");
@@ -118,7 +127,7 @@ export const EXAMPLE_BOOKS: ExampleBook[] = [
           "The letter came on a Tuesday, in an envelope the colour of weak tea. Ana knew the handwriting before she knew the name on it, and for a long moment she did not open it at all.",
           "It was from a notary in Krško.^[A small town on the Sava, in eastern Slovenia.] [[Grandmother Marija|Her grandmother]] had died in March. The house by the river was to be divided, the letter said, *in accordance with the wishes of the deceased*, and the family was asked to attend on the first of May.",
           "Ana read it twice at the workbench, between a chair with a cracked rail and a cabinet that would not close. Then she put it face down under a tin of beeswax, as if that would keep it quiet.",
-          "She had not been back in twelve years. Not since the night her father drove away with the headlights off, and her mother stood in the kitchen and said nothing, the way she said nothing about everything.",
+          "{{She had not been back in twelve years.|Twelve years: check against chapter 2, where she is twenty-two.}} Not since the night her father drove away with the headlights off, and her mother stood in the kitchen and said nothing, the way she said nothing about everything.",
           "That evening she phoned her mother. [[Vera, her mother|Vera]] answered on the third ring.",
           "“So you got it,” Vera said.",
           "“I got it.”",
@@ -133,7 +142,7 @@ export const EXAMPLE_BOOKS: ExampleBook[] = [
         wordGoal: 600,
         synopsis: "Ana drives south through the fog and remembers the night her father left.",
         lines: [
-          "The fog came down at Zidani Most and stayed with her all the way to Krško, so thick that the river was only a sound beside the road.",
+          "The fog came down at {{Zidani Most|Is there fog here in late April? Ask someone who drives this road.}} and stayed with her all the way to Krško, so thick that the river was only a sound beside the road.",
           "Ana drove slowly. Her hands remembered the bends before her eyes did, and with every one of them a little more of the house came back: the warped third stair, the pantry that smelled of apples, the lamp in the upstairs window that her grandmother never let go out.",
           "* *",
           "Her father had left in fog like this. She had been twenty-two and home for the summer, and she had watched from the landing as his car rolled down to the road without a sound, the headlights switched off until the very last moment, as if leaving quietly made it less of a leaving.",
@@ -152,7 +161,7 @@ export const EXAMPLE_BOOKS: ExampleBook[] = [
           "The keys hung on a nail behind the pantry door, eleven of them on a ring of brass^[Farmhouses along the Sava kept their keys on one ring by the pantry, a habit older than any of the locks.] gone soft and brown with handling. Nobody in the family could say what half of them opened.",
           "Ana took them down the morning after the funeral. They were heavier than she expected, and colder, as if they had been waiting in the dark for someone to remember them.",
           "“Start with [[The attic|the attic]],” her mother said from the kitchen, without turning around.",
-          "Ana turned the ring over in her hands. Some of the keys she knew: the front door, the woodshed, the little one for the sewing box. Others had no lock left in the house to fit. One was long and black, with teeth like a comb, and it was *warm*, which made no sense at all.",
+          "Ana turned the ring over in her hands. Some of the keys she knew: the front door, the woodshed, the little one for the sewing box. Others had no lock left in the house to fit. {{One was long and black|Describe this key again at the trunk, in chapter 4.}}, with teeth like a comb, and it was *warm*, which made no sense at all.",
           "On the inside of the pantry door, just under the nail, someone had pencilled a line so faint she nearly missed it:",
           "> Some doors you open for the room, and some for the one who locked them.",
           "It was her grandmother's handwriting. Ana put the keys in her pocket and went to find the attic stairs.",
@@ -167,7 +176,7 @@ export const EXAMPLE_BOOKS: ExampleBook[] = [
         synopsis: "Under the round window, a trunk that none of the keys seem to fit.",
         lines: [
           "The attic was lower than she remembered, or she was taller. Dust hung in the light from the round window like something that had decided to stay.",
-          "The trunk sat under the window, where it had always sat. Ana knelt and tried the keys one by one. None of them fit. The long black one did not even go in.",
+          "{{The trunk|What is in it? Decide before writing the next scene.}} sat under the window, where it had always sat. Ana knelt and tried the keys one by one. None of them fit. The long black one did not even go in.",
           "She sat back on her heels and laughed, quietly, because there was no one to hear it.",
           "**Next:** what is in the trunk? Letters, or nothing at all?",
         ],
@@ -194,6 +203,7 @@ export const EXAMPLE_BOOKS: ExampleBook[] = [
       {
         key: "vera",
         title: "Vera, her mother",
+        aliases: "her mother",
         category: "characters",
         tags: "Never goes upstairs",
         fields: [{ key: "Lives", value: "The Lantern House, ground floor" }],
@@ -203,6 +213,7 @@ export const EXAMPLE_BOOKS: ExampleBook[] = [
       {
         key: "marija",
         title: "Grandmother Marija",
+        aliases: "her grandmother",
         category: "characters",
         tags: "Died in March; kept the keys",
         fields: [{ key: "Died", value: "March" }],
@@ -268,7 +279,7 @@ export const EXAMPLE_BOOKS: ExampleBook[] = [
         lines: [
           "Lojze je vozil ljudi čez reko, odkar je kdo pomnil. Vozil je ob vsakem vremenu, tudi ko je bila Sava rjava in hitra, in nikoli ni vzel denarja.",
           "»Reka si sama vzame, kar ji gre,« je rekel, kadar mu je kdo vseeno stisnil kovanec v roko. Kovanec je potem obležal na dnu čolna, med vrvmi in suhim listjem.",
-          "Tisto jesen je čez reko prišla deklica z rdečim šalom. Ni povedala, kako ji je ime, in Lojze je ni vprašal. Sedla je na klop na kljunu čolna in gledala v meglo, kot da bi nekoga čakala.",
+          "Tisto jesen je čez reko prišla {{deklica z rdečim šalom|Je to ista deklica kot v zgodbi Megla nad Savo? Odloči in ju poveži.}}. Ni povedala, kako ji je ime, in Lojze je ni vprašal. Sedla je na klop na kljunu čolna in gledala v meglo, kot da bi nekoga čakala.",
           "»Greš domov?« je vprašal sredi reke.",
           "»Ne,« je rekla. »Grem pogledat, če lučka še gori.«",
         ],
@@ -423,6 +434,7 @@ export function buildExample(
       plainText: proseText(contentJson),
       category: note.category,
       tags: note.tags,
+      aliases: note.aliases ?? "",
       fields: note.fields ?? [],
       todoState: note.todoState ?? null,
       chapterIds: (note.chapters ?? []).flatMap((key) => chapterIds.get(key) ?? []),

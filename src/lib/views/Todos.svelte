@@ -394,6 +394,8 @@
     min-width: 0;
     overflow: auto;
     padding: 26px 32px 48px;
+    /* The same lamp glow as behind the page, in Candlelit and Moonlit (Daylight has none). */
+    background: radial-gradient(closest-side, var(--pv-glow), color-mix(in srgb, var(--pv-glow) 36%, transparent) 55%, transparent) 50% 120px / 900px 700px no-repeat;
   }
 
   .quick {

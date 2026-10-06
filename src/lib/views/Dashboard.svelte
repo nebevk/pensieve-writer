@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { bookProgress, summarize, type BookSummary } from "$lib/chapters/progress";
   import { compactWords, wordsFor } from "$lib/editor/counts";
+  import { roman } from "$lib/chapters/labels";
   import type { AmbienceName, KnownProject, Prefs } from "$lib/prefs";
   import type { Chapter, ChapterStatus, Project, ProjectKind, SnapshotInfo } from "$lib/model";
   import { isUntitled, translate, type UiKey } from "$lib/i18n";
@@ -294,7 +295,8 @@
         <div class="sheet">
           <div class="running">
             <span>{project.title}</span>
-            <span>{latest ? t("chapterShort", { n: chapters.findIndex((chapter) => chapter.id === latest.id) + 1 }) : ""}</span>
+            <!-- The chapter in Roman numerals, as the page's own running head writes it. -->
+            <span>{latest ? t("chapterShort", { n: roman(chapters.findIndex((chapter) => chapter.id === latest.id) + 1) }) : ""}</span>
           </div>
           <div class="excerpt">
             {#if previousLine}

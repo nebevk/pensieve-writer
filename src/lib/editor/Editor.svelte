@@ -106,6 +106,9 @@
         },
       },
       onUpdate: ({ editor: current }) => {
+        // An edit that leaves the cursor where it was, such as a comment turned into a to-do, changes
+        // the page too. Typing also moves the cursor, and both arrive together, so this adds no work.
+        notify();
         if (liveOn) publish(current.getJSON() as DocumentJson, current.getText(), ownerId);
         else markEdited?.();
         if (countTimer) clearTimeout(countTimer);

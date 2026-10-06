@@ -49,15 +49,18 @@
     onAddTodo: () => void;
     onReplace: () => void;
     /** The book's notes, for "Link a note". */
-    loadNotes: () => Promise<{ id: string; title: string }[]>;
+    loadNotes: () => Promise<{ id: string; title: string; aliases: string }[]>;
     /** Comments the selection, or the word at the cursor. */
     onComment: () => void;
   } = $props();
 
   let expanded = $state(false);
+  // The quiet row's one Alignment button opens the four alignments (design TOOL-8).
+  let alignOpen = $state(false);
+  let alignWrap = $state<HTMLElement | undefined>(undefined);
   let linkOpen = $state(false);
   let notePicker = $state(false);
-  let noteChoices = $state<{ id: string; title: string }[]>([]);
+  let noteChoices = $state<{ id: string; title: string; aliases: string }[]>([]);
   let noteQuery = $state("");
   let imageProblem = $state("");
   let problemTimer: ReturnType<typeof setTimeout> | null = null;
@@ -161,7 +164,9 @@
   }
 
   const pickable = $derived(
-    noteChoices.filter((note) => note.title.toLowerCase().includes(noteQuery.trim().toLowerCase())).slice(0, 12),
+    noteChoices
+      .filter((note) => `${note.title},${note.aliases}`.toLowerCase().includes(noteQuery.trim().toLowerCase()))
+      .slice(0, 12),
   );
   const onNoteLink = $derived(revision >= 0 && ready()?.isActive("noteLink") === true);
 
@@ -258,7 +263,43 @@
     {/each}
     <span class="rule"></span>
     {@render toolButton(blocks[0])}
-    {@render toolButton(blocks[2])}
+    <div class="align-wrap" bind:this={alignWrap}>
+      <button
+        type="button"
+        class="tool"
+        title={t("alignment")}
+        aria-label={t("alignment")}
+        aria-haspopup="menu"
+        aria-expanded={alignOpen}
+        disabled={!editor}
+        onmousedown={(event) => event.preventDefault()}
+        onclick={() => (alignOpen = !alignOpen)}
+      >
+        <Icon name={blocks.slice(2, 6).find((tool) => tool.pressed)?.icon ?? "alignLeft"} />
+      </button>
+      {#if alignOpen}
+        <div class="align-menu" role="menu">
+          {#each blocks.slice(2, 6) as tool (tool.icon)}
+            <button
+              type="button"
+              class="tool"
+              class:active={tool.pressed}
+              role="menuitemradio"
+              aria-checked={tool.pressed}
+              title={tool.title}
+              aria-label={tool.title}
+              onmousedown={(event) => event.preventDefault()}
+              onclick={() => {
+                tool.run();
+                alignOpen = false;
+              }}
+            >
+              <Icon name={tool.icon ?? "alignLeft"} />
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </div>
     <button type="button" class="tool serif" title={t("blockQuote")} aria-label={t("blockQuote")} onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleBlockquote().run()}>“</button>
     <button type="button" class="tool scene" title={t("sceneBreak")} aria-label={t("sceneBreak")} onmousedown={(event) => event.preventDefault()} onclick={sceneBreak}>* *</button>
     <span class="rule"></span>
@@ -401,6 +442,15 @@
   {/if}
 </div>
 
+<svelte:window
+  onpointerdown={(event) => {
+    if (alignOpen && alignWrap && !alignWrap.contains(event.target as Node)) alignOpen = false;
+  }}
+  onkeydown={(event) => {
+    if (alignOpen && event.key === "Escape") alignOpen = false;
+  }}
+/>
+
 {#snippet toolButton(tool: Tool)}
   <button
     type="button"
@@ -482,6 +532,25 @@
     background: var(--pv-line);
     margin: 0 4px;
     flex: none;
+  }
+
+  .align-wrap {
+    position: relative;
+    display: flex;
+  }
+
+  .align-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: -4px;
+    z-index: 6;
+    display: flex;
+    gap: 1px;
+    padding: 3px;
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-sm);
+    background: var(--pv-chrome);
+    box-shadow: var(--pv-shadow-window);
   }
 
   .panel-toggle {

@@ -3,9 +3,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Sidebar from "$lib/chapters/Sidebar.svelte";
-  import Editor from "$lib/editor/Editor.svelte";
   import Ribbon from "$lib/editor/Ribbon.svelte";
-  import CommentRail from "$lib/editor/CommentRail.svelte";
   import StatusBar from "$lib/editor/StatusBar.svelte";
   import TitleBar from "$lib/editor/TitleBar.svelte";
   import { countWords, wordsFor } from "$lib/editor/counts";
@@ -20,14 +18,9 @@
   import { createAmbience } from "$lib/ambience";
   import { chooseBackupFile, chooseBackupFolder, chooseProjectFile, readBackupFile, writeBackup } from "$lib/storage/backup";
   import { backupSignature, type BackupContent } from "$lib/storage/backupFile";
-  import Settings from "$lib/views/Settings.svelte";
   import Particles from "$lib/views/Particles.svelte";
-  import Book from "$lib/views/Book.svelte";
   import Dashboard from "$lib/views/Dashboard.svelte";
   import HomeHeader from "$lib/views/HomeHeader.svelte";
-  import Notes from "$lib/views/Notes.svelte";
-  import Outline from "$lib/views/Outline.svelte";
-  import Todos from "$lib/views/Todos.svelte";
   import ChapterPanel from "$lib/views/ChapterPanel.svelte";
   import { flushPrefs, loadPrefs, loadPrefsFile, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs, type KnownProject } from "$lib/prefs";
   import { duplicateChapterProject, patchChapter, removeChapter, renameChapterProject, reorderChapterList, setChapterText } from "$lib/chapters/mutate";
@@ -37,13 +30,23 @@
   import { notesInChapter } from "$lib/chapters/mentions";
   import { isUntitled } from "$lib/i18n";
   import { locale, snapshotName, t, ui } from "$lib/ui.svelte";
-  import { flushNoteSave, listNotes, listTasks, saveNote, saveTask, type Note, type Task } from "$lib/storage/organize";
+  import { deleteNote, deleteTask, flushNoteSave, listNotes, listTasks, saveNote, saveTask, type Note, type Task } from "$lib/storage/organize";
   import { noteFromComment, todoFromComment } from "$lib/storage/fromComment";
   import type { NoteTarget } from "$lib/editor/noteLinks";
-  import { addComment, removeComment, type CommentInfo } from "$lib/editor/comments";
+  import type { CommentInfo } from "$lib/editor/comments";
   import { checkpointDatabase, forgetPersonalWord, keepSnapshot, listPersonalWords, readSnapshotChapters, rememberPersonalWord, restoreChapter, restoreFromBackup, sqliteStorage, switchProjectFile } from "$lib/storage/sqlite";
   import type { Editor as TiptapEditor } from "@tiptap/core";
-  import { NodeSelection } from "@tiptap/pm/state";
+  import type { NodeSelection } from "@tiptap/pm/state";
+  import { lazy } from "$lib/lazy.svelte";
+
+  // Home does not need these, so they are read once it is up (see onMount), or when first shown.
+  const EditorPart = lazy(() => import("$lib/editor/Editor.svelte"));
+  const CommentRailPart = lazy(() => import("$lib/editor/CommentRail.svelte"));
+  const NotesPart = lazy(() => import("$lib/views/Notes.svelte"));
+  const TodosPart = lazy(() => import("$lib/views/Todos.svelte"));
+  const SettingsPart = lazy(() => import("$lib/views/Settings.svelte"));
+  const OutlinePart = lazy(() => import("$lib/views/Outline.svelte"));
+  const BookPart = lazy(() => import("$lib/views/Book.svelte"));
 
   let project = $state<Project | null>(null);
   let activeId = $state<string | null>(null);
@@ -125,6 +128,10 @@
   const chapterTodos = $derived(bookTasks.filter((task) => task.chapterId === activeId));
   const chapterNotes = $derived(activeChapter ? notesInChapter(bookNotes, activeChapter) : []);
   const panelOpen = $derived(!zen && (prefs.panelTodos || prefs.panelNotes));
+  // Sample books live in the app folder's examples folder; Settings offers to reset the ones already there.
+  const sampleNames = $derived(
+    prefs.knownProjects.flatMap((book) => /[\\/]examples[\\/]([a-z0-9-]+)\.db$/i.exec(book.path)?.[1] ?? []),
+  );
   const chapterWords = $derived(activeChapter ? wordsFor(activeChapter.id, activeChapter.plainText) : 0);
   const projectWords = $derived(chapters.reduce((sum, chapter) => sum + wordsFor(chapter.id, chapter.plainText), 0));
   const bookHits = $derived(findScope === "book" ? searchChapters(chapters, findQuery) : []);
@@ -239,6 +246,15 @@
         activeId = draft.chapters[0]?.id ?? null;
         saveStatus = { state: "error", message: loadError };
       }
+      requestIdleCallback(
+        () => {
+          for (const part of [EditorPart, CommentRailPart, NotesPart, TodosPart, SettingsPart, OutlinePart, BookPart]) {
+            // A part that fails here is tried again, and reported, when it is shown.
+            part.load().catch(() => undefined);
+          }
+        },
+        { timeout: 2000 },
+      );
 
       try {
         const win = getCurrentWindow();
@@ -357,9 +373,11 @@
   }
 
   /** Comments the selection, or the word at the cursor, and puts the keyboard in the new card. */
-  function newComment() {
+  async function newComment() {
     const editor = textEditor;
     if (!editor || editor.isDestroyed || zen) return;
+    const { addComment } = await import("$lib/editor/comments");
+    if (editor.isDestroyed) return;
     const id = crypto.randomUUID();
     const tr = addComment(editor.state, id, new Date().toISOString());
     if (!tr) {
@@ -381,6 +399,8 @@
       reportSaveError(errorMessage(error));
       return;
     }
+    const { removeComment } = await import("$lib/editor/comments");
+    if (editor.isDestroyed) return;
     editor.view.dispatch(removeComment(editor.state, comment.id));
     bookTasks = [...bookTasks, task];
     prefs = { ...prefs, panelTodos: true };
@@ -397,6 +417,8 @@
       reportSaveError(errorMessage(error));
       return;
     }
+    const { removeComment } = await import("$lib/editor/comments");
+    if (editor.isDestroyed) return;
     editor.view.dispatch(removeComment(editor.state, comment.id, { noteId: note.id, title: note.title }));
     bookNotes = [note, ...bookNotes];
     panelNote = note.id;
@@ -581,22 +603,29 @@
     const editor = textEditor;
     if (!editor || editor.isDestroyed) return null;
     const { selection, doc } = editor.state;
-    if (!(selection instanceof NodeSelection) || selection.node.type.name !== "footnote") return null;
+    // A footnote is selected as a whole node, and only a node selection has one.
+    const selected = (selection as Partial<NodeSelection>).node;
+    if (selected?.type.name !== "footnote") return null;
     let number = 0;
     doc.nodesBetween(0, selection.from + 1, (node, pos) => {
       if (node.type.name === "footnote" && pos <= selection.from) number += 1;
     });
-    return { pos: selection.from, number, text: String(selection.node.attrs.text ?? "") };
+    return { pos: selection.from, number, text: String(selected.attrs.text ?? "") };
   });
 
   function setFootnoteText(pos: number, text: string) {
     const editor = textEditor;
     const node = editor && !editor.isDestroyed ? editor.state.doc.nodeAt(pos) : null;
     if (!editor || node?.type.name !== "footnote") return;
-    const change = editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, text });
-    // Changing the note replaces the node; select it again, or the panel would close mid-word.
-    change.setSelection(NodeSelection.create(change.doc, pos));
-    editor.view.dispatch(change);
+    // Changing the note replaces the node; select it again in the same step, or the panel would close mid-word.
+    editor
+      .chain()
+      .command(({ tr }) => {
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, text });
+        return true;
+      })
+      .setNodeSelection(pos)
+      .run();
     refreshFootnotes();
   }
 
@@ -844,6 +873,7 @@
     settingsOpen = false;
     if (zen) await setZen(false);
     view = "book";
+    await BookPart.load();
     await tick();
     window.print();
   }
@@ -1045,45 +1075,75 @@
     if (openWrite) view = "write";
   }
 
+  type BuiltBook = { project: Project; notes: Note[]; tasks: Task[] };
+
   /**
-   * Writes the example books (a novel, a Slovenian story collection and an article) into their own
-   * files in the app folder, then lists them on Home. The open book is never touched, and examples
-   * that already exist are only listed again.
+   * Writes sample books into their own files in the app folder and lists them on Home. A sample
+   * that already exists is put back as it was written: its notes and to-dos go, and saving drops
+   * its old chapters. Whatever was written in it is kept as a snapshot first, which Home can
+   * restore. The writer's own books are never touched.
    */
-  async function addExampleBooks() {
+  async function writeSampleBooks(books: { slug: string; build: (projectId: string) => BuiltBook }[], done: string) {
     if (!project) return;
     try {
       const home = projectLocation || prefs.projectPath || (await invoke<string>("default_project_path"));
-      const { EXAMPLE_BOOKS, buildExample } = await import("$lib/samples/examples");
-      const added: KnownProject[] = [];
+      const written: KnownProject[] = [];
+      let homeRewritten = false;
       await withEditorClosed(async () => {
         await updateWordCopy();
         switchingBooks = true;
         try {
-          for (const example of EXAMPLE_BOOKS) {
-            const target = await invoke<{ path: string; exists: boolean }>("example_book_path", { name: example.slug });
-            if (!target.exists) {
-              await switchProjectFile(target.path);
-              const blank = await sqliteStorage.load();
-              const built = buildExample(example, blank.id);
-              await sqliteStorage.save(built.project);
-              for (const note of built.notes) await saveNote(note);
-              for (const task of built.tasks) await saveTask(task);
+          for (const book of books) {
+            const target = await invoke<{ path: string; exists: boolean }>("example_book_path", { name: book.slug });
+            await switchProjectFile(target.path);
+            const current = await sqliteStorage.load();
+            if (target.exists) {
+              await keepSnapshot(current);
+              for (const note of await listNotes(current.id)) await deleteNote(note.id);
+              for (const task of await listTasks(current.id)) await deleteTask(task.id);
             }
-            const known = prefs.knownProjects.find((book) => book.path === target.path);
-            added.push(known?.summary ? known : { path: target.path, title: example.title, summary: summarize(buildExample(example, "").project) });
+            const built = book.build(current.id);
+            await sqliteStorage.save(built.project);
+            for (const note of built.notes) await saveNote(note);
+            for (const task of built.tasks) await saveTask(task);
+            written.push({ path: target.path, title: built.project.title, summary: summarize(built.project) });
+            if (target.path.toLowerCase() === home.toLowerCase()) homeRewritten = true;
           }
         } finally {
           await switchProjectFile(home);
           switchingBooks = false;
         }
+        // The open book was one of them: show it as it is now, or the next save would write the old text back.
+        if (homeRewritten) {
+          const reopened = await sqliteStorage.load();
+          project = reopened;
+          activeId = reopened.chapters[0]?.id ?? null;
+        }
       });
-      const paths = new Set(added.map((book) => book.path));
-      prefs = { ...prefs, knownProjects: [...prefs.knownProjects.filter((book) => !paths.has(book.path)), ...added] };
-      backupMessage = t("examplesAdded");
+      const paths = new Set(written.map((book) => book.path));
+      prefs = { ...prefs, knownProjects: [...prefs.knownProjects.filter((book) => !paths.has(book.path)), ...written] };
+      backupMessage = done;
     } catch (error) {
       backupMessage = errorMessage(error);
     }
+  }
+
+  async function addExampleBooks() {
+    const { EXAMPLE_BOOKS, buildExample } = await import("$lib/samples/examples");
+    await writeSampleBooks(
+      EXAMPLE_BOOKS.map((example) => ({ slug: example.slug, build: (projectId: string) => buildExample(example, projectId) })),
+      t("examplesAdded"),
+    );
+  }
+
+  /** About 150,000 words, for timing typing in a big book on the writer's laptop. */
+  async function addLongBook() {
+    const { LONG_BOOK_SLUG, buildLongBook } = await import("$lib/samples/longBook");
+    const language = ui.language;
+    await writeSampleBooks(
+      [{ slug: LONG_BOOK_SLUG, build: (projectId: string) => buildLongBook(projectId, t("longBookTitle"), (n) => chapterTitle("novel", language, n)) }],
+      t("longBookAdded"),
+    );
   }
 
   async function openKnownBook(path: string) {
@@ -1462,27 +1522,30 @@
                 {chapterName(chapters.findIndex((item) => item.id === chapter.id), project?.language, project?.kind)}
               </p>
               <h2 class="chapter-title">{chapter.title}</h2>
-              <Editor
-                docId={chapter.id}
-                initialContent={chapter.contentJson}
-                language={project ? effectiveLanguage(project, chapter) : "en"}
-                typewriter={prefs.typewriter}
-                live={false}
-                onChange={(json, text, id) => updateChapter(id ?? chapter.id, json, text)}
-                onEdit={() => autosave.schedule()}
-                onText={(text, id) => updateChapterText(id ?? chapter.id, text)}
-                onEditor={(next) => {
-                  textEditor = next;
-                  refreshFootnotes();
-                }}
-                onActivity={() => (editorRevision += 1)}
-                onOpenNote={(target) => {
-                  // A linked name opens its note in the panel beside the page.
-                  const title = target.title.trim().toLowerCase();
-                  panelNote = target.id || (bookNotes.find((note) => note.title.trim().toLowerCase() === title)?.id ?? "");
-                  prefs = { ...prefs, panelNotes: true };
-                }}
-              />
+              {#if EditorPart.current}
+                {@const Editor = EditorPart.current}
+                <Editor
+                  docId={chapter.id}
+                  initialContent={chapter.contentJson}
+                  language={project ? effectiveLanguage(project, chapter) : "en"}
+                  typewriter={prefs.typewriter}
+                  live={false}
+                  onChange={(json, text, id) => updateChapter(id ?? chapter.id, json, text)}
+                  onEdit={() => autosave.schedule()}
+                  onText={(text, id) => updateChapterText(id ?? chapter.id, text)}
+                  onEditor={(next) => {
+                    textEditor = next;
+                    refreshFootnotes();
+                  }}
+                  onActivity={() => (editorRevision += 1)}
+                  onOpenNote={(target) => {
+                    // A linked name opens its note in the panel beside the page.
+                    const title = target.title.trim().toLowerCase();
+                    panelNote = target.id || (bookNotes.find((note) => note.title.trim().toLowerCase() === title)?.id ?? "");
+                    prefs = { ...prefs, panelNotes: true };
+                  }}
+                />
+              {/if}
               {#if pageNotes.length > 0}
                 <ol class="page-notes">
                   {#each pageNotes as note, index (index)}
@@ -1492,7 +1555,8 @@
               {/if}
             </article>
           </div>
-          {#if !zen}
+          {#if !zen && CommentRailPart.current}
+            {@const CommentRail = CommentRailPart.current}
             <CommentRail
               editor={textEditor}
               revision={editorRevision}
@@ -1602,7 +1666,8 @@
           onOpenBook={(path) => void openKnownBook(path)}
           onRestore={restoreSnapshot}
         />
-      {:else if view === "notes"}
+      {:else if view === "notes" && NotesPart.current}
+        {@const Notes = NotesPart.current}
         <Notes
           projectId={project.id}
           {chapters}
@@ -1614,16 +1679,19 @@
           onSaveError={reportSaveError}
           onShowTodos={() => (view = "todos")}
         />
-      {:else if view === "todos"}
+      {:else if view === "todos" && TodosPart.current}
+        {@const Todos = TodosPart.current}
         <Todos
           projectId={project.id}
           {chapters}
           onSaveError={reportSaveError}
           onShowNotes={() => (view = "notes")}
         />
-      {:else if view === "outline"}
+      {:else if view === "outline" && OutlinePart.current}
+        {@const Outline = OutlinePart.current}
         <Outline {chapters} onUpdate={updateChapterMeta} />
-      {:else if view === "book"}
+      {:else if view === "book" && BookPart.current}
+        {@const Book = BookPart.current}
         <Book {chapters} />
       {/if}
     </div>
@@ -1633,7 +1701,8 @@
       <p class="opening">{t("opening")}</p>
     </div>
   {/if}
-  {#if settingsOpen && project}
+  {#if settingsOpen && project && SettingsPart.current}
+    {@const Settings = SettingsPart.current}
     <Settings
       {prefs}
       {backupMessage}
@@ -1666,6 +1735,9 @@
       onCancelImport={() => (importOffer = null)}
       bookTitle={project.title}
       onAddExamples={() => void addExampleBooks()}
+      examplesAdded={sampleNames.some((name) => name !== "long-test-book")}
+      onAddLongBook={() => void addLongBook()}
+      longBookAdded={sampleNames.includes("long-test-book")}
       onChooseWordFolder={() => void pickWordCopyFolder()}
       onUpdateWordCopy={() => {
         wordCopyHeld = "";
@@ -1854,7 +1926,7 @@
     transform: translateX(-50%);
     border-radius: 50%;
     pointer-events: none;
-    background: radial-gradient(closest-side, var(--pv-glow), transparent 70%);
+    background: radial-gradient(closest-side, var(--pv-glow), color-mix(in srgb, var(--pv-glow) 36%, transparent) 55%, transparent);
   }
 
   .find {

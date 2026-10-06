@@ -42,6 +42,7 @@ export function noteFromComment(comment: CommentInfo, projectId: string, chapter
     plainText: lines.join("\n\n"),
     category: "ideas",
     tags: "",
+    aliases: "",
     fields: [],
     todoState: null,
     chapterIds: [chapterId],

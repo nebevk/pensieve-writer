@@ -52,6 +52,9 @@ describe("example books", () => {
     for (const id of linked) expect(notes.some((note) => note.id === id)).toBe(true);
     expect(text).toContain('"type":"footnote"');
     expect(text).not.toContain("[[");
+    // Some passages carry comments, to try the margin with.
+    expect(text.match(/"type":"comment"/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(text).not.toContain("{{");
   });
 
   it("keeps Slovenian letters in the story collection", () => {

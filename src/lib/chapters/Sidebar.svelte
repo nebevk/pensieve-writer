@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Chapter } from "$lib/model";
   import { compactWords, wordsFor } from "$lib/editor/counts";
-  import type { UiKey } from "$lib/i18n";
+  import { isUntitled, type UiKey } from "$lib/i18n";
   import { t } from "$lib/ui.svelte";
   import Icon from "$lib/editor/Icon.svelte";
 
@@ -148,7 +148,7 @@
               }}
             >
               <span class="num">{row.index + 1}</span>
-              <span class="name">{chapter.title}</span>
+              <span class="name" class:untitled={isUntitled(chapter.title)}>{chapter.title}</span>
               <span class="dot" class:final={chapter.status === "final"} class:revised={chapter.status === "revised"} class:empty={!chapter.plainText.trim()} aria-label={t(STATUS[chapter.status])}></span>
               <span class="count">{compactWords(words)}{chapter.wordGoal > 0 ? `/${compactWords(chapter.wordGoal)}` : ""}</span>
             </button>
@@ -156,6 +156,12 @@
         </li>
       {/each}
     </ul>
+    <!-- What the dots mean, as at the foot of the design's chapter list. -->
+    <div class="legend" aria-hidden="true">
+      <span><span class="dot final"></span>{t("statusFinal")}</span>
+      <span><span class="dot revised"></span>{t("statusRevised")}</span>
+      <span><span class="dot"></span>{t("statusDraft")}</span>
+    </div>
     <div class="chapter-actions">
       <label>
         {t("part")}
@@ -310,6 +316,26 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* A chapter without a title of its own, as the design draws it. */
+  .name.untitled {
+    font-style: italic;
+    color: var(--pv-text-faint);
+  }
+
+  .legend {
+    display: flex;
+    gap: 12px;
+    padding: 8px 20px 4px;
+    font-size: 11px;
+    color: var(--pv-text-subtle);
+  }
+
+  .legend > span {
+    display: flex;
+    align-items: center;
+    gap: 5px;
   }
 
   .count {

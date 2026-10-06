@@ -17,6 +17,8 @@ export type Note = {
   plainText: string;
   category: NoteCategory;
   tags: string;
+  /** Other names the note goes by, separated by commas: "Ana, Anica". They count as mentions too. */
+  aliases: string;
   fields: NoteField[];
   todoState: TodoState | null;
   chapterIds: string[];

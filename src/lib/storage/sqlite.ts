@@ -113,10 +113,25 @@ async function openDatabase(): Promise<Database> {
   return db;
 }
 
-async function columnExists(db: Database, table: string, column: string): Promise<boolean> {
+async function columnNames(db: Database, table: string): Promise<Set<string>> {
   const rows = await db.select<{ name: string }[]>(`PRAGMA table_info(${table})`);
-  return rows.some((row) => row.name === column);
+  return new Set(rows.map((row) => row.name));
 }
+
+/** Columns added since the first version, in the order they came, with the change that adds each. */
+const ADDED_COLUMNS: [table: string, column: string, change: string][] = [
+  ["projects", "language", "ALTER TABLE projects ADD COLUMN language TEXT NOT NULL DEFAULT 'en'"],
+  ["chapters", "language", "ALTER TABLE chapters ADD COLUMN language TEXT NOT NULL DEFAULT ''"],
+  ["snapshots", "kind", "ALTER TABLE snapshots ADD COLUMN kind TEXT NOT NULL DEFAULT 'hourly'"],
+  ["notes", "fields_json", "ALTER TABLE notes ADD COLUMN fields_json TEXT NOT NULL DEFAULT '[]'"],
+  ["notes", "aliases", "ALTER TABLE notes ADD COLUMN aliases TEXT NOT NULL DEFAULT ''"],
+  ["tasks", "chapter_id", "ALTER TABLE tasks ADD COLUMN chapter_id TEXT NOT NULL DEFAULT ''"],
+  ["tasks", "note_id", "ALTER TABLE tasks ADD COLUMN note_id TEXT NOT NULL DEFAULT ''"],
+  ["chapters", "word_goal", "ALTER TABLE chapters ADD COLUMN word_goal INTEGER NOT NULL DEFAULT 0"],
+  ["chapters", "part", "ALTER TABLE chapters ADD COLUMN part TEXT NOT NULL DEFAULT ''"],
+  ["projects", "kind", "ALTER TABLE projects ADD COLUMN kind TEXT NOT NULL DEFAULT 'novel'"],
+  ["projects", "word_goal", "ALTER TABLE projects ADD COLUMN word_goal INTEGER NOT NULL DEFAULT 0"],
+];
 
 const BOOTSTRAP = [
   `CREATE TABLE IF NOT EXISTS schema_version (
@@ -162,6 +177,7 @@ const BOOTSTRAP = [
     tags TEXT NOT NULL DEFAULT '',
     todo_state TEXT,
     fields_json TEXT NOT NULL DEFAULT '[]',
+    aliases TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
@@ -201,35 +217,18 @@ async function ensureSchema(db: Database): Promise<void> {
       await db.execute(statement);
     }
   }
-  if (!(await columnExists(db, "projects", "language"))) {
-    await db.execute("ALTER TABLE projects ADD COLUMN language TEXT NOT NULL DEFAULT 'en'");
-  }
-  if (!(await columnExists(db, "chapters", "language"))) {
-    await db.execute("ALTER TABLE chapters ADD COLUMN language TEXT NOT NULL DEFAULT ''");
-  }
-  if (!(await columnExists(db, "snapshots", "kind"))) {
-    await db.execute("ALTER TABLE snapshots ADD COLUMN kind TEXT NOT NULL DEFAULT 'hourly'");
-  }
-  if (!(await columnExists(db, "notes", "fields_json"))) {
-    await db.execute("ALTER TABLE notes ADD COLUMN fields_json TEXT NOT NULL DEFAULT '[]'");
-  }
-  if (!(await columnExists(db, "tasks", "chapter_id"))) {
-    await db.execute("ALTER TABLE tasks ADD COLUMN chapter_id TEXT NOT NULL DEFAULT ''");
-  }
-  if (!(await columnExists(db, "tasks", "note_id"))) {
-    await db.execute("ALTER TABLE tasks ADD COLUMN note_id TEXT NOT NULL DEFAULT ''");
-  }
-  if (!(await columnExists(db, "chapters", "word_goal"))) {
-    await db.execute("ALTER TABLE chapters ADD COLUMN word_goal INTEGER NOT NULL DEFAULT 0");
-  }
-  if (!(await columnExists(db, "chapters", "part"))) {
-    await db.execute("ALTER TABLE chapters ADD COLUMN part TEXT NOT NULL DEFAULT ''");
-  }
-  if (!(await columnExists(db, "projects", "kind"))) {
-    await db.execute("ALTER TABLE projects ADD COLUMN kind TEXT NOT NULL DEFAULT 'novel'");
-  }
-  if (!(await columnExists(db, "projects", "word_goal"))) {
-    await db.execute("ALTER TABLE projects ADD COLUMN word_goal INTEGER NOT NULL DEFAULT 0");
+  // Each table's columns are read once, not once per column: every read is a trip to the database.
+  const tables = new Map<string, Set<string>>();
+  for (const [table, column, change] of ADDED_COLUMNS) {
+    let columns = tables.get(table);
+    if (!columns) {
+      columns = await columnNames(db, table);
+      tables.set(table, columns);
+    }
+    if (!columns.has(column)) {
+      await db.execute(change);
+      columns.add(column);
+    }
   }
   await db.execute(
     `CREATE TABLE IF NOT EXISTS personal_words (

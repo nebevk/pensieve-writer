@@ -17,6 +17,7 @@ function note(id: string, text: string): Note {
     plainText: text,
     category: "characters",
     tags: "",
+    aliases: "",
     fields: [],
     todoState: null,
     chapterIds: [],

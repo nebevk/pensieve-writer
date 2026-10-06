@@ -13,17 +13,29 @@ export function mentions(text: string, title: string): number {
 
 const ARTICLES = new Set(["the", "a", "an"]);
 
+type Named = { title: string; category: Note["category"]; aliases?: string };
+
 /**
- * How often a note is mentioned. A character is mostly called by the first word of the note's
- * title, so "Ana Novak" counts every "Ana" (and the full name within them). "The ferryman" keeps
- * its whole title, as an article names nobody.
+ * Every name a note goes by: its title, its other names, and for a character the first word of
+ * the title, since "Ana Novak" is mostly called "Ana". "The ferryman" keeps its whole title, as an
+ * article names nobody.
  */
-export function noteMentions(text: string, note: Pick<Note, "title" | "category">): number {
-  const full = mentions(text, note.title);
-  if (note.category !== "characters") return full;
-  const first = note.title.trim().split(/[\s,]+/)[0] ?? "";
-  if (first.length < 3 || ARTICLES.has(first.toLowerCase()) || first === note.title.trim()) return full;
-  return Math.max(full, mentions(text, first));
+export function noteNames(note: Named): string[] {
+  const names = [note.title, ...(note.aliases ?? "").split(",")].map((name) => name.trim()).filter((name) => name.length >= 2);
+  if (note.category === "characters") {
+    const first = note.title.trim().split(/[\s,]+/)[0] ?? "";
+    if (first.length >= 3 && !ARTICLES.has(first.toLowerCase())) names.push(first);
+  }
+  const seen = new Set<string>();
+  return names.filter((name) => !seen.has(name.toLowerCase()) && seen.add(name.toLowerCase()));
+}
+
+/** How often a note is mentioned by any of its names, each passage once: "Ana Novak" is not also an "Ana". */
+export function noteMentions(text: string, note: Named): number {
+  const names = noteNames(note).sort((a, b) => b.length - a.length);
+  if (names.length === 0) return 0;
+  const pattern = new RegExp(`(?<![\\p{L}\\p{N}])(?:${names.map(escapeRegExp).join("|")})(?![\\p{L}\\p{N}])`, "giu");
+  return text.match(pattern)?.length ?? 0;
 }
 
 type MarkedNode = { marks?: { type?: string; attrs?: { noteId?: string } }[]; content?: unknown[] };

@@ -1,4 +1,4 @@
-import { countWords } from "$lib/editor/counts";
+import { wordsFor } from "$lib/editor/counts";
 import type { ChapterStatus, Project, ProjectKind, WritingLanguage } from "$lib/model";
 
 /** What a book's Home card shows. Kept with the remembered books, so cards of closed books show it too. */
@@ -22,7 +22,8 @@ export function summarize(project: Project): BookSummary {
   return {
     kind: project.kind,
     language: project.language,
-    words: chapters.reduce((sum, chapter) => sum + countWords(chapter.plainText), 0),
+    // Home asks for this whenever the book changes; a chapter whose text did not change is not counted again.
+    words: chapters.reduce((sum, chapter) => sum + wordsFor(chapter.id, chapter.plainText), 0),
     target: project.wordGoal > 0 ? project.wordGoal : goals,
     chapters: chapters.length,
     finished: chapters.filter((chapter) => chapter.status === "final").length,
