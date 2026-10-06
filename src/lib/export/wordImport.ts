@@ -121,7 +121,32 @@ type Reader = {
   pictures: Map<MammothElement, string>;
   /** A footnote's (or endnote's) text, read from the note the reference points to. */
   noteText: (reference: MammothElement) => string | null;
+  /** The comment a reference points to, as a mark for the words before it. */
+  comment: (reference: MammothElement) => JsonMark | null;
 };
+
+/**
+ * Word records where a comment ends, but mammoth drops where it starts, so the comment goes on the
+ * word just before its reference.
+ */
+function commentLastWord(out: JsonNode[], mark: JsonMark) {
+  for (let index = out.length - 1; index >= 0; index -= 1) {
+    const node = out[index];
+    if (node.type !== "text" || !node.text?.trim()) continue;
+    const match = /(\S+)(\s*)$/u.exec(node.text);
+    if (!match) continue;
+    const before = node.text.slice(0, match.index);
+    const marks = node.marks ?? [];
+    out.splice(
+      index,
+      1,
+      ...(before ? [textNode(before, marks)] : []),
+      textNode(match[1], [...marks, mark]),
+      ...(match[2] ? [textNode(match[2], marks)] : []),
+    );
+    return;
+  }
+}
 
 function inlineNodes(elements: MammothElement[], marks: JsonMark[], out: JsonNode[], images: JsonNode[], reader: Reader) {
   for (const element of elements) {
@@ -142,6 +167,9 @@ function inlineNodes(elements: MammothElement[], marks: JsonMark[], out: JsonNod
     } else if (element.type === "noteReference") {
       const text = reader.noteText(element);
       if (text !== null) out.push({ type: "footnote", attrs: { text } });
+    } else if (element.type === "commentReference") {
+      const mark = reader.comment(element);
+      if (mark) commentLastWord(out, mark);
     } else if (element.children) {
       inlineNodes(element.children, marks, out, images, reader);
     }
@@ -207,11 +235,19 @@ export function wordToChapters(
     if (!current) start(title || fallbackTitle, true);
     return current as unknown as Building;
   };
+  const comments = new Map((document.comments ?? []).map((comment) => [comment.commentId, comment]));
+  const importedAt = new Date().toISOString();
   const reader: Reader = {
     pictures,
     noteText: (reference) => {
       const note = document.notes?.resolve(reference);
       return note ? note.body.map(plainOf).join(" ").trim() : null;
+    },
+    comment: (reference) => {
+      const comment = comments.get(reference.commentId ?? "");
+      if (!comment) return null;
+      const text = comment.body.map(plainOf).map((line) => line.trim()).filter(Boolean).join("\n");
+      return { type: "comment", attrs: { id: crypto.randomUUID(), text, createdAt: importedAt } };
     },
   };
 

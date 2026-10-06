@@ -221,6 +221,15 @@
     box-shadow: inset 0 0 0 1px var(--pv-on-accent);
   }
 
+  /* The solid Zen button brightens on hover and darkens when pressed. */
+  button:not(.quiet):hover {
+    filter: brightness(1.08);
+  }
+
+  button:not(.quiet):active {
+    filter: brightness(0.92);
+  }
+
   .with-icon {
     display: inline-flex;
     align-items: center;

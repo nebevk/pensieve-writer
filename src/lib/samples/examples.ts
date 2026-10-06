@@ -39,6 +39,8 @@ export type ExampleBook = {
   title: string;
   kind: ProjectKind;
   language: WritingLanguage;
+  /** Words planned for the book; 0 means none. */
+  wordGoal?: number;
   chapters: ExampleChapter[];
   notes: ExampleNote[];
   tasks: ExampleTask[];
@@ -103,6 +105,7 @@ export const EXAMPLE_BOOKS: ExampleBook[] = [
     title: "The Lantern House",
     kind: "novel",
     language: "en",
+    wordGoal: 80000,
     chapters: [
       {
         key: "letter",
@@ -441,6 +444,7 @@ export function buildExample(
     title: example.title,
     kind: example.kind,
     language: example.language,
+    wordGoal: example.wordGoal ?? 0,
     createdAt: now,
     updatedAt: now,
     chapters,

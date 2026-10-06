@@ -67,6 +67,23 @@ function book(): WordBook {
   return { title: "The Lantern House", kind: "novel", language: "en", chapters: [one, two] };
 }
 
+/** A chapter with one comment across differently formatted words and one across two paragraphs. */
+function commentedBook(): WordBook {
+  const comment = (id: string, said: string) => ({ type: "comment", attrs: { id, text: said, createdAt: "2026-10-05T10:00:00.000Z" } });
+  const date = comment("c-1", "Check the date");
+  const long = comment("c-2", "Too long?\nCut a line");
+  const chapter = createChapter("p", "The Letter", 0);
+  chapter.contentJson = {
+    type: "doc",
+    content: [
+      para(text("The letter came "), text("in March", [date]), text(" from "), text("Krško", [date, { type: "bold" }]), text(".")),
+      para(text("She read it twice ", [long])),
+      para(text("and put it away.", [long])),
+    ],
+  };
+  return { title: "Comments", kind: "novel", language: "en", chapters: [chapter] };
+}
+
 async function documentXml(bytes: Uint8Array): Promise<string> {
   return (await JSZip.loadAsync(bytes)).file("word/document.xml")!.async("string");
 }
@@ -145,6 +162,41 @@ describe("Word export", () => {
       }
     }
   });
+
+  it("writes comments as Word comments around the words they cover", async () => {
+    const zip = await JSZip.loadAsync(await wordFile(commentedBook(), look));
+    const xml = await zip.file("word/document.xml")!.async("string");
+    const comments = await zip.file("word/comments.xml")!.async("string");
+    expect(comments).toContain(">Check the date<");
+    expect(comments).toContain(">Cut a line<");
+    for (const id of ["0", "1"]) {
+      expect(xml.match(new RegExp(`<w:commentRangeStart w:id="${id}"`, "g"))).toHaveLength(1);
+      expect(xml.match(new RegExp(`<w:commentRangeEnd w:id="${id}"`, "g"))).toHaveLength(1);
+      // Word reads a comment's reference only inside a run.
+      expect(xml).toMatch(new RegExp(`<w:r>(?:(?!</w:r>).)*<w:commentReference w:id="${id}"`));
+    }
+    // The first comment runs from "in March" to "Krško"; the second ends a paragraph later.
+    expect(xml.indexOf('<w:commentRangeStart w:id="0"')).toBeLessThan(xml.indexOf("in March"));
+    expect(xml.indexOf('<w:commentRangeEnd w:id="0"')).toBeGreaterThan(xml.indexOf("Krško"));
+    expect(xml.indexOf('<w:commentRangeEnd w:id="1"')).toBeGreaterThan(xml.indexOf("and put it away."));
+  });
+
+  it("numbers footnotes in reading order, once each", async () => {
+    const chapter = createChapter("p", "Notes", 0);
+    chapter.contentJson = {
+      type: "doc",
+      content: [
+        para(text("Opening"), { type: "footnote", attrs: { text: "first" } }),
+        para(text("Second"), { type: "footnote", attrs: { text: "second" } }),
+      ],
+    };
+    const zip = await JSZip.loadAsync(await wordFile({ title: "Notes", kind: "novel", language: "en", chapters: [chapter] }, look));
+    const notes = await zip.file("word/footnotes.xml")!.async("string");
+    // Word's own separators aside, exactly the two notes, in the order they appear.
+    expect(notes.indexOf(">first<")).toBeGreaterThan(-1);
+    expect(notes.indexOf(">first<")).toBeLessThan(notes.indexOf(">second<"));
+    expect(notes.match(/>second</g)).toHaveLength(1);
+  });
 });
 
 describe("Word import", () => {
@@ -178,6 +230,19 @@ describe("Word import", () => {
     expect(result.chapters[0].plainText).toContain("Čaša, šal, žaba.");
     expect(all(nodes).find((node) => node.type === "footnote")?.attrs?.text).toBe("A note on č, š and ž.");
     expect(result.chapters[1].plainText).toBe("Ana climbed the stairs.");
+  });
+
+  it("brings Word comments back onto the word each one ends on", async () => {
+    const result = await readWordFile(arrayBufferOf(await wordFile(commentedBook(), look)));
+    const nodes = all(result.chapters[0].contentJson.content as Node[]);
+    const commented = nodes
+      .filter((node) => node.marks?.some((mark) => mark.type === "comment"))
+      .map((node) => [node.text, node.marks!.find((mark) => mark.type === "comment")!.attrs!.text]);
+    expect(commented).toEqual([
+      ["Krško", "Check the date"],
+      ["away.", "Too long?\nCut a line"],
+    ]);
+    expect(result.chapters[0].plainText).toContain("The letter came in March from Krško.");
   });
 
   it("labels a Slovenian story collection in Slovenian and reads it back", async () => {

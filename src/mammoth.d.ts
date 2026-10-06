@@ -20,6 +20,7 @@ declare module "mammoth" {
     breakType?: string;
     noteType?: string;
     noteId?: string;
+    commentId?: string;
     contentType?: string;
     altText?: string;
     readAsBase64String?: () => Promise<string>;
@@ -27,6 +28,8 @@ declare module "mammoth" {
 
   export type MammothDocument = MammothElement & {
     notes: { resolve(reference: MammothElement): { body: MammothElement[] } | null };
+    /** Word's comments; mammoth keeps where each one is referenced, but not the words it covers. */
+    comments?: { commentId: string; body: MammothElement[]; authorName?: string | null }[];
   };
 
   export function convertToHtml(

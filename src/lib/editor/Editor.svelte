@@ -9,6 +9,7 @@
   import { TextLanguage } from "./textLanguage";
   import { NoteLinkMark, NoteLinks, type NoteTarget } from "./noteLinks";
   import { Footnote } from "./footnote";
+  import { CommentMark } from "./comments";
 
   let {
     docId,
@@ -92,6 +93,7 @@
         Indent,
         NoteLinkMark,
         Footnote,
+        CommentMark,
         NoteLinks.configure({ brackets: noteLinkBrackets, onOpen: (target) => openNote?.(target) }),
       ],
       content: initialContent as JSONContent,
@@ -255,6 +257,15 @@
   .editor-host :global(.ProseMirror a) {
     color: var(--pv-ink-accent);
     text-decoration-color: var(--pv-ink-link-underline);
+  }
+
+  /* Commented words, as in Word; the comment open in the margin is underlined. */
+  .editor-host :global(.comment) {
+    background: var(--pv-ink-tint);
+  }
+
+  .editor-host :global(.comment-active) {
+    box-shadow: inset 0 -2px var(--pv-ink-accent);
   }
 
   .editor-host :global(.ProseMirror hr) {

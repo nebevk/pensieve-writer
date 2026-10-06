@@ -13,6 +13,8 @@
     chaptersOpen,
     notesOpen,
     todosOpen,
+    notesCount = 0,
+    todosCount = 0,
     onToggleChapters,
     onToggleNotes,
     onToggleTodos,
@@ -25,12 +27,16 @@
     onAddTodo,
     loadNotes,
     onReplace,
+    onComment,
   }: {
     editor: Editor | null;
     revision: number;
     chaptersOpen: boolean;
     notesOpen: boolean;
     todosOpen: boolean;
+    /** Notes the open chapter mentions, and its open to-dos, shown on the panel toggles. */
+    notesCount?: number;
+    todosCount?: number;
     onToggleChapters: () => void;
     onToggleNotes: () => void;
     onToggleTodos: () => void;
@@ -44,6 +50,8 @@
     onReplace: () => void;
     /** The book's notes, for "Link a note". */
     loadNotes: () => Promise<{ id: string; title: string }[]>;
+    /** Comments the selection, or the word at the cursor. */
+    onComment: () => void;
   } = $props();
 
   let expanded = $state(false);
@@ -262,6 +270,14 @@
     <button type="button" class="tool" class:active={chaptersOpen} title={t("chapters")} aria-label={t("chapters")} aria-pressed={chaptersOpen} onclick={onToggleChapters}>
       <Icon name="chapters" />
     </button>
+    <!-- The chapter panel beside the page: its to-dos and the notes it mentions (design round 5). -->
+    <button type="button" class="panel-toggle" class:on={todosOpen} aria-pressed={todosOpen} title={t("todosPanel")} onclick={onToggleTodos}>
+      <Icon name="listTodo" />{t("todos")}<span class="count">{todosCount}</span>
+    </button>
+    <button type="button" class="panel-toggle" class:on={notesOpen} aria-pressed={notesOpen} title={t("notesPanel")} onclick={onToggleNotes}>
+      <Icon name="newNote" />{t("notes")}<span class="count">{notesCount}</span>
+    </button>
+    <span class="rule"></span>
     <button type="button" class="tool" title={`${t("find")} (Ctrl+F)`} aria-label={t("find")} onmousedown={(event) => event.preventDefault()} onclick={onFind}>
       <Icon name="search" />
     </button>
@@ -333,6 +349,9 @@
           </form>
         {/if}
         <button type="button" class="tool serif" title={t("footnote")} aria-label={t("footnote")} onmousedown={(event) => event.preventDefault()} onclick={insertFootnote}>¹</button>
+        <button type="button" class="tool" title={`${t("comment")} (Ctrl+Alt+M)`} aria-label={t("comment")} onmousedown={(event) => event.preventDefault()} onclick={onComment}>
+          <Icon name="comment" />
+        </button>
         {#if imageProblem}
           <span class="problem" role="alert">{imageProblem}</span>
         {/if}
@@ -463,6 +482,45 @@
     background: var(--pv-line);
     margin: 0 4px;
     flex: none;
+  }
+
+  .panel-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    height: var(--pv-tool-h);
+    padding: 0 9px;
+    border: 0;
+    border-radius: var(--pv-radius-xs);
+    background: transparent;
+    color: var(--pv-text-muted);
+    font-size: var(--pv-text-md);
+    white-space: nowrap;
+  }
+
+  .panel-toggle :global(svg) {
+    width: 14px;
+    height: 14px;
+  }
+
+  .panel-toggle .count {
+    color: var(--pv-text-faint);
+    font-weight: 400;
+  }
+
+  .panel-toggle:hover {
+    background: var(--pv-selected);
+  }
+
+  .panel-toggle.on,
+  .panel-toggle:active {
+    background: var(--pv-pressed);
+  }
+
+  .panel-toggle.on {
+    color: var(--pv-text);
+    font-weight: 600;
   }
 
   .spacer {
@@ -619,6 +677,11 @@
     background: var(--pv-selected);
   }
 
+  .note-picker li button:active,
+  .note-picker .unlink:active {
+    background: var(--pv-pressed);
+  }
+
   .note-picker .empty {
     padding: 5px 6px;
     color: var(--pv-text-subtle);
@@ -642,7 +705,7 @@
     max-width: 16rem;
     font-size: var(--pv-text-sm);
     line-height: 1.3;
-    color: var(--danger);
+    color: var(--pv-danger);
   }
 
   .link-form input {
@@ -660,11 +723,14 @@
     background: var(--pv-selected);
   }
 
-  .tool:active:not(:disabled) {
+  .tool:active:not(:disabled),
+  .more:active {
     background: var(--pv-pressed);
   }
 
-  .tool.active {
+  /* An "on" tool keeps its pressed tint under the pointer too. */
+  .tool.active,
+  .tool.active:hover:not(:disabled) {
     background: var(--pv-pressed);
     color: var(--pv-text);
   }

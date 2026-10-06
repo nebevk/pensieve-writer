@@ -258,6 +258,11 @@
     background: var(--pv-selected);
   }
 
+  .sidebar-head button:active,
+  li button:active {
+    background: var(--pv-pressed);
+  }
+
   ul {
     list-style: none;
     margin: 0;
@@ -345,8 +350,8 @@
   .chapter-actions label {
     display: flex;
     flex-direction: column;
-    font-size: 0.7rem;
-    color: var(--muted);
+    font-size: var(--pv-text-xs);
+    color: var(--pv-text-muted);
     flex: 1;
   }
 
@@ -354,15 +359,17 @@
     width: 100%;
     background: var(--pv-field);
     border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-xs);
     color: var(--pv-text);
   }
 
   li.part {
     padding: 0.45rem 0.2rem 0.1rem;
-    font-size: 0.72rem;
-    letter-spacing: 0.04em;
+    font-size: var(--pv-text-xs);
+    font-weight: 600;
+    letter-spacing: var(--pv-track-eyebrow);
     text-transform: uppercase;
-    color: var(--muted);
+    color: var(--pv-text-faint);
   }
 
   .chapter-actions,
@@ -377,15 +384,20 @@
   .confirm button {
     border: 1px solid transparent;
     background: transparent;
-    border-radius: 6px;
+    border-radius: var(--pv-radius-xs);
     padding: 0.2rem 0.4rem;
-    color: var(--muted);
-    font-size: 0.8rem;
+    color: var(--pv-text-muted);
+    font-size: var(--pv-text-md);
   }
 
   .chapter-actions button:hover:not(:disabled),
   .confirm button:hover {
     background: var(--pv-selected);
+  }
+
+  .chapter-actions button:active:not(:disabled),
+  .confirm button:active {
+    background: var(--pv-pressed);
   }
 
   .chapter-actions button:disabled {
@@ -400,11 +412,11 @@
   .confirm p {
     margin: 0;
     width: 100%;
-    color: var(--ink);
-    font-size: 0.8rem;
+    color: var(--pv-text);
+    font-size: var(--pv-text-md);
   }
 
   .confirm .danger {
-    color: var(--danger);
+    color: var(--pv-danger);
   }
 </style>

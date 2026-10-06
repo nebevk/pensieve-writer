@@ -39,6 +39,7 @@ type ProjectRow = {
   updated_at: string;
   language?: string;
   kind?: string;
+  word_goal?: number;
 };
 
 type ChapterRow = {
@@ -227,6 +228,9 @@ async function ensureSchema(db: Database): Promise<void> {
   if (!(await columnExists(db, "projects", "kind"))) {
     await db.execute("ALTER TABLE projects ADD COLUMN kind TEXT NOT NULL DEFAULT 'novel'");
   }
+  if (!(await columnExists(db, "projects", "word_goal"))) {
+    await db.execute("ALTER TABLE projects ADD COLUMN word_goal INTEGER NOT NULL DEFAULT 0");
+  }
   await db.execute(
     `CREATE TABLE IF NOT EXISTS personal_words (
       language TEXT NOT NULL,
@@ -254,18 +258,20 @@ function localDay(iso: string): string {
 async function writeProject(db: Database, project: Project): Promise<void> {
   const updatedAt = new Date().toISOString();
   await db.execute(
-    `INSERT INTO projects (id, title, language, kind, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO projects (id, title, language, kind, word_goal, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT(id) DO UPDATE SET
        title = excluded.title,
        language = excluded.language,
        kind = excluded.kind,
+       word_goal = excluded.word_goal,
        updated_at = excluded.updated_at`,
     [
       project.id,
       project.title,
       project.language === "sl" ? "sl" : "en",
       project.kind === "stories" || project.kind === "article" ? project.kind : "novel",
+      Number.isFinite(project.wordGoal) ? project.wordGoal : 0,
       project.createdAt,
       updatedAt,
     ],
@@ -369,11 +375,11 @@ async function insertSnapshot(db: Database, project: Project, kind: SnapshotKind
 async function readProject(db: Database, projectId?: string): Promise<Project | null> {
   const projects = projectId
     ? await db.select<ProjectRow[]>(
-        `SELECT id, title, language, kind, created_at, updated_at FROM projects WHERE id = $1`,
+        `SELECT id, title, language, kind, word_goal, created_at, updated_at FROM projects WHERE id = $1`,
         [projectId],
       )
     : await db.select<ProjectRow[]>(
-        `SELECT id, title, language, kind, created_at, updated_at FROM projects ORDER BY created_at LIMIT 1`,
+        `SELECT id, title, language, kind, word_goal, created_at, updated_at FROM projects ORDER BY created_at LIMIT 1`,
       );
   const row = projects[0];
   if (!row) return null;
@@ -391,6 +397,7 @@ async function readProject(db: Database, projectId?: string): Promise<Project | 
     title: row.title,
     language: row.language === "sl" ? "sl" : "en",
     kind: row.kind === "stories" || row.kind === "article" ? row.kind : "novel",
+    wordGoal: Number(row.word_goal) || 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     chapters: chapters.map(toChapter),

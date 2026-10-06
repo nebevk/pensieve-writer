@@ -1,3 +1,5 @@
+import type { BookSummary } from "$lib/chapters/progress";
+
 export type ThemeName = "daylight" | "candlelit" | "moonlit" | "sunset";
 export type AmbienceName = "off" | "rain" | "fire" | "cafe" | "piano";
 export type ManuscriptFont = "literata" | "garamond" | "typewriter";
@@ -6,6 +8,8 @@ export type PageWidth = "narrow" | "book" | "wide";
 export type KnownProject = {
   path: string;
   title: string;
+  /** What its Home card shows while another book is open; saved when the book was last open. */
+  summary?: BookSummary;
 };
 
 export type Prefs = {
@@ -23,6 +27,9 @@ export type Prefs = {
   grain: boolean;
   runningHead: boolean;
   typewriter: boolean;
+  /** The two halves of the chapter panel beside the page in Write. */
+  panelTodos: boolean;
+  panelNotes: boolean;
   writingDay: string;
   dayStartWords: number;
   uiLanguage: "en" | "sl";
@@ -80,6 +87,8 @@ export const defaultPrefs = (): Prefs => ({
   grain: true,
   runningHead: true,
   typewriter: false,
+  panelTodos: true,
+  panelNotes: true,
   writingDay: "",
   dayStartWords: 0,
   uiLanguage: "en",

@@ -103,22 +103,23 @@
   }
 
   h1 {
-    font-family: var(--font-writing);
-    font-weight: 500;
+    font-family: var(--pv-font-manuscript);
+    font-weight: 400;
   }
 
   .sheet {
-    background: var(--paper);
+    background: var(--pv-paper);
+    color: var(--pv-ink);
     min-height: 6rem;
     padding: 1rem 1.1rem;
-    font-family: var(--font-writing);
+    font-family: var(--pv-font-manuscript);
     font-size: 1.125rem;
     line-height: 1.7;
     outline: none;
   }
 
   a {
-    color: var(--accent);
+    color: var(--pv-accent);
   }
 
   code {

@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import Editor from "$lib/editor/Editor.svelte";
   import Icon from "$lib/editor/Icon.svelte";
+  import { linksTo, noteMentions } from "$lib/chapters/mentions";
   import type { Chapter, DocumentJson } from "$lib/model";
   import { emptyDocument } from "$lib/model";
   import {
@@ -27,22 +28,24 @@
   let {
     projectId,
     chapters,
-    compact = false,
     language = "en",
     focusChapterId = "",
     onSaveError,
     onShowTodos,
-    createRequest = 0,
+    createRequest = null,
+    onCreateHandled,
     openRequest = null,
   }: {
     projectId: string;
     chapters: Chapter[];
-    compact?: boolean;
     language?: "en" | "sl";
     focusChapterId?: string;
     onSaveError?: (message: string) => void;
     onShowTodos?: () => void;
-    createRequest?: number;
+    /** A note to make once, tied to a chapter when made while writing. */
+    createRequest?: { at: number; chapterId: string } | null;
+    /** Called once the request is done, so the note isn't made again when the view opens next. */
+    onCreateHandled?: () => void;
     /** A note to open, from a link clicked in the manuscript. */
     openRequest?: (NoteTarget & { at: number }) | null;
   } = $props();
@@ -87,37 +90,11 @@
     return t("editedAgo", { ago: ago(iso) });
   }
 
-  function mentions(text: string, title: string): number {
-    const needle = title.trim().toLowerCase();
-    if (needle.length < 2) return 0;
-    let count = 0;
-    let from = 0;
-    const haystack = text.toLowerCase();
-    while (from < haystack.length) {
-      const index = haystack.indexOf(needle, from);
-      if (index === -1) break;
-      count += 1;
-      from = index + needle.length;
-    }
-    return count;
-  }
-
-  /** How many passages of a chapter are linked to the note with "Link a note". */
-  function linksTo(doc: DocumentJson, noteId: string): number {
-    let count = 0;
-    const walk = (node: { marks?: { type?: string; attrs?: { noteId?: string } }[]; content?: unknown[] }) => {
-      if (node.marks?.some((mark) => mark.type === "noteLink" && mark.attrs?.noteId === noteId)) count += 1;
-      for (const child of node.content ?? []) walk(child as typeof node);
-    };
-    walk(doc as Parameters<typeof walk>[0]);
-    return count;
-  }
-
   const appears = $derived.by(() => {
     if (!active) return [];
     return orderedChapters.flatMap((chapter, index) => {
       const links = linksTo(chapter.contentJson, active.id);
-      const count = Math.max(mentions(chapter.plainText, active.title), links);
+      const count = Math.max(noteMentions(chapter.plainText, active), links);
       const linked = active.chapterIds.includes(chapter.id) || links > 0;
       if (!linked && count === 0) return [];
       return [{ id: chapter.id, label: `${index + 1} · ${chapter.title}`, count }];
@@ -155,9 +132,10 @@
   });
 
   $effect(() => {
-    if (createRequest !== seenRequest) {
-      seenRequest = createRequest;
-      if (createRequest > 0) void create();
+    if (createRequest && createRequest.at !== seenRequest) {
+      seenRequest = createRequest.at;
+      void create("", createRequest.chapterId);
+      onCreateHandled?.();
     }
   });
 
@@ -165,7 +143,10 @@
     // Wait for the notes to load, then open the one the manuscript link points to.
     if (!openRequest || openRequest.at === seenOpen || !loaded) return;
     seenOpen = openRequest.at;
-    openLinked(openRequest, false);
+    const target = openRequest;
+    // A note made outside this panel, such as from a comment, is newer than the list.
+    if (target.id && !notes.some((note) => note.id === target.id)) void refresh().then(() => openLinked(target, false));
+    else openLinked(target, false);
   });
 
   /**
@@ -213,7 +194,7 @@
     updateActive({ fields });
   }
 
-  async function create(title = "") {
+  async function create(title = "", chapterId = "") {
     const now = new Date().toISOString();
     const note: Note = {
       id: crypto.randomUUID(),
@@ -225,7 +206,7 @@
       tags: "",
       fields: [],
       todoState: null,
-      chapterIds: [],
+      chapterIds: chapterId ? [chapterId] : [],
       createdAt: now,
       updatedAt: now,
     };
@@ -303,7 +284,7 @@
   }
 </script>
 
-<section class="notes" class:compact>
+<section class="notes">
   <aside>
     <div class="switch" role="tablist" aria-label={t("notesOrTodos")}>
       <button type="button" class="on" role="tab" aria-selected="true">{t("notes")} <span>{notes.length}</span></button>
@@ -474,7 +455,7 @@
     {/if}
   </div>
 
-  {#if !compact && active}
+  {#if active}
     <aside class="context">
       {#if appears.length > 0}
         <p class="eyebrow">{t("appearsIn")}</p>
@@ -519,11 +500,6 @@
     color: var(--pv-text);
   }
 
-  .compact {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
   aside,
   .context {
     min-height: 0;
@@ -564,6 +540,14 @@
     background: var(--pv-mark-bg);
     color: var(--pv-mark-fg);
     font-weight: 600;
+  }
+
+  .switch button:not(.on):hover {
+    background: var(--pv-selected);
+  }
+
+  .switch button:not(.on):active {
+    background: var(--pv-pressed);
   }
 
   .switch span {
@@ -647,6 +631,10 @@
     background: var(--pv-selected);
   }
 
+  .row:active {
+    background: var(--pv-pressed);
+  }
+
   .sub {
     font-size: var(--pv-text-sm);
     font-weight: 400;
@@ -668,6 +656,24 @@
     color: var(--pv-accent);
     text-align: left;
     padding: 6px 8px;
+  }
+
+  .add {
+    border-radius: var(--pv-radius-xs);
+  }
+
+  .add:hover {
+    background: var(--pv-selected);
+  }
+
+  .add:active {
+    background: var(--pv-pressed);
+  }
+
+  /* On the card, which is paper: ink accent, which stays dark enough in every theme. */
+  .text,
+  .danger {
+    color: var(--pv-ink-accent);
   }
 
   .confirm {
@@ -699,6 +705,8 @@
     background-image: var(--pv-grain);
     box-shadow: var(--pv-shadow-sheet);
     color: var(--pv-ink);
+    /* Paper stays light in every theme, so its checkboxes and lists do too. */
+    color-scheme: light;
   }
 
   header {
@@ -834,10 +842,11 @@
 
   .add-todo select {
     max-width: 11rem;
-    border: 1px solid var(--pv-line-strong);
+    border: 1px solid var(--pv-ink-rule);
     border-radius: var(--pv-radius-xs);
     background: transparent;
     color: var(--pv-ink-2);
+    color-scheme: light;
     font-size: var(--pv-text-sm);
   }
 
@@ -884,7 +893,7 @@
   }
 
   .error {
-    color: var(--danger);
+    color: var(--pv-danger);
   }
 
   .card :global(.editor-host) {

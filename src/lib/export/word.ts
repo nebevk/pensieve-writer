@@ -1,6 +1,9 @@
 import {
   AlignmentType,
   BorderStyle,
+  CommentRangeEnd,
+  CommentRangeStart,
+  CommentReference,
   Document,
   DropCapType,
   ExternalHyperlink,
@@ -19,6 +22,7 @@ import {
   ShadingType,
   TabStopType,
   TextRun,
+  type ICommentOptions,
   type ISectionOptions,
 } from "docx";
 import type { Chapter, DocumentJson, Project, WritingLanguage } from "$lib/model";
@@ -139,10 +143,42 @@ type Context = {
   lists: { next: number };
   /** Word's footnotes for the whole book, numbered across chapters. */
   footnotes: { next: number; items: Record<string, { children: Paragraph[] }> };
+  /** Word's comments for the whole book. */
+  comments: ICommentOptions[];
+  /** In this chapter: each comment's Word number once it has opened, and how many of its runs are still to come. */
+  commentRuns: { numbers: Map<string, number>; left: Map<string, number> };
 };
 
 type RunOptions = Exclude<ConstructorParameters<typeof TextRun>[0], string>;
-type Inline = TextRun | ExternalHyperlink;
+type Inline = TextRun | ExternalHyperlink | CommentRangeStart | CommentRangeEnd;
+
+function commentIds(marks: JsonMark[] | undefined): string[] {
+  return (marks ?? []).flatMap((mark) =>
+    mark.type === "comment" && typeof mark.attrs?.id === "string" && mark.attrs.id ? [mark.attrs.id] : [],
+  );
+}
+
+/** How many runs each comment covers, met in the same order inlines() writes them. Code blocks carry no marks. */
+function commentRunCounts(nodes: JsonNode[] | undefined, counts = new Map<string, number>()): Map<string, number> {
+  for (const node of nodes ?? []) {
+    if (node.type === "codeBlock") continue;
+    if (node.type === "text") {
+      for (const id of commentIds(node.marks)) counts.set(id, (counts.get(id) ?? 0) + 1);
+    } else commentRunCounts(node.content, counts);
+  }
+  return counts;
+}
+
+/** Word wants a comment's reference in a run of its own; docx's types leave it out of a run's children. */
+function commentReference(number: number): TextRun {
+  type RunChild = NonNullable<RunOptions["children"]>[number];
+  return new TextRun({ children: [new CommentReference(number) as unknown as RunChild] });
+}
+
+function commentBody(mark: JsonMark): ICommentOptions["children"] {
+  const lines = String(mark.attrs?.text ?? "").split(/\n+/);
+  return lines.map((line) => new Paragraph({ children: [new TextRun(line)] }));
+}
 type ParagraphOptions = Exclude<ConstructorParameters<typeof Paragraph>[0], string>;
 
 function alignmentOf(value: unknown) {
@@ -182,6 +218,24 @@ function inlines(nodes: JsonNode[] | undefined, ctx: Context): Inline[] {
   for (const node of nodes ?? []) {
     if (node.type === "text") {
       const marks = node.marks ?? [];
+      const runs = ctx.commentRuns;
+      // A comment opens before its first run and closes after its last, even in a later paragraph.
+      for (const mark of marks) {
+        const [id] = commentIds([mark]);
+        if (!id || runs.numbers.has(id)) continue;
+        closeLink();
+        const number = ctx.comments.length;
+        const created = new Date(String(mark.attrs?.createdAt ?? ""));
+        ctx.comments.push({
+          id: number,
+          author: "Pensieve",
+          initials: "P",
+          date: Number.isNaN(created.getTime()) ? new Date() : created,
+          children: commentBody(mark),
+        });
+        runs.numbers.set(id, number);
+        out.push(new CommentRangeStart(number));
+      }
       const href = marks.find((mark) => mark.type === "link")?.attrs?.href;
       if (typeof href === "string" && href) {
         if (!link || link.href !== href) {
@@ -192,6 +246,14 @@ function inlines(nodes: JsonNode[] | undefined, ctx: Context): Inline[] {
       } else {
         closeLink();
         out.push(new TextRun({ text: node.text ?? "", ...runOptions(marks, ctx) }));
+      }
+      for (const id of commentIds(marks)) {
+        const left = (runs.left.get(id) ?? 1) - 1;
+        runs.left.set(id, left);
+        const number = runs.numbers.get(id);
+        if (left > 0 || number === undefined) continue;
+        closeLink();
+        out.push(new CommentRangeEnd(number), commentReference(number));
       }
     } else if (node.type === "hardBreak") {
       closeLink();
@@ -296,9 +358,9 @@ function listIndent(level: number): number {
   return 360 * (level + 1);
 }
 
-function blocks(nodes: JsonNode[], ctx: Context, options: { quote?: boolean } = {}): Paragraph[] {
+function blocks(nodes: JsonNode[], ctx: Context, options: { quote?: boolean; afterParagraph?: boolean } = {}): Paragraph[] {
   const out: Paragraph[] = [];
-  let previousParagraph = false;
+  let previousParagraph = options.afterParagraph ?? false;
   for (const node of nodes) {
     if (node.type === "paragraph") {
       out.push(paragraph(node, ctx, { quote: options.quote, firstLine: previousParagraph }));
@@ -327,7 +389,7 @@ function blocks(nodes: JsonNode[], ctx: Context, options: { quote?: boolean } = 
         }),
       );
     } else if (node.content) {
-      out.push(...blocks(node.content, ctx, options));
+      out.push(...blocks(node.content, ctx, { quote: options.quote }));
     }
     previousParagraph = node.type === "paragraph";
   }
@@ -372,10 +434,10 @@ function chapterBody(doc: DocumentJson, ctx: Context): Paragraph[] {
   const nodes = (doc.content ?? []) as JsonNode[];
   if (nodes[0]?.type !== "paragraph") return blocks(nodes, ctx);
   const [opening, ...rest] = nodes;
-  const after = blocks(rest, ctx);
+  // In reading order and once each, so footnotes and comments are numbered as they appear.
+  const first = openingParagraphs(opening, ctx);
   // The paragraph after the opening is indented, as on the page.
-  if (rest[0]?.type === "paragraph") after.splice(0, 1, paragraph(rest[0], ctx, { firstLine: true }));
-  return [...openingParagraphs(opening, ctx), ...after];
+  return [...first, ...blocks(rest, ctx, { afterParagraph: true })];
 }
 
 function runningHead(title: string, m: Measures): Header {
@@ -401,12 +463,15 @@ export function buildWordDocument(book: WordBook, look: WordLook, assets: WordAs
   };
   const lists = { next: 0 };
   const footnotes: Context["footnotes"] = { next: 1, items: {} };
+  const comments: ICommentOptions[] = [];
   const chapters = [...book.chapters].sort((a, b) => a.position - b.position);
   const contextFor = (chapter: WordBook["chapters"][number]): Context => ({
     m,
     assets,
     lists,
     footnotes,
+    comments,
+    commentRuns: { numbers: new Map(), left: commentRunCounts(chapter.contentJson.content as JsonNode[] | undefined) },
     language:
       chapter.language && chapter.language !== book.language ? { value: languageTag(chapter.language) } : undefined,
   });
@@ -461,6 +526,7 @@ export function buildWordDocument(book: WordBook, look: WordLook, assets: WordAs
   return new Document({
     title: book.title,
     footnotes: footnotes.items,
+    comments: comments.length > 0 ? { children: comments } : undefined,
     // Each style gets its own part with a space-free name; fontTable() then joins them into one family.
     fonts: assets.fonts?.map((entry) => ({ name: fontPartName(entry), data: entry.data as unknown as Buffer })),
     styles: {

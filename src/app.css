@@ -50,19 +50,9 @@
   font-display: swap;
 }
 
-/* Names the existing views already use. Chrome text stays on the window; ink stays on paper. */
+/* The design system has no colour for problems (not saved, a failed backup), so the app keeps its own. */
 :root {
-  --desk: var(--pv-desk);
-  --sidebar: var(--pv-chrome);
-  --paper: var(--pv-paper);
-  --ink: var(--pv-text);
-  --muted: var(--pv-text-muted);
-  --line: var(--pv-line);
-  --accent: var(--pv-accent);
-  --danger: #8c3a32;
-  --font-ui: var(--pv-font-ui);
-  --font-writing: var(--pv-font-manuscript);
-  --column: var(--pv-sheet-book);
+  --pv-danger: #8c3a32;
   color: var(--pv-text);
   color-scheme: light;
 }
@@ -70,7 +60,7 @@
 :root[data-theme="candlelit"],
 :root[data-theme="moonlit"] {
   color-scheme: dark;
-  --danger: #e08a80;
+  --pv-danger: #e08a80;
 }
 
 :root[data-gentle="true"],
@@ -78,6 +68,7 @@
 :root[data-gentle="true"] *::before,
 :root[data-gentle="true"] *::after {
   animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
 }
 
@@ -109,8 +100,20 @@ textarea {
   color: inherit;
 }
 
+/* Hover and press fade in 120ms, as the design's tokens/base.css does. A component that sets its own transition keeps it. */
 button {
   cursor: pointer;
+  transition:
+    background-color var(--pv-dur-fast) ease,
+    color var(--pv-dur-fast) ease,
+    border-color var(--pv-dur-fast) ease,
+    filter var(--pv-dur-fast) ease;
+}
+
+/* A theme change cross-fades the whole window (see applyTheme in +page.svelte). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--pv-dur-theme);
 }
 
 h1,
@@ -155,6 +158,7 @@ textarea:focus-visible {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }

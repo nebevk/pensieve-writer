@@ -99,7 +99,7 @@ export function projectFromSnapshot(
  */
 export function projectFromBackup(
   current: Project,
-  saved: Pick<Project, "title" | "chapters"> & Partial<Pick<Project, "language" | "kind">>,
+  saved: Pick<Project, "title" | "chapters"> & Partial<Pick<Project, "language" | "kind" | "wordGoal">>,
   now = new Date().toISOString(),
 ): Project {
   const kind = saved.kind === "novel" || saved.kind === "stories" || saved.kind === "article" ? saved.kind : current.kind;
@@ -109,6 +109,7 @@ export function projectFromBackup(
     title: saved.title || current.title,
     language,
     kind,
+    wordGoal: Number.isFinite(saved.wordGoal) ? Number(saved.wordGoal) : current.wordGoal,
     updatedAt: now,
     chapters: saved.chapters.map((chapter, index) => ({
       ...normalizeChapter(chapter),

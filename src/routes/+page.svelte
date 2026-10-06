@@ -5,6 +5,7 @@
   import Sidebar from "$lib/chapters/Sidebar.svelte";
   import Editor from "$lib/editor/Editor.svelte";
   import Ribbon from "$lib/editor/Ribbon.svelte";
+  import CommentRail from "$lib/editor/CommentRail.svelte";
   import StatusBar from "$lib/editor/StatusBar.svelte";
   import TitleBar from "$lib/editor/TitleBar.svelte";
   import { countWords, wordsFor } from "$lib/editor/counts";
@@ -23,17 +24,23 @@
   import Particles from "$lib/views/Particles.svelte";
   import Book from "$lib/views/Book.svelte";
   import Dashboard from "$lib/views/Dashboard.svelte";
+  import HomeHeader from "$lib/views/HomeHeader.svelte";
   import Notes from "$lib/views/Notes.svelte";
   import Outline from "$lib/views/Outline.svelte";
   import Todos from "$lib/views/Todos.svelte";
+  import ChapterPanel from "$lib/views/ChapterPanel.svelte";
   import { flushPrefs, loadPrefs, loadPrefsFile, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs, type KnownProject } from "$lib/prefs";
   import { duplicateChapterProject, patchChapter, removeChapter, renameChapterProject, reorderChapterList, setChapterText } from "$lib/chapters/mutate";
   import { chapterTitle, firstChapters } from "$lib/chapters/welcome";
   import { chapterName, roman } from "$lib/chapters/labels";
+  import { summarize } from "$lib/chapters/progress";
+  import { notesInChapter } from "$lib/chapters/mentions";
   import { isUntitled } from "$lib/i18n";
   import { locale, snapshotName, t, ui } from "$lib/ui.svelte";
-  import { flushNoteSave, listNotes, saveNote, saveTask } from "$lib/storage/organize";
+  import { flushNoteSave, listNotes, listTasks, saveNote, saveTask, type Note, type Task } from "$lib/storage/organize";
+  import { noteFromComment, todoFromComment } from "$lib/storage/fromComment";
   import type { NoteTarget } from "$lib/editor/noteLinks";
+  import { addComment, removeComment, type CommentInfo } from "$lib/editor/comments";
   import { checkpointDatabase, forgetPersonalWord, keepSnapshot, listPersonalWords, readSnapshotChapters, rememberPersonalWord, restoreChapter, restoreFromBackup, sqliteStorage, switchProjectFile } from "$lib/storage/sqlite";
   import type { Editor as TiptapEditor } from "@tiptap/core";
   import { NodeSelection } from "@tiptap/pm/state";
@@ -56,11 +63,10 @@
   let historyPreview = $state("");
   let historySnapshotId = $state("");
   let historyChapterId = $state("");
-  let settingsSection = $state<"Appearance" | "Shortcuts">("Appearance");
+  let settingsSection = $state<"Appearance" | "Ambience" | "Shortcuts">("Appearance");
   let settingsReturn: HTMLElement | null = null;
-  let noteRequest = $state(0);
-  let todoRequest = $state(0);
-  // A note to open beside the page, from a linked passage clicked in the manuscript.
+  // One-shot requests to the Notes view: make a note (tied to the chapter being written), or open one.
+  let noteCreate = $state<{ at: number; chapterId: string } | null>(null);
   let noteOpenRequest = $state<(NoteTarget & { at: number }) | null>(null);
   // The open chapter's footnotes, listed at the foot of the page.
   let pageNotes = $state<string[]>([]);
@@ -70,7 +76,18 @@
   // Set before the first paint, so a Slovenian interface never flashes English.
   ui.language = startPrefs.uiLanguage;
   let zen = $state(false);
-  let dock = $state<"notes" | "todos" | null>(null);
+  /** A comment just added, whose card takes the keyboard. */
+  let commentFocus = $state("");
+  let commentCount = $state(0);
+  // The chapter panel beside the page: the book's notes and to-dos, the note shown open, and a
+  // request to put the keyboard in its add field.
+  let bookNotes = $state<Note[]>([]);
+  let bookTasks = $state<Task[]>([]);
+  let panelNote = $state("");
+  let panelAddFocus = $state(0);
+  /** A short message over the page, such as why a comment could not be added. */
+  let writeNotice = $state("");
+  let noticeTimer = 0;
   // The app opens on Home, as in the design; "Continue writing" goes back to the last chapter.
   let view = $state<"write" | "home" | "notes" | "todos" | "outline" | "book" | "settings">("home");
   let backupMessage = $state("");
@@ -103,6 +120,11 @@
     project ? [...project.chapters].sort((a, b) => a.position - b.position) : [],
   );
   const activeChapter = $derived(chapters.find((chapter) => chapter.id === activeId) ?? null);
+  const projectId = $derived(project?.id ?? "");
+  // The panel follows the chapter's text as it is reported after a pause in typing, not every key.
+  const chapterTodos = $derived(bookTasks.filter((task) => task.chapterId === activeId));
+  const chapterNotes = $derived(activeChapter ? notesInChapter(bookNotes, activeChapter) : []);
+  const panelOpen = $derived(!zen && (prefs.panelTodos || prefs.panelNotes));
   const chapterWords = $derived(activeChapter ? wordsFor(activeChapter.id, activeChapter.plainText) : 0);
   const projectWords = $derived(chapters.reduce((sum, chapter) => sum + wordsFor(chapter.id, chapter.plainText), 0));
   const bookHits = $derived(findScope === "book" ? searchChapters(chapters, findQuery) : []);
@@ -118,9 +140,34 @@
     if (findOpen && findInput) findInput.focus();
   });
 
+  // Back in Write, the panel reads the notes and to-dos again: they may have changed in their views.
   $effect(() => {
-    document.documentElement.dataset.theme = resolvedTheme(prefs.theme, new Date(clock));
-    document.documentElement.style.setProperty("--column", `${Number(prefs.columnRem) || 44}rem`);
+    if (view === "write" && projectId) void loadOrganizer();
+  });
+
+  /**
+   * Changes the theme with the design's 400ms cross-fade. The fade is one compositor layer, so it
+   * costs the editor nothing; it is skipped when motion should stay quiet.
+   */
+  function applyTheme(next: string) {
+    const root = document.documentElement;
+    if (root.dataset.theme === next) return;
+    const calm = prefs.gentle || matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!root.dataset.theme || calm || document.hidden || !document.startViewTransition) {
+      root.dataset.theme = next;
+      return;
+    }
+    document.startViewTransition(() => {
+      root.dataset.theme = next;
+    });
+  }
+
+  // Follow sunset checks the clock every minute; the settings themselves are saved only when they change.
+  $effect(() => {
+    applyTheme(resolvedTheme(prefs.theme, new Date(clock)));
+  });
+
+  $effect(() => {
     document.documentElement.style.setProperty("--pv-writing-font", manuscriptFamily(prefs.manuscriptFont));
     document.documentElement.style.setProperty("--pv-writing-size", `${prefs.manuscriptSize}px`);
     document.documentElement.dataset.grain = prefs.grain ? "true" : "false";
@@ -183,7 +230,7 @@
         activeId = loaded.chapters[0]?.id ?? null;
         saveStatus = { state: "saved" };
         await refreshWritingExtras();
-        rememberBook(loadPrefs().projectPath || projectLocation, loaded.title);
+        rememberBook(loadPrefs().projectPath || projectLocation, loaded);
       } catch (error) {
         if (disposed) return;
         loadError = errorMessage(error);
@@ -264,6 +311,11 @@
       findOpen = true;
       findMissing = false;
     }
+    if (event.ctrlKey && event.altKey && event.code === "KeyM" && !event.getModifierState("AltGraph") && view === "write") {
+      event.preventDefault();
+      newComment();
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && event.key === "/") {
       event.preventDefault();
       settingsSection = "Shortcuts";
@@ -296,6 +348,113 @@
     } catch {
       // Fullscreen is unavailable outside the desktop window.
     }
+  }
+
+  function notice(message: string) {
+    writeNotice = message;
+    window.clearTimeout(noticeTimer);
+    noticeTimer = window.setTimeout(() => (writeNotice = ""), 3500);
+  }
+
+  /** Comments the selection, or the word at the cursor, and puts the keyboard in the new card. */
+  function newComment() {
+    const editor = textEditor;
+    if (!editor || editor.isDestroyed || zen) return;
+    const id = crypto.randomUUID();
+    const tr = addComment(editor.state, id, new Date().toISOString());
+    if (!tr) {
+      notice(t("commentNeedsWords"));
+      return;
+    }
+    editor.view.dispatch(tr);
+    commentFocus = id;
+  }
+
+  /** A comment becomes a to-do for this chapter; it leaves the page and appears in the panel. */
+  async function commentToTodo(comment: CommentInfo) {
+    const editor = textEditor;
+    if (!editor || editor.isDestroyed || !project || !activeId) return;
+    const task = todoFromComment(comment, project.id, activeId, new Date().toISOString());
+    try {
+      await saveTask(task);
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+      return;
+    }
+    editor.view.dispatch(removeComment(editor.state, comment.id));
+    bookTasks = [...bookTasks, task];
+    prefs = { ...prefs, panelTodos: true };
+  }
+
+  /** A comment becomes a note tied to this chapter, and its words link to the note from then on. */
+  async function commentToNote(comment: CommentInfo) {
+    const editor = textEditor;
+    if (!editor || editor.isDestroyed || !project || !activeId) return;
+    const note = noteFromComment(comment, project.id, activeId, new Date().toISOString());
+    try {
+      await saveNote(note);
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+      return;
+    }
+    editor.view.dispatch(removeComment(editor.state, comment.id, { noteId: note.id, title: note.title }));
+    bookNotes = [note, ...bookNotes];
+    panelNote = note.id;
+    prefs = { ...prefs, panelNotes: true };
+  }
+
+  /** Reads the book's notes and to-dos again for the panel, as they may have changed elsewhere. */
+  async function loadOrganizer() {
+    const id = projectId;
+    if (!id) return;
+    try {
+      const [notes, tasks] = await Promise.all([listNotes(id), listTasks(id)]);
+      if (id !== projectId) return;
+      bookNotes = notes;
+      bookTasks = tasks;
+    } catch {
+      // The panel keeps what it had; the Notes and To-dos views report the problem.
+    }
+  }
+
+  const NEXT_STATE: Record<Task["todoState"], Task["todoState"]> = { todo: "doing", doing: "done", done: "todo" };
+
+  async function toggleChapterTodo(task: Task) {
+    const next = { ...task, todoState: NEXT_STATE[task.todoState], updatedAt: new Date().toISOString() };
+    bookTasks = bookTasks.map((item) => (item.id === task.id ? next : item));
+    try {
+      await saveTask(next);
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+      void loadOrganizer();
+    }
+  }
+
+  async function addChapterTodo(title: string) {
+    if (!project || !activeId) return;
+    const task: Task = {
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      title,
+      todoState: "todo",
+      updatedAt: new Date().toISOString(),
+      chapterId: activeId,
+      noteId: "",
+    };
+    bookTasks = [...bookTasks, task];
+    try {
+      await saveTask(task);
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+      void loadOrganizer();
+    }
+  }
+
+  /** Opens a note in the Notes view, from the panel. */
+  function openNoteInView(id: string) {
+    const note = bookNotes.find((item) => item.id === id);
+    view = "notes";
+    noteOpenRequest = { id, title: note?.title ?? "", at: Date.now() };
   }
 
   function reorderChapters(draggedId: string, targetId: string) {
@@ -777,7 +936,7 @@
         const restored = await restoreFromBackup(backup);
         project = restored;
         activeId = restored.chapters[0]?.id ?? null;
-        rememberBook(projectLocation || prefs.projectPath, restored.title);
+        rememberBook(projectLocation || prefs.projectPath, restored);
       });
       settingsOpen = false;
       view = "write";
@@ -836,11 +995,11 @@
     setChapterLanguage(next);
   }
 
-  function rememberBook(path: string, title: string) {
+  function rememberBook(path: string, book: Project) {
     const bookPath = path.trim();
     if (!bookPath) return;
     const knownProjects = [
-      { path: bookPath, title: title.trim() || t("untitled") },
+      { path: bookPath, title: book.title.trim() || t("untitled"), summary: summarize(book) },
       ...prefs.knownProjects.filter((book) => book.path !== bookPath),
     ].slice(0, 8);
     prefs = { ...prefs, knownProjects };
@@ -850,11 +1009,13 @@
     if (!project) return;
     const nextTitle = title.trim() || t("untitled");
     project = { ...project, title: nextTitle };
-    rememberBook(projectLocation || prefs.projectPath, nextTitle);
+    rememberBook(projectLocation || prefs.projectPath, project);
     autosave.schedule();
   }
 
   async function useProjectFile(path: string, openWrite = true) {
+    // The book being left keeps its card on Home, with today's numbers.
+    if (project) rememberBook(projectLocation || prefs.projectPath, project);
     await flushNoteSave();
     await autosave.flush();
     await updateWordCopy();
@@ -880,7 +1041,7 @@
     project = loaded;
     activeId = loaded.chapters[0]?.id ?? null;
     projectLocation = path;
-    rememberBook(path, loaded.title);
+    rememberBook(path, loaded);
     if (openWrite) view = "write";
   }
 
@@ -909,7 +1070,8 @@
               for (const note of built.notes) await saveNote(note);
               for (const task of built.tasks) await saveTask(task);
             }
-            added.push({ path: target.path, title: example.title });
+            const known = prefs.knownProjects.find((book) => book.path === target.path);
+            added.push(known?.summary ? known : { path: target.path, title: example.title, summary: summarize(buildExample(example, "").project) });
           }
         } finally {
           await switchProjectFile(home);
@@ -965,13 +1127,19 @@
       const chapters = firstChapters(project.id, kind, folderName, ui.language);
       project = { ...project, title: folderName, kind, chapters };
       activeId = chapters[0].id;
-      rememberBook(path, folderName);
+      rememberBook(path, project);
       autosave.schedule();
       await autosave.flush();
       view = "write";
     } catch (error) {
       saveStatus = { state: "error", message: errorMessage(error) };
     }
+  }
+
+  function setBookGoal(words: number) {
+    if (!project) return;
+    project = { ...project, wordGoal: words };
+    autosave.schedule();
   }
 
   function setProjectLanguage(language: WritingLanguage) {
@@ -1021,7 +1189,7 @@
       projectLocation = destination;
       // The old file stays behind as a copy; keep it off Home so nobody edits the stale one.
       prefs = { ...prefs, knownProjects: prefs.knownProjects.filter((book) => book.path !== source) };
-      rememberBook(destination, project.title);
+      rememberBook(destination, project);
       backupMessage = t("projectMoved", { path: destination });
     } catch (error) {
       backupMessage = errorMessage(error);
@@ -1088,8 +1256,25 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<Particles active={resolvedTheme(prefs.theme, new Date(clock)) === "candlelit" && !prefs.gentle} />
+{#snippet homeHeader()}
+  <HomeHeader
+    {prefs}
+    now={clock}
+    error={saveStatus.state === "error" ? saveStatus.message : ""}
+    appearance={resolvedTheme(prefs.theme, new Date(clock))}
+    {settingsOpen}
+    onLanguage={() => (prefs = { ...prefs, uiLanguage: prefs.uiLanguage === "sl" ? "en" : "sl" })}
+    onTheme={(theme) => (prefs = { ...prefs, theme })}
+    onSettings={() => {
+      settingsSection = "Appearance";
+      settingsReturn = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      settingsOpen = true;
+    }}
+  />
+{/snippet}
+
 <div class="app" class:zen>
+  {#if view !== "home"}
   <TitleBar
     project={project?.title ?? t("untitled")}
     {view}
@@ -1115,16 +1300,19 @@
       settingsOpen = true;
     }}
   />
+  {/if}
   {#if view === "write"}
   <Ribbon
     editor={textEditor}
     revision={editorRevision}
     chaptersOpen={!collapsed}
-    notesOpen={dock === "notes"}
-    todosOpen={dock === "todos"}
+    notesOpen={prefs.panelNotes}
+    todosOpen={prefs.panelTodos}
+    notesCount={chapterNotes.length}
+    todosCount={chapterTodos.filter((task) => task.todoState !== "done").length}
     onToggleChapters={() => (collapsed = !collapsed)}
-    onToggleNotes={() => (dock = dock === "notes" ? null : "notes")}
-    onToggleTodos={() => (dock = dock === "todos" ? null : "todos")}
+    onToggleNotes={() => (prefs = { ...prefs, panelNotes: !prefs.panelNotes })}
+    onToggleTodos={() => (prefs = { ...prefs, panelTodos: !prefs.panelTodos })}
     onFind={() => {
       replaceMode = false;
       findOpen = true;
@@ -1136,14 +1324,13 @@
     onFont={(font) => (prefs.manuscriptFont = font)}
     onSize={(size) => (prefs.manuscriptSize = size)}
     onNewNote={() => {
-      view = "write";
-      dock = "notes";
-      noteRequest += 1;
+      // Notes are written in the Notes view; one made from here belongs to this chapter.
+      noteCreate = { at: Date.now(), chapterId: activeId ?? "" };
+      view = "notes";
     }}
     onAddTodo={() => {
-      view = "write";
-      dock = "todos";
-      todoRequest += 1;
+      prefs = { ...prefs, panelTodos: true };
+      panelAddFocus += 1;
     }}
     onReplace={() => {
       replaceMode = true;
@@ -1152,10 +1339,11 @@
       view = "write";
     }}
     loadNotes={() => (project ? listNotes(project.id) : Promise.resolve([]))}
+    onComment={newComment}
   />
   {/if}
   {#if view === "write"}
-<div class="shell" class:collapsed class:zen class:docked={dock !== null} class:article={project?.kind === "article"}>
+<div class="shell" class:collapsed class:zen class:paneled={panelOpen} class:article={project?.kind === "article"}>
   <Sidebar
     {chapters}
     {activeId}
@@ -1171,6 +1359,8 @@
     onHistory={() => void openHistory()}
   />
   <section class="writing">
+    <!-- Candlelit sparks drift over the desk, behind the page and everything else here. -->
+    <Particles active={resolvedTheme(prefs.theme, new Date(clock)) === "candlelit" && !prefs.gentle} />
     {#if findOpen}
       <form
         class="find"
@@ -1213,6 +1403,9 @@
         </ul>
       {/if}
     {/if}
+    {#if writeNotice}
+      <p class="write-notice" role="status">{writeNotice}</p>
+    {/if}
     {#if selectedFootnote}
       {@const note = selectedFootnote}
       <div class="footnote-edit">
@@ -1253,7 +1446,12 @@
       {#if activeChapter && !restoring}
         {@const chapter = activeChapter}
         {#key chapter.id}
-          <div class="sheet" style:--sheet={zen ? `${prefs.columnRem}rem` : pageWidthValue(prefs.pageWidth)}>
+          <div
+            class="page-row"
+            class:commented={commentCount > 0 && !zen}
+            style:--sheet={zen ? `${prefs.columnRem}rem` : pageWidthValue(prefs.pageWidth)}
+          >
+          <div class="sheet">
             <div class="sheet-under" aria-hidden="true"></div>
             <article class="paper">
               <div class="running">
@@ -1279,8 +1477,10 @@
                 }}
                 onActivity={() => (editorRevision += 1)}
                 onOpenNote={(target) => {
-                  dock = "notes";
-                  noteOpenRequest = { ...target, at: Date.now() };
+                  // A linked name opens its note in the panel beside the page.
+                  const title = target.title.trim().toLowerCase();
+                  panelNote = target.id || (bookNotes.find((note) => note.title.trim().toLowerCase() === title)?.id ?? "");
+                  prefs = { ...prefs, panelNotes: true };
                 }}
               />
               {#if pageNotes.length > 0}
@@ -1291,6 +1491,18 @@
                 </ol>
               {/if}
             </article>
+          </div>
+          {#if !zen}
+            <CommentRail
+              editor={textEditor}
+              revision={editorRevision}
+              focusId={commentFocus}
+              bind:count={commentCount}
+              onFocused={() => (commentFocus = "")}
+              onTodo={(comment) => void commentToTodo(comment)}
+              onNote={(comment) => void commentToNote(comment)}
+            />
+          {/if}
           </div>
         {/key}
       {:else}
@@ -1332,51 +1544,56 @@
       </div>
     {/if}
   </section>
-  {#if dock && project && !zen}
-    <aside class="dock">
-      <div class="dock-tabs">
-        <button type="button" class:active={dock === "notes"} onclick={() => (dock = "notes")}>{t("notes")}</button>
-        <button type="button" class:active={dock === "todos"} onclick={() => (dock = "todos")}>{t("todos")}</button>
-        <button type="button" class="close" onclick={() => (dock = null)}>{t("close")}</button>
-      </div>
-      {#if dock === "notes"}
-        <Notes
-          compact
-          projectId={project.id}
-          {chapters}
-          language={project.language}
-          focusChapterId={activeId ?? ""}
-          onSaveError={reportSaveError}
-          onShowTodos={() => (dock = "todos")}
-          createRequest={noteRequest}
-          openRequest={noteOpenRequest}
-        />
-      {:else}
-        <Todos
-          compact
-          projectId={project.id}
-          {chapters}
-          focusRequest={todoRequest}
-          attachChapterId={activeId ?? ""}
-          onSaveError={reportSaveError}
-          onShowNotes={() => (dock = "notes")}
-        />
-      {/if}
-    </aside>
+  {#if panelOpen && project && activeChapter}
+    <ChapterPanel
+      chapterLabel={chapterTitle(project.kind, ui.language, chapters.findIndex((chapter) => chapter.id === activeChapter.id) + 1)}
+      title={activeChapter.title}
+      todos={chapterTodos}
+      notes={chapterNotes}
+      book={bookNotes}
+      showTodos={prefs.panelTodos}
+      showNotes={prefs.panelNotes}
+      openNoteId={panelNote}
+      addFocus={panelAddFocus}
+      onToggleTodo={(task) => void toggleChapterTodo(task)}
+      onAddTodo={(title) => void addChapterTodo(title)}
+      onShowNote={(id) => (panelNote = id)}
+      onOpenInNotes={openNoteInView}
+      onClose={() => (prefs = { ...prefs, panelTodos: false, panelNotes: false })}
+    />
   {/if}
 </div>
   {:else if project}
     <div class="alt" class:home={view === "home"} class:settings={view === "settings"}>
       {#if view === "home"}
+        {@render homeHeader()}
+        <span class="decor-low" aria-hidden="true"></span>
         <Dashboard
           {project}
           {prefs}
-          saveLabel={statusText(saveStatus)}
+          now={clock}
           {wordsToday}
           onContinue={(chapterId) => {
             if (chapterId) activeId = chapterId;
             view = "write";
           }}
+          onZen={(chapterId) => {
+            if (chapterId) activeId = chapterId;
+            view = "write";
+            void setZen(true);
+          }}
+          onOpenTodos={() => (view = "todos")}
+          onOpenNotes={() => (view = "notes")}
+          onOpenNote={(id, title) => {
+            view = "notes";
+            noteOpenRequest = { id, title, at: Date.now() };
+          }}
+          onAmbience={() => {
+            settingsSection = "Ambience";
+            settingsReturn = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            settingsOpen = true;
+          }}
+          onSaveError={reportSaveError}
           onRename={renameProject}
           onOpenProject={() => void openAnotherProject()}
           onStartProject={(kind) => void startNewProject(kind)}
@@ -1390,7 +1607,10 @@
           projectId={project.id}
           {chapters}
           language={project.language}
-          createRequest={noteRequest}
+          focusChapterId={activeId ?? ""}
+          createRequest={noteCreate}
+          onCreateHandled={() => (noteCreate = null)}
+          openRequest={noteOpenRequest}
           onSaveError={reportSaveError}
           onShowTodos={() => (view = "todos")}
         />
@@ -1398,7 +1618,6 @@
         <Todos
           projectId={project.id}
           {chapters}
-          focusRequest={todoRequest}
           onSaveError={reportSaveError}
           onShowNotes={() => (view = "notes")}
         />
@@ -1410,6 +1629,7 @@
     </div>
   {:else}
     <div class="alt home">
+      {@render homeHeader()}
       <p class="opening">{t("opening")}</p>
     </div>
   {/if}
@@ -1422,6 +1642,8 @@
       onBackup={() => void backupNow()}
       {projectLocation}
       projectLanguage={project.language}
+      bookGoal={project.wordGoal}
+      onBookGoal={setBookGoal}
       {dictionary}
       onMoveProject={() => void moveProject()}
       onProjectLanguage={setProjectLanguage}
@@ -1460,13 +1682,23 @@
 </div>
 
 <style>
+  /* Clip, not hidden: nothing, not even a scroll into view, may move the window bar off the top. */
   .app {
     position: relative;
     z-index: 1;
     height: 100%;
-    overflow: hidden;
+    overflow: clip;
     display: flex;
     flex-direction: column;
+  }
+
+  /* Zen shows only the text: comments wait outside it. */
+  .app.zen :global(.comment) {
+    background: none;
+  }
+
+  .app.zen :global(.comment-active) {
+    box-shadow: none;
   }
 
   .app.zen :global(.ribbon),
@@ -1476,60 +1708,22 @@
     display: none;
   }
 
-  .shell.docked {
-    grid-template-columns: var(--pv-sidebar-w) minmax(0, 1fr) var(--pv-sidebar-wide-w);
+  /* The chapter panel, 300px beside the page, as in the design's round 5. */
+  .shell.paneled {
+    grid-template-columns: var(--pv-sidebar-w) minmax(0, 1fr) 300px;
   }
 
-  .shell.collapsed.docked {
-    grid-template-columns: 0 minmax(0, 1fr) var(--pv-sidebar-wide-w);
+  .shell.collapsed.paneled {
+    grid-template-columns: 0 minmax(0, 1fr) 300px;
   }
 
-  .shell.zen.docked {
-    grid-template-columns: 0 minmax(0, 1fr);
-  }
-
-  .dock {
-    min-width: 0;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    background: var(--pv-chrome);
-    border-left: 1px solid var(--pv-line);
-    overflow: hidden;
-  }
-
-  .dock-tabs {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--pv-line);
-  }
-
-  .dock-tabs button {
-    border: 0;
-    background: transparent;
-    border-radius: var(--pv-radius-xs);
-    padding: 4px 8px;
-    color: var(--pv-text-subtle);
-    font-size: var(--pv-text-md);
-  }
-
-  .dock-tabs button.active {
+  .footnote-edit button:hover {
     background: var(--pv-selected);
     color: var(--pv-text);
-    font-weight: 600;
-    box-shadow: inset 0 -2px var(--pv-accent);
   }
 
-  .dock-tabs .close {
-    margin-left: auto;
-  }
-
-  .dock :global(.notes),
-  .dock :global(.board) {
-    flex: 1;
-    min-height: 0;
+  .footnote-edit button:active {
+    background: var(--pv-pressed);
   }
 
   .alt {
@@ -1538,6 +1732,11 @@
     min-height: 0;
     overflow: hidden;
     background: var(--pv-desk);
+  }
+
+  .alt.home {
+    display: flex;
+    flex-direction: column;
   }
 
   .alt.home::before,
@@ -1591,10 +1790,23 @@
     z-index: 1;
   }
 
+  /* Round 6 adds a third soft circle at the bottom left of Home, behind everything. */
+  .alt.home > .decor-low {
+    position: absolute;
+    left: -90px;
+    bottom: -110px;
+    z-index: 0;
+    width: 260px;
+    height: 260px;
+    border-radius: 50%;
+    background: var(--pv-decor-2);
+    opacity: 0.45;
+    pointer-events: none;
+  }
+
   .shell,
-  .alt,
-  .dock {
-    animation: rise 220ms ease;
+  .alt {
+    animation: rise var(--pv-dur) var(--pv-ease);
   }
 
   .shell {
@@ -1626,6 +1838,10 @@
     height: 100%;
     min-height: 0;
     background: var(--pv-desk);
+    /* Its own stack, so the particles can sit just above the desk and below everything on it. */
+    isolation: isolate;
+    /* The lamp glow reaches past the bottom; clipping it keeps the window from scrolling. */
+    overflow: clip;
   }
 
   .writing::before {
@@ -1646,8 +1862,8 @@
     align-items: center;
     gap: 0.45rem;
     padding: 0 0.9rem 0.45rem;
-    color: var(--muted);
-    font-size: 0.85rem;
+    color: var(--pv-text-muted);
+    font-size: var(--pv-text-base);
   }
 
   .find input {
@@ -1665,8 +1881,33 @@
     margin: 0 0.9rem 0.6rem;
     padding: 0;
     list-style: none;
-    color: var(--muted);
-    font-size: 0.85rem;
+    color: var(--pv-text-muted);
+    font-size: var(--pv-text-base);
+  }
+
+  .find button,
+  .hits button,
+  .history button,
+  .zen-bar button {
+    border: 0;
+    border-radius: var(--pv-radius-xs);
+    padding: 0.25rem 0.4rem;
+    background: transparent;
+    color: var(--pv-text);
+  }
+
+  .find button:hover,
+  .hits button:hover,
+  .history button:hover,
+  .zen-bar button:hover {
+    background: var(--pv-selected);
+  }
+
+  .find button:active,
+  .hits button:active,
+  .history button:active,
+  .zen-bar button:active {
+    background: var(--pv-pressed);
   }
 
   .history {
@@ -1690,7 +1931,7 @@
     :global(.ribbon),
     :global(.sidebar),
     :global(.statusbar),
-    .dock,
+    :global(.panel),
     .find,
     .hits,
     .history {
@@ -1710,17 +1951,6 @@
     }
   }
 
-  .find button {
-    border: 0;
-    background: transparent;
-    border-radius: 6px;
-    padding: 0.25rem 0.4rem;
-  }
-
-  .find button:hover {
-    background: rgba(255, 255, 255, 0.35);
-  }
-
   .stage {
     position: relative;
     overflow: auto;
@@ -1731,12 +1961,29 @@
     padding: 30px 24px 72px;
   }
 
-  .sheet {
-    position: relative;
+  /* The page, centred, with a column on the right for comment cards when the chapter has any. */
+  .page-row {
     flex: 1 0 auto;
+    display: grid;
+    /* 12px more than the page leaves room for the sheet underneath. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, calc(var(--sheet, var(--pv-sheet-book)) + 12px)) minmax(0, 1fr);
+  }
+
+  /* The cards keep their column: the page stays centred while there is room, then moves left. */
+  .page-row.commented {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, calc(var(--sheet, var(--pv-sheet-book)) + 12px)) minmax(240px, 1fr);
+  }
+
+  .page-row > :global(.rail) {
+    grid-column: 3;
+  }
+
+  .sheet {
+    grid-column: 2;
+    position: relative;
     display: flex;
     flex-direction: column;
-    width: min(var(--sheet, var(--pv-sheet-book)), calc(100% - 12px));
+    width: calc(100% - 12px);
     margin: 0 auto;
   }
 
@@ -1823,13 +2070,14 @@
     align-items: center;
     gap: 1rem;
     padding: 0.45rem 0.9rem;
-    background: var(--sidebar);
-    color: var(--muted);
+    background: var(--pv-chrome);
+    border-bottom: 1px solid var(--pv-line);
+    color: var(--pv-text-muted);
     opacity: 0;
     transform: translateY(-8px);
     transition:
-      opacity 200ms ease,
-      transform 200ms ease;
+      opacity var(--pv-dur) var(--pv-ease),
+      transform var(--pv-dur) var(--pv-ease);
   }
 
   .zen-hover:hover,
@@ -1843,13 +2091,6 @@
     transform: none;
   }
 
-  .zen-bar button {
-    border: 0;
-    background: transparent;
-    border-radius: 6px;
-    padding: 0.25rem 0.4rem;
-  }
-
   @keyframes rise {
     from {
       opacity: 0;
@@ -1859,6 +2100,22 @@
       opacity: 1;
       transform: none;
     }
+  }
+
+  .write-notice {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    z-index: 3;
+    transform: translateX(-50%);
+    margin: 0;
+    padding: 6px 12px;
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-sm);
+    background: var(--pv-chrome);
+    color: var(--pv-text-muted);
+    font-size: var(--pv-text-md);
+    box-shadow: var(--pv-shadow-slip);
   }
 
   .footnote-edit {

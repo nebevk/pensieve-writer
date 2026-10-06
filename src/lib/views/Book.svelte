@@ -43,7 +43,7 @@
   .book {
     height: 100%;
     overflow: auto;
-    background: var(--desk);
+    background: var(--pv-desk);
   }
 
   .bar {
@@ -51,7 +51,24 @@
     gap: 0.8rem;
     align-items: center;
     padding: 0.7rem 1rem;
-    color: var(--muted);
+    color: var(--pv-text-muted);
+  }
+
+  .bar select,
+  .bar button {
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-xs);
+    padding: 0.25rem 0.6rem;
+    background: var(--pv-field);
+    color: var(--pv-text);
+  }
+
+  .bar button:hover {
+    background: var(--pv-selected);
+  }
+
+  .bar button:active {
+    background: var(--pv-pressed);
   }
 
   .spread {
@@ -62,13 +79,15 @@
     justify-items: center;
   }
 
+  /* A sheet of paper: light in every theme, with a shadow rather than an outline. */
   .page {
-    background: #fffef8;
-    color: #241c14;
+    background: var(--pv-paper);
+    color: var(--pv-ink);
+    color-scheme: light;
     width: min(100%, 148mm);
     min-height: 210mm;
     padding: 18mm 16mm;
-    border: 1px solid rgba(60, 40, 20, 0.12);
+    box-shadow: var(--pv-shadow-sheet);
   }
 
   .pocket .page {
@@ -79,8 +98,31 @@
   .page :global(p),
   .page :global(blockquote),
   .page :global(li) {
-    font-family: var(--font-writing);
+    font-family: var(--pv-writing-font, var(--pv-font-manuscript));
     line-height: 1.6;
+  }
+
+  .page :global(blockquote) {
+    margin: 0.6em 0;
+    padding-left: 1rem;
+    border-left: 2px solid var(--pv-ink-rule-accent);
+    color: var(--pv-ink-2);
+  }
+
+  .page :global(a) {
+    color: var(--pv-ink-accent);
+    text-decoration-color: var(--pv-ink-link-underline);
+  }
+
+  .page :global(mark) {
+    background: var(--pv-highlight);
+    color: inherit;
+  }
+
+  .page :global(hr) {
+    border: 0;
+    border-top: 1px solid var(--pv-ink-rule);
+    margin: 1.4em 0;
   }
 
   .page :global(img) {
@@ -100,7 +142,7 @@
   .page :global(ol.footnotes) {
     margin-top: 1.8em;
     padding-left: 1.4em;
-    font-family: var(--font-writing);
+    font-family: var(--pv-writing-font, var(--pv-font-manuscript));
     font-size: 0.82em;
     line-height: 1.5;
   }
@@ -110,12 +152,12 @@
     display: block;
     width: 30%;
     margin: 0 0 0.7em -1.4em;
-    border-top: 1px solid rgba(60, 40, 20, 0.25);
+    border-top: 1px solid var(--pv-ink-rule);
   }
 
   h2 {
-    font-family: var(--font-writing);
-    font-weight: 500;
+    font-family: var(--pv-writing-font, var(--pv-font-manuscript));
+    font-weight: 400;
     margin-top: 0;
   }
 
@@ -133,8 +175,8 @@
       display: block;
     }
 
-      .page {
-      border: 0;
+    .page {
+      box-shadow: none;
       break-after: page;
     }
   }

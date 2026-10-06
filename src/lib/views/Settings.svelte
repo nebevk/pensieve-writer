@@ -10,6 +10,7 @@
     backupMessage,
     projectLocation,
     projectLanguage,
+    bookGoal = 0,
     dictionary,
     startSection = "Appearance",
     onChange,
@@ -17,6 +18,7 @@
     onBackup,
     onMoveProject,
     onProjectLanguage,
+    onBookGoal,
     onAddWord,
     onRemoveWord,
     onExport,
@@ -42,6 +44,8 @@
     backupMessage: string;
     projectLocation: string;
     projectLanguage: WritingLanguage;
+    /** The open book's word target; 0 means none. */
+    bookGoal?: number;
     dictionary: { language: WritingLanguage; word: string }[];
     startSection?: Section;
     onChange: (patch: Partial<Prefs>) => void;
@@ -49,6 +53,7 @@
     onBackup: () => void;
     onMoveProject: () => void;
     onProjectLanguage: (language: WritingLanguage) => void;
+    onBookGoal: (words: number) => void;
     onAddWord: (language: WritingLanguage, word: string) => void;
     onRemoveWord: (language: WritingLanguage, word: string) => void;
     onExport: () => void;
@@ -117,7 +122,13 @@
   });
 
   function trap(event: KeyboardEvent) {
+    // The book's shortcuts stay out of Settings, so Escape is handled here.
     event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
     if (event.key !== "Tab" || !panel) return;
     const items = [...panel.querySelectorAll<HTMLElement>("button, input, select, textarea")].filter(
       (item) => !item.hasAttribute("disabled") && item.tabIndex !== -1,
@@ -291,6 +302,17 @@
             />
           </label>
           <p class="hint">{t("dailyGoalHint")}</p>
+          <label class="field">
+            {t("bookGoal")}
+            <input
+              type="number"
+              min="0"
+              step="1000"
+              value={bookGoal}
+              oninput={(event) => onBookGoal(Math.max(0, Math.round(Number((event.currentTarget as HTMLInputElement).value) || 0)))}
+            />
+          </label>
+          <p class="hint">{t("bookGoalHint")}</p>
         {:else if section === "Ambience"}
           <h2>{t("ambience")}</h2>
           <label class="field">
@@ -453,6 +475,7 @@
             <li><kbd>Ctrl</kbd> + <kbd>Y</kbd> {t("redo")}</li>
             <li><kbd>Ctrl</kbd> + <kbd>S</kbd> {t("save")}</li>
             <li><kbd>Ctrl</kbd> + <kbd>F</kbd> {t("find")}</li>
+            <li><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>M</kbd> {t("comment")}</li>
             <li><kbd>Ctrl</kbd> + <kbd>/</kbd> {t("shortcutThisList")}</li>
             <li><kbd>Esc</kbd> {t("shortcutEscape")}</li>
           </ul>
@@ -515,8 +538,15 @@
 
   .close:hover,
   nav button:hover,
-  .actions button:hover {
+  .actions button:hover:not(:disabled) {
     background: var(--pv-selected);
+  }
+
+  .close:active,
+  nav button:active,
+  .actions button:active:not(:disabled),
+  .file:active {
+    background: var(--pv-pressed);
   }
 
   .body {
@@ -770,6 +800,14 @@
     font-weight: 600;
   }
 
+  .segment button:not(.on):hover {
+    background: var(--pv-selected);
+  }
+
+  .segment button:not(.on):active {
+    background: var(--pv-pressed);
+  }
+
   .rows {
     border-top: 1px solid var(--pv-line);
   }
@@ -802,6 +840,7 @@
     background: var(--pv-line-strong);
     padding: 0;
     position: relative;
+    transition: background-color var(--pv-dur) ease;
   }
 
   .toggle.on {
@@ -817,6 +856,7 @@
     border-radius: 50%;
     background: #fff;
     transform: translateX(0);
+    transition: transform var(--pv-dur) var(--pv-ease);
   }
 
   .toggle.on span {
@@ -873,7 +913,7 @@
   }
 
   .problem {
-    color: var(--danger);
+    color: var(--pv-danger);
   }
 
   .hint,
@@ -898,6 +938,7 @@
     display: inline-flex;
     align-items: center;
     cursor: pointer;
+    transition: background-color var(--pv-dur-fast) ease;
   }
 
   .file:hover {

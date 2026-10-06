@@ -1,70 +1,117 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { countWords } from "$lib/editor/counts";
-  import type { Chapter, Project, ProjectKind, SnapshotInfo } from "$lib/model";
-  import type { KnownProject, Prefs } from "$lib/prefs";
-  import { translate, type UiKey } from "$lib/i18n";
+  import { bookProgress, summarize, type BookSummary } from "$lib/chapters/progress";
+  import { compactWords, wordsFor } from "$lib/editor/counts";
+  import type { AmbienceName, KnownProject, Prefs } from "$lib/prefs";
+  import type { Chapter, ChapterStatus, Project, ProjectKind, SnapshotInfo } from "$lib/model";
+  import { isUntitled, translate, type UiKey } from "$lib/i18n";
   import { ago, locale, num, plural, snapshotName, t } from "$lib/ui.svelte";
   import Icon from "$lib/editor/Icon.svelte";
   import { randomQuote } from "$lib/quotes";
-  import { listNotes, listTasks } from "$lib/storage/organize";
+  import { listNotes, listTasks, saveTask, type Note, type NoteCategory, type Task } from "$lib/storage/organize";
   import { sqliteStorage } from "$lib/storage/sqlite";
+  import ChecklistItem from "./ChecklistItem.svelte";
+  import NoteMini from "./NoteMini.svelte";
 
   let {
     project,
     prefs,
-    saveLabel = "",
+    now = Date.now(),
     wordsToday = 0,
     onContinue,
+    onZen,
     onRestore,
     onRename,
     onOpenProject,
     onStartProject,
     onOpenBook,
+    onOpenTodos,
+    onOpenNotes,
+    onOpenNote,
+    onAmbience,
+    onSaveError,
     currentPath = "",
     books = [],
   }: {
     project: Project;
     prefs: Prefs;
-    saveLabel?: string;
+    /** The page's minute clock, for the time beside the date. */
+    now?: number;
     wordsToday?: number;
     onContinue: (chapterId: string | null) => void;
+    onZen: (chapterId: string | null) => void;
     /** Restores a snapshot after saving pending work; rejects if the restore fails. */
     onRestore: (snapshotId: string) => Promise<void>;
     onRename: (title: string) => void;
     onOpenProject: () => void;
     onStartProject: (kind: ProjectKind) => void;
     onOpenBook: (path: string) => void;
+    onOpenTodos: () => void;
+    onOpenNotes: () => void;
+    onOpenNote: (id: string, title: string) => void;
+    /** Opens Settings at the ambience. */
+    onAmbience: () => void;
+    onSaveError?: (message: string) => void;
     currentPath?: string;
     books?: KnownProject[];
   } = $props();
 
   const quote = randomQuote();
+  const KINDS: Record<ProjectKind, UiKey> = { novel: "novel", stories: "stories", article: "article" };
+  const KIND_LIST: ProjectKind[] = ["novel", "stories", "article"];
+  const STATUSES: Record<ChapterStatus, UiKey> = { draft: "statusDraft", revised: "statusRevised", final: "statusFinal" };
+  const NOTE_KINDS: Record<NoteCategory, UiKey> = {
+    characters: "kindCharacter",
+    places: "kindPlace",
+    research: "kindResearch",
+    ideas: "kindNote",
+  };
+  const SOUNDS: Record<Exclude<AmbienceName, "off">, { key: UiKey; icon: string }> = {
+    rain: { key: "soundRain", icon: "rain" },
+    fire: { key: "soundFireplace", icon: "flame" },
+    cafe: { key: "soundCafe", icon: "" },
+    piano: { key: "soundPiano", icon: "" },
+  };
+  const NEXT_STATE: Record<Task["todoState"], Task["todoState"]> = { todo: "doing", doing: "done", done: "todo" };
 
-  let template = $state<ProjectKind>("novel");
   let renaming = $state(false);
   let titleDraft = $state("");
   let titleInput = $state<HTMLInputElement | undefined>(undefined);
+  let menuOpen = $state(false);
+  let notes = $state<Note[]>([]);
+  let tasks = $state<Task[]>([]);
+  let snapshots = $state<SnapshotInfo[]>([]);
+  let message = $state("");
+  let pendingRestore = $state<string | null>(null);
 
   $effect(() => {
     if (renaming) titleInput?.focus();
   });
 
-  let snapshots = $state<SnapshotInfo[]>([]);
-  let todoCount = $state(0);
-  let message = $state("");
-  let pendingRestore = $state<string | null>(null);
-
   const chapters = $derived([...project.chapters].sort((a, b) => a.position - b.position));
-  const words = $derived(chapters.reduce((sum, chapter) => sum + countWords(chapter.plainText), 0));
-  const latest = $derived(
-    [...chapters].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ?? null,
-  );
+  const summary = $derived(summarize(project));
+  const latest = $derived([...chapters].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ?? null);
   const lines = $derived(paragraphs(latest));
   const currentLine = $derived(lines.at(-1) ?? "");
   const previousLine = $derived(lines.at(-2) ?? "");
-  const started = $derived(chapters.filter((chapter) => chapter.plainText.trim().length > 0).length);
-  const progress = $derived(chapters.length === 0 ? 0 : started / chapters.length);
+  const otherBooks = $derived(books.filter((book) => book.path !== currentPath));
+  // Doing first, as on the board.
+  const openTasks = $derived(
+    tasks
+      .filter((task) => task.todoState !== "done")
+      .sort((a, b) => Number(b.todoState === "doing") - Number(a.todoState === "doing")),
+  );
+  const recentNotes = $derived([...notes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3));
+  const chapterCounts = $derived.by(() => {
+    const counts = new Map<string, number>();
+    for (const chapter of chapters) counts.set(statusOf(chapter), (counts.get(statusOf(chapter)) ?? 0) + 1);
+    return (["final", "revised", "draft", "empty"] as const).flatMap((status) => {
+      const n = counts.get(status) ?? 0;
+      const label = status === "empty" ? t("statusEmpty") : t(STATUSES[status]);
+      return n > 0 ? [`${num(n)} ${label.toLowerCase()}`] : [];
+    });
+  });
+  const sound = $derived(prefs.ambience === "off" ? null : SOUNDS[prefs.ambience]);
 
   function paragraphs(chapter: Chapter | null): string[] {
     if (!chapter) return [];
@@ -74,36 +121,69 @@
       .filter((line) => line.length > 0);
   }
 
-  function greeting(now = new Date()): string {
-    const hour = now.getHours();
+  function statusOf(chapter: Chapter): ChapterStatus | "empty" {
+    return chapter.plainText.trim() ? chapter.status : "empty";
+  }
+
+  function greeting(at: number): string {
+    const hour = new Date(at).getHours();
     if (hour < 12) return t("morning");
     if (hour < 18) return t("afternoon");
     return t("evening");
   }
-
-  const KINDS: Record<ProjectKind, UiKey> = { novel: "novel", stories: "stories", article: "article" };
 
   function clip(text: string, max = 88): string {
     if (text.length <= max) return text;
     return `${text.slice(0, max - 1).trimEnd()}…`;
   }
 
+  /** Today, yesterday, or the date. */
   function when(iso: string): string {
-    const then = new Date(iso);
-    const start = new Date();
+    const then = new Date(iso).getTime();
+    const start = new Date(now);
     start.setHours(0, 0, 0, 0);
-    if (then.getTime() >= start.getTime()) return t("today");
-    return then.toLocaleDateString(locale(), { day: "numeric", month: "long" });
+    if (then >= start.getTime()) return t("today");
+    if (then >= start.getTime() - 24 * 60 * 60 * 1000) {
+      const yesterday = t("yesterday");
+      return yesterday.charAt(0).toUpperCase() + yesterday.slice(1);
+    }
+    return new Date(iso).toLocaleDateString(locale(), { day: "numeric", month: "short" });
   }
 
-  function backupStatus(current: Prefs): string {
-    if (current.lastBackupError) return t("backupFailed");
-    if (!current.lastBackupAt) return t("noBackupYet");
-    return t("backedUp", { ago: ago(current.lastBackupAt) });
+  /** What a project row says after the kind: "61%", "6 of 12" or "Final". */
+  function rowStatus(book: BookSummary): string {
+    if (book.kind === "stories") return t("ofTotal", { done: num(book.finished), total: num(book.chapters) });
+    if (book.kind === "article") return t(STATUSES[book.status]);
+    return book.target > 0 ? `${Math.round(bookProgress(book) * 100)}%` : plural("words", book.words);
   }
 
-  function edited(iso: string): string {
-    return t("editedAgoInline", { ago: ago(iso) });
+  function taskMeta(task: Task): string {
+    const index = chapters.findIndex((chapter) => chapter.id === task.chapterId);
+    const chapter = index >= 0 ? `${index + 1} · ${chapters[index].title}` : t("wholeBook");
+    const note = task.noteId ? notes.find((item) => item.id === task.noteId)?.title : "";
+    return note ? `${chapter} · ${note}` : chapter;
+  }
+
+  function startRename() {
+    titleDraft = project.title;
+    renaming = true;
+  }
+
+  function finishRename() {
+    if (!renaming) return;
+    renaming = false;
+    onRename(titleDraft);
+  }
+
+  async function toggle(task: Task) {
+    const next = { ...task, todoState: NEXT_STATE[task.todoState], updatedAt: new Date().toISOString() };
+    tasks = tasks.map((item) => (item.id === task.id ? next : item));
+    try {
+      await saveTask(next);
+    } catch (error) {
+      onSaveError?.(error instanceof Error ? error.message : t("todoUpdateFailed"));
+      void refresh();
+    }
   }
 
   onMount(() => {
@@ -113,10 +193,7 @@
   async function refresh() {
     try {
       snapshots = await sqliteStorage.listSnapshots(project.id);
-      const [notes, tasks] = await Promise.all([listNotes(project.id), listTasks(project.id)]);
-      todoCount =
-        tasks.filter((task) => task.todoState !== "done").length +
-        notes.filter((note) => note.todoState && note.todoState !== "done").length;
+      [notes, tasks] = await Promise.all([listNotes(project.id), listTasks(project.id)]);
     } catch (error) {
       message = error instanceof Error ? error.message : t("homeLoadFailed");
     }
@@ -132,75 +209,51 @@
   }
 </script>
 
+{#snippet projectRow(title: string, book: BookSummary | undefined, onclick: () => void)}
+  <!-- A project as a tiny title page, with its language and progress (design round 6). -->
+  <button type="button" class="project" {onclick}>
+    <span class="page {book?.kind ?? ''}" class:stacked={book && book.kind !== "article" && book.chapters > 1}>
+      {title.trim().charAt(0) || "·"}
+    </span>
+    <span class="about">
+      <span class="line">
+        <span class="name">{title}</span>
+        {#if book}<span class="lang">{book.language.toUpperCase()}</span>{/if}
+      </span>
+      <span class="bar {book?.kind ?? ''}" aria-hidden="true">
+        <span style:width="{Math.round((book ? bookProgress(book) : 0) * 100)}%"></span>
+      </span>
+      <span class="kind-line">{book ? `${translate(book.language, KINDS[book.kind])} · ${rowStatus(book)}` : t("book")}</span>
+    </span>
+  </button>
+{/snippet}
+
 <section class="home">
   <div class="hero">
-    <div class="greeting">
+    <div class="intro">
       <p class="date">
-        {new Date().toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long" })}
+        {new Date(now).toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long" })} ·
+        {new Date(now).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })}
       </p>
-      <p class="backup">{backupStatus(prefs)}</p>
-      <h1>{greeting()}.</h1>
+      <h1>{greeting(now)}.</h1>
       <blockquote class="quote">
         <p>{quote.text}</p>
         <footer>{quote.reference}</footer>
       </blockquote>
       <div class="stats">
         <div>
-          <p class="value">
-            {num(wordsToday)}{#if prefs.dailyGoal > 0}<span> / {num(prefs.dailyGoal)}</span>{/if}
-          </p>
+          <p class="value">{num(wordsToday)}{#if prefs.dailyGoal > 0}<span>{` / ${num(prefs.dailyGoal)}`}</span>{/if}</p>
           <p class="label">{t("wordsToday")}</p>
         </div>
         <div>
-          <p class="value">{todoCount}</p>
-          <p class="label">{t("openTodos")}</p>
+          <p class="value">{num(summary.words)}{#if summary.target > 0}<span>{` / ${compactWords(summary.target)}`}</span>{/if}</p>
+          <p class="label">{t("inBook")}</p>
         </div>
       </div>
-    </div>
 
-    <div class="continue">
-      <div class="under" aria-hidden="true"></div>
-      <div class="sheet">
-        <div class="running">
-          <span>{project.title}</span>
-          <span>{latest ? t("chapterShort", { n: chapters.findIndex((chapter) => chapter.id === latest.id) + 1 }) : ""}</span>
-        </div>
-        <div class="excerpt">
-          {#if previousLine}
-            <p class="faded">{clip(previousLine, 140)}</p>
-          {/if}
-          <p>
-            {currentLine ? clip(currentLine, 160) : t("blankPage")}<span class="caret" aria-hidden="true"></span>
-          </p>
-        </div>
-        <div class="foot">
-          <span>{latest ? `${latest.title} · ${edited(latest.updatedAt)}` : saveLabel}</span>
-          <button type="button" class="go" onclick={() => onContinue(latest?.id ?? null)}>{t("continue")} <Icon name="arrowRight" /></button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="projects">
-    <div class="projects-head">
-      <h2>{t("projects")}</h2>
-      <span class="count">{Math.max(books.length, 1)}</span>
-      <select bind:value={template} aria-label={t("projectTemplate")}>
-        <option value="novel">{t("novel")}</option>
-        <option value="stories">{t("stories")}</option>
-        <option value="article">{t("article")}</option>
-      </select>
-      <button type="button" class="open" onclick={() => onStartProject(template)}>{t("start")}</button>
-      <button type="button" class="open" onclick={onOpenProject}>{t("open")}</button>
-    </div>
-    <div class="grid">
-      <article>
-        <div class="card" class:stacked={chapters.length > 1}>
-          <button type="button" class="face" onclick={() => onContinue(latest?.id ?? null)}>
-            <!-- The kind is named in the book's own language, as on the design's cards. -->
-            <span class="kind">{translate(project.language, KINDS[project.kind])}</span>
-            <span class="hint">{t("continueShort")}</span>
-          </button>
+      <!-- The open book's chapters as status bars; each opens its chapter. -->
+      <div class="strip">
+        <div class="strip-head">
           {#if renaming}
             <input
               class="title-edit"
@@ -210,35 +263,148 @@
               onkeydown={(event) => {
                 if (event.key === "Enter") {
                   event.preventDefault();
-                  renaming = false;
-                  onRename(titleDraft);
+                  finishRename();
                 }
               }}
-              onblur={() => {
-                renaming = false;
-                onRename(titleDraft);
-              }}
+              onblur={finishRename}
             />
           {:else}
-            <button type="button" class="title" title={t("renameBook")} onclick={() => {
-              titleDraft = project.title;
-              renaming = true;
-            }}>{project.title}</button>
+            <button type="button" class="book-title" title={t("renameBook")} onclick={startRename}>{project.title}</button>
+          {/if}
+          <span class="counts">{chapterCounts.join(" · ")}</span>
+        </div>
+        <div class="bars" class:many={chapters.length > 12}>
+          {#each chapters as chapter, index (chapter.id)}
+            <button type="button" class="chapter" title={`${index + 1} · ${chapter.title}`} onclick={() => onContinue(chapter.id)}>
+              <span class="mark {statusOf(chapter)}"></span>
+              <span class="chapter-name" class:current={chapter.id === latest?.id} class:untitled={isUntitled(chapter.title)}>
+                <span class="n">{index + 1}</span>
+                {chapter.title}
+              </span>
+              <span class="words">{compactWords(wordsFor(chapter.id, chapter.plainText))}</span>
+            </button>
+          {/each}
+        </div>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="continue">
+        <div class="under" aria-hidden="true"></div>
+        <div class="sheet">
+          <div class="running">
+            <span>{project.title}</span>
+            <span>{latest ? t("chapterShort", { n: chapters.findIndex((chapter) => chapter.id === latest.id) + 1 }) : ""}</span>
+          </div>
+          <div class="excerpt">
+            {#if previousLine}
+              <p class="faded">{clip(previousLine, 140)}</p>
+            {/if}
+            <p>{currentLine ? clip(currentLine, 160) : t("blankPage")}<span class="caret" aria-hidden="true"></span></p>
+          </div>
+          <div class="foot">
+            <span class="edited">{latest ? t("editedAgo", { ago: ago(latest.updatedAt) }) : ""}</span>
+            <button type="button" class="zen" onclick={() => onZen(latest?.id ?? null)}><Icon name="moon" />{t("zen")}</button>
+            <button type="button" class="go" onclick={() => onContinue(latest?.id ?? null)}>{t("continue")} <Icon name="arrowRight" /></button>
+          </div>
+        </div>
+      </div>
+      <p class="sound">
+        {#if sound?.icon}<Icon name={sound.icon} />{/if}
+        {sound ? t("ambienceStarts", { sound: t(sound.key) }) : t("ambienceSilent")} ·
+        <button type="button" onclick={onAmbience}>{t("change")}</button>
+      </p>
+    </div>
+  </div>
+
+  <div class="columns">
+    <div class="column">
+      <div class="column-head">
+        <h2>{t("openTodosFilter")}</h2>
+        <span class="count">{openTasks.length}</span>
+        <button type="button" class="link" onclick={onOpenTodos}>{t("allTodos")}</button>
+      </div>
+      {#each openTasks.slice(0, 4) as task (task.id)}
+        <ChecklistItem text={task.title} state={task.todoState} meta={taskMeta(task)} truncate flush onToggle={() => void toggle(task)} />
+      {:else}
+        <p class="empty">{t("noOpenTodos")}</p>
+      {/each}
+    </div>
+
+    <div class="column">
+      <div class="column-head">
+        <h2>{t("recentNotes")}</h2>
+        <span class="count">{notes.length}</span>
+        <button type="button" class="link" onclick={onOpenNotes}>{t("allNotes")}</button>
+      </div>
+      <div class="notes">
+        {#each recentNotes as note (note.id)}
+          <NoteMini
+            variant="card"
+            kind={t(NOTE_KINDS[note.category])}
+            title={note.title}
+            meta={when(note.updatedAt)}
+            onclick={() => onOpenNote(note.id, note.title)}
+          />
+        {:else}
+          <p class="empty">{t("noNotesYet")}</p>
+        {/each}
+      </div>
+    </div>
+
+    <div class="column">
+      <div class="column-head">
+        <h2>{t("projects")}</h2>
+        <span class="count">{otherBooks.length + 1}</span>
+        <div
+          class="menu-wrap"
+          role="presentation"
+          onkeydown={(event) => {
+            if (event.key === "Escape" && menuOpen) {
+              event.stopPropagation();
+              menuOpen = false;
+            }
+          }}
+          onfocusout={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) menuOpen = false;
+          }}
+        >
+          <button type="button" class="link" aria-haspopup="menu" aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}>
+            {t("newProject")}
+          </button>
+          {#if menuOpen}
+            <div class="menu" role="menu">
+              {#each KIND_LIST as kind (kind)}
+                <button
+                  type="button"
+                  role="menuitem"
+                  onclick={() => {
+                    menuOpen = false;
+                    onStartProject(kind);
+                  }}
+                >
+                  {t(KINDS[kind])}
+                </button>
+              {/each}
+              <span class="rule" aria-hidden="true"></span>
+              <button
+                type="button"
+                role="menuitem"
+                onclick={() => {
+                  menuOpen = false;
+                  onOpenProject();
+                }}
+              >
+                {t("open")}
+              </button>
+            </div>
           {/if}
         </div>
-        <div class="bar" aria-hidden="true"><span style:width="{Math.round(progress * 100)}%"></span></div>
-        <p class="meta">
-          <span>{plural("words", words)}</span>
-          <span>{latest ? when(latest.updatedAt) : ""}</span>
-        </p>
-      </article>
-      {#each books.filter((book) => book.path !== currentPath) as book (book.path)}
-        <button type="button" class="card other" onclick={() => onOpenBook(book.path)}>
-          <span class="kind">{t("book")}</span>
-          <span class="title">{book.title}</span>
-        </button>
+      </div>
+      {@render projectRow(project.title, summary, () => onContinue(latest?.id ?? null))}
+      {#each otherBooks as book (book.path)}
+        {@render projectRow(book.title, book.summary, () => onOpenBook(book.path))}
       {/each}
-      <button type="button" class="new-tile" onclick={() => onStartProject(template)}>{t("start")}</button>
     </div>
   </div>
 
@@ -267,7 +433,8 @@
 
 <style>
   .home {
-    height: 100%;
+    flex: 1;
+    min-height: 0;
     overflow: auto;
     position: relative;
     color: var(--pv-text);
@@ -275,46 +442,50 @@
 
   .hero {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 460px);
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 440px);
     gap: 56px;
-    padding: 48px 64px 0;
+    padding: 36px 64px 0;
+  }
+
+  .intro {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
   }
 
   .date {
     margin: 0;
     font-size: 12px;
+    font-weight: 600;
     letter-spacing: 0.16em;
     text-transform: uppercase;
     color: var(--pv-text-faint);
-    font-weight: 600;
   }
 
   h1 {
-    margin: 14px 0 0;
+    margin: 12px 0 0;
     max-width: 560px;
     font-family: var(--pv-font-heading);
-    font-size: var(--pv-heading-display);
+    font-size: 46px;
     font-weight: 400;
     line-height: 1.08;
-    color: var(--pv-text);
   }
 
   .quote {
-    margin: 18px 0 0;
+    margin: 10px 0 0;
     max-width: 34rem;
   }
 
   .quote p {
     margin: 0;
     font-family: var(--pv-font-manuscript);
-    font-size: 22px;
+    font-size: 17px;
     line-height: 1.45;
-    color: var(--pv-text);
+    color: var(--pv-text-2);
   }
 
   .quote footer {
-    margin-top: 8px;
-    font-family: var(--pv-font-ui);
+    margin-top: 6px;
     font-size: var(--pv-text-xs);
     letter-spacing: var(--pv-track-eyebrow);
     text-transform: uppercase;
@@ -324,25 +495,18 @@
   .stats {
     display: flex;
     gap: 40px;
-    margin-top: 22px;
-    padding-top: 22px;
-    border-top: 1px solid var(--pv-divider);
+    margin-top: 18px;
   }
 
   .value {
     margin: 0;
     font-family: var(--pv-font-heading);
     font-size: 28px;
-    font-weight: 400;
-  }
-
-  .value span,
-  .label {
-    color: var(--pv-text-faint);
   }
 
   .value span {
     font-size: 16px;
+    color: var(--pv-text-faint);
   }
 
   .label {
@@ -351,18 +515,138 @@
     color: var(--pv-text-subtle);
   }
 
+  .strip {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--pv-divider);
+  }
+
+  .strip-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: var(--pv-text-md);
+  }
+
+  .book-title,
+  .title-edit {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--pv-text);
+    font: inherit;
+    font-weight: 600;
+  }
+
+  .book-title:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--pv-line-strong);
+  }
+
+  .title-edit {
+    min-width: 12rem;
+    border-bottom: 1px solid var(--pv-line-strong);
+  }
+
+  .counts {
+    color: var(--pv-text-faint);
+  }
+
+  .bars {
+    display: flex;
+    gap: 6px;
+  }
+
+  .chapter {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 7px;
+    min-width: 0;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+  }
+
+  .mark {
+    height: 6px;
+    border-radius: 1px;
+  }
+
+  .mark.final {
+    background: var(--pv-status-final);
+  }
+
+  .mark.revised {
+    background: var(--pv-accent);
+  }
+
+  .mark.draft {
+    border: 1.5px solid var(--pv-text-faint);
+  }
+
+  .mark.empty {
+    border: 1.5px dashed var(--pv-empty);
+  }
+
+  .chapter:hover .mark {
+    filter: brightness(1.08);
+  }
+
+  .chapter-name {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 12px;
+    color: var(--pv-text);
+  }
+
+  .chapter-name.current {
+    font-weight: 600;
+  }
+
+  .chapter-name.untitled {
+    font-style: italic;
+    color: var(--pv-text-faint);
+  }
+
+  .n {
+    font-weight: 400;
+    color: var(--pv-text-faint);
+  }
+
+  .words {
+    margin-top: -4px;
+    font-size: 11px;
+    color: var(--pv-text-faint);
+  }
+
+  /* With many chapters, the bars are enough; each one's name shows on hover. */
+  .bars.many .chapter-name,
+  .bars.many .words {
+    display: none;
+  }
+
+  .side {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
   .continue {
     position: relative;
-    height: 316px;
+    height: 250px;
   }
 
   .under,
   .sheet {
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 16px;
-    bottom: 16px;
+    inset: 0;
   }
 
   .under {
@@ -376,9 +660,13 @@
     flex-direction: column;
     padding: 30px 36px;
     background-color: var(--pv-paper);
-    background-image: var(--pv-grain);
     box-shadow: var(--pv-shadow-sheet);
     color: var(--pv-ink);
+    color-scheme: light;
+  }
+
+  :global(:root[data-grain="true"]) .sheet {
+    background-image: var(--pv-grain);
   }
 
   .running {
@@ -423,167 +711,278 @@
   .foot {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    gap: 8px;
+  }
+
+  .edited {
+    flex: 1;
+    min-width: 0;
     font-size: var(--pv-text-md);
     color: var(--pv-ink-muted);
   }
 
+  .zen,
   .go {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    height: 36px;
-    border: 0;
     border-radius: var(--pv-radius-sm);
-    padding: 0 16px;
-    background: var(--pv-ink-accent);
-    color: var(--pv-on-accent);
     font-weight: 600;
+    white-space: nowrap;
   }
 
+  .zen {
+    height: 34px;
+    padding: 0 12px;
+    border: 1px solid var(--pv-ink-rule-accent);
+    background: transparent;
+    color: var(--pv-ink-accent);
+  }
+
+  .zen:hover {
+    background: var(--pv-ink-tint);
+  }
+
+  .zen:active {
+    background: var(--pv-ink-chip);
+  }
+
+  .go {
+    height: 36px;
+    padding: 0 16px;
+    border: 0;
+    background: var(--pv-ink-accent);
+    color: var(--pv-on-accent);
+  }
+
+  /* A solid button brightens on hover and darkens when pressed. */
+  .go:hover {
+    filter: brightness(1.08);
+  }
+
+  .go:active {
+    filter: brightness(0.92);
+  }
+
+  .zen :global(svg),
   .go :global(svg) {
     width: 15px;
     height: 15px;
   }
 
-  .projects,
-  .snapshots {
-    padding: 36px 64px 28px;
+  .sound {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding-left: 2px;
+    font-size: 12px;
+    color: var(--pv-text-subtle);
   }
 
-  .projects-head,
-  .snapshots h2 {
+  .sound :global(svg) {
+    width: 13px;
+    height: 13px;
+  }
+
+  .sound button {
+    border: 0;
+    padding: 0;
+    background: none;
+    color: var(--pv-accent);
+    font: inherit;
+    font-weight: 600;
+  }
+
+  .sound button:hover {
+    text-decoration: underline;
+  }
+
+  .columns {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 44px;
+    padding: 30px 64px 0;
+  }
+
+  .column {
+    min-width: 0;
+  }
+
+  .column-head {
     display: flex;
     align-items: baseline;
-    gap: 12px;
-    margin: 0 0 24px;
-    padding-bottom: 18px;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
     border-bottom: 1px solid var(--pv-divider);
   }
 
-  h2 {
+  .column-head h2 {
     margin: 0;
     font-family: var(--pv-font-heading);
-    font-size: var(--pv-heading-lg);
+    font-size: 19px;
     font-weight: 400;
   }
 
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 28px;
+  .count {
+    flex: 1;
+    font-size: var(--pv-text-md);
+    color: var(--pv-text-faint);
   }
 
-  .card {
-    width: 100%;
-    height: 150px;
-    background: var(--pv-paper);
-    color: var(--pv-ink);
-    box-shadow: var(--pv-shadow-card);
+  .link {
+    border: 0;
+    padding: 0;
+    background: none;
+    color: var(--pv-accent);
+    font-size: var(--pv-text-md);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .link:hover {
+    text-decoration: underline;
+  }
+
+  .notes {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 0 20px;
-    font-family: var(--pv-font-manuscript);
-    text-align: center;
+    gap: 9px;
   }
 
-  .face,
-  .title,
-  .title-edit,
-  .open {
+  .empty {
+    margin: 0;
+    font-size: var(--pv-text-md);
+    color: var(--pv-text-faint);
+  }
+
+  .menu-wrap {
+    position: relative;
+  }
+
+  .menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    min-width: 13rem;
+    padding: 4px;
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-sm);
+    background: var(--pv-chrome);
+    box-shadow: var(--pv-shadow-window);
+  }
+
+  .menu button {
     border: 0;
+    border-radius: var(--pv-radius-xs);
+    padding: 6px 8px;
+    background: transparent;
+    color: var(--pv-text);
+    text-align: left;
+    font-size: var(--pv-text-md);
+  }
+
+  .menu button:hover {
+    background: var(--pv-selected);
+  }
+
+  .menu button:active {
+    background: var(--pv-pressed);
+  }
+
+  .menu .rule {
+    height: 1px;
+    margin: 4px 2px;
+    background: var(--pv-line);
+  }
+
+  /* A project as a tiny title page with its language and progress. */
+  .project {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    border: 0;
+    border-radius: var(--pv-radius-xs);
+    padding: 6px 4px;
     background: transparent;
     color: inherit;
-    font: inherit;
+    text-align: left;
   }
 
-  .face {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    color: var(--pv-ink);
+  .project:hover {
+    background: var(--pv-selected);
   }
 
-  .hint {
-    font-family: var(--pv-font-ui);
-    font-size: var(--pv-text-sm);
-    color: var(--pv-ink-muted);
+  .project:active {
+    background: var(--pv-pressed);
   }
 
-  .title-edit {
-    width: 100%;
-    text-align: center;
-    font-size: 19px;
-    color: var(--pv-ink);
-    border-bottom: 1px solid var(--pv-ink-rule);
-  }
-
-  .open {
-    color: var(--pv-accent);
-    font-family: var(--pv-font-ui);
-    font-size: var(--pv-text-md);
-  }
-
-  .projects-head .open:first-of-type {
-    margin-left: auto;
-  }
-
-  .count {
-    font-size: 13px;
-    color: var(--pv-text-faint);
-  }
-
-  .backup {
-    margin: 8px 0 0;
-    color: var(--pv-text-subtle);
-    font-size: var(--pv-text-md);
-  }
-
-  .card.other,
-  .new-tile {
-    border: 0;
-    cursor: pointer;
-  }
-
-  .new-tile {
-    height: 150px;
-    border: 1px dashed var(--pv-line-strong);
-    background: transparent;
-    color: var(--pv-text-faint);
-    font-family: var(--pv-font-ui);
-    font-size: var(--pv-text-base);
-  }
-
-  .card.stacked {
-    box-shadow:
-      var(--pv-shadow-card),
-      4px 4px 0 -1px var(--pv-paper-under),
-      4px 4px 0 0 var(--pv-line-strong);
-  }
-
-  .card:hover {
-    transform: translateY(-2px);
-  }
-
-  .kind {
-    font-family: var(--pv-font-ui);
-    font-size: 10px;
-    letter-spacing: var(--pv-track-chapter);
-    text-transform: uppercase;
+  .page {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 42px;
+    height: 54px;
+    background: var(--pv-paper);
+    box-shadow: var(--pv-shadow-slip);
     color: var(--pv-ink-accent);
+    font-family: var(--pv-font-manuscript);
+    font-size: 13px;
   }
 
-  .title {
-    font-size: 19px;
+  .page.stories,
+  .page.article {
+    color: var(--pv-ink-success);
+  }
+
+  .page.stacked {
+    box-shadow:
+      var(--pv-shadow-slip),
+      3px 3px 0 -1px var(--pv-paper-under),
+      3px 3px 0 0 var(--pv-line-strong);
+  }
+
+  .about {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .line {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: var(--pv-text-base);
+    font-weight: 600;
+  }
+
+  .lang {
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-xs);
+    padding: 0 4px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--pv-text-subtle);
   }
 
   .bar {
+    display: block;
     height: 2px;
-    margin-top: 12px;
     background: var(--pv-divider);
   }
 
@@ -593,12 +992,27 @@
     background: var(--pv-accent);
   }
 
-  .meta {
-    display: flex;
-    justify-content: space-between;
-    margin: 6px 0 0;
-    font-size: var(--pv-text-md);
+  .bar.stories span,
+  .bar.article span {
+    background: var(--pv-success);
+  }
+
+  .kind-line {
+    font-size: var(--pv-text-sm);
     color: var(--pv-text-subtle);
+  }
+
+  .snapshots {
+    padding: 36px 64px 28px;
+  }
+
+  .snapshots h2 {
+    margin: 0 0 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--pv-divider);
+    font-family: var(--pv-font-heading);
+    font-size: 19px;
+    font-weight: 400;
   }
 
   .snapshots ul {
@@ -617,17 +1031,16 @@
     font-size: var(--pv-text-md);
   }
 
-  .snapshots button,
-  .snapshots h2 {
+  .snapshots button {
     border: 0;
+    padding: 0;
     background: transparent;
     color: var(--pv-accent);
-    padding: 0;
     font-size: var(--pv-text-md);
   }
 
   .error {
-    color: var(--danger);
+    color: var(--pv-danger);
   }
 
   @keyframes blink {
@@ -636,17 +1049,20 @@
     }
   }
 
-  @media (max-width: 980px) {
+  @media (max-width: 1100px) {
     .hero,
-    .projects,
+    .columns,
     .snapshots {
       padding-left: 28px;
       padding-right: 28px;
     }
 
-    .hero,
-    .grid {
+    .hero {
       grid-template-columns: 1fr;
+    }
+
+    .columns {
+      grid-template-columns: 1fr 1fr;
     }
   }
 </style>

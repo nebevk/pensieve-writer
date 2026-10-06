@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount } from "svelte";
   import type { Chapter } from "$lib/model";
   import {
     listNotes,
@@ -17,18 +17,12 @@
   let {
     projectId,
     chapters = [],
-    compact = false,
     onShowNotes,
-    focusRequest = 0,
-    attachChapterId = "",
     onSaveError,
   }: {
     projectId: string;
     chapters?: Chapter[];
-    compact?: boolean;
     onShowNotes?: () => void;
-    focusRequest?: number;
-    attachChapterId?: string;
     onSaveError?: (message: string) => void;
   } = $props();
 
@@ -37,8 +31,6 @@
   let draft = $state("");
   let message = $state("");
   let filter = $state<string>("open");
-  let addInput = $state<HTMLInputElement | undefined>(undefined);
-  let seenFocus = 0;
   let editing = $state<string | null>(null);
   let editTitle = $state("");
   let editChapter = $state("");
@@ -94,13 +86,6 @@
 
   onMount(() => {
     void refresh();
-  });
-
-  $effect(() => {
-    if (focusRequest !== seenFocus) {
-      seenFocus = focusRequest;
-      if (focusRequest > 0) void tick().then(() => addInput?.focus());
-    }
   });
 
   async function refresh() {
@@ -200,9 +185,7 @@
       title,
       todoState: "todo",
       updatedAt: new Date().toISOString(),
-      chapterId:
-        attachChapterId ||
-        (filter !== "open" && filter !== "notes" && filter !== "book" ? filter : ""),
+      chapterId: filter !== "open" && filter !== "notes" && filter !== "book" ? filter : "",
       noteId: "",
     };
     draft = "";
@@ -216,8 +199,7 @@
   }
 </script>
 
-<section class="board" class:compact>
-  {#if !compact}
+<section class="board">
     <aside>
       <div class="switch" role="tablist">
         <button type="button" role="tab" onclick={() => onShowNotes?.()}>{t("notes")} <span>{noteCount}</span></button>
@@ -247,7 +229,6 @@
         <span>{cards.filter((card) => card.state !== "done" && card.chapterId === "" && card.kind === "task").length}</span>
       </button>
     </aside>
-  {/if}
 
   <div class="desk">
     <form
@@ -258,7 +239,7 @@
       }}
     >
       <span>+</span>
-      <input bind:this={addInput} bind:value={draft} placeholder={t("addTodoHint")} aria-label={t("addTodo")} />
+      <input bind:value={draft} placeholder={t("addTodoHint")} aria-label={t("addTodo")} />
       <span class="hint">{t("enterToAdd")}</span>
     </form>
     <div class="columns">
@@ -328,10 +309,6 @@
     color: var(--pv-text);
   }
 
-  .compact {
-    grid-template-columns: 1fr;
-  }
-
   aside {
     overflow: auto;
     padding: 16px 12px;
@@ -366,6 +343,15 @@
     background: var(--pv-mark-bg);
     color: var(--pv-mark-fg);
     font-weight: 600;
+  }
+
+  .switch button:not(.on):hover {
+    background: var(--pv-selected);
+  }
+
+  .switch button:not(.on):active,
+  .row:active {
+    background: var(--pv-pressed);
   }
 
   .switch span {
@@ -445,10 +431,6 @@
     align-items: flex-start;
   }
 
-  .compact .columns {
-    flex-direction: column;
-  }
-
   section {
     flex: 1;
     min-width: 0;
@@ -509,12 +491,33 @@
     gap: 0.35rem;
   }
 
+  /* The slip is paper, so its fields are quiet wells of ink that stay light in every theme. */
+  .slip .edit {
+    color-scheme: light;
+  }
+
   .slip .edit input,
   .slip .edit select {
     font: inherit;
     color: var(--pv-ink);
-    background: var(--pv-field);
-    border: 1px solid var(--pv-line-strong);
+    background: var(--pv-ink-chip);
+    border: 0;
+    border-radius: var(--pv-radius-xs);
+    padding: 0.3rem 0.45rem;
+  }
+
+  .slip .edit button {
+    align-self: flex-start;
+    border: 0;
+    border-radius: var(--pv-radius-xs);
+    padding: 0.2rem 0.6rem;
+    background: var(--pv-ink-chip);
+    color: var(--pv-ink-chip-text);
+  }
+
+  .slip .edit button:hover {
+    background: var(--pv-ink-tint);
+    color: var(--pv-ink-tint-text);
   }
 
   .slip {
@@ -533,8 +536,23 @@
     font-size: var(--pv-text-lg);
   }
 
+  /* A slip lifts a little under the pointer, as the design's slips do. */
+  .slip {
+    transition: transform var(--pv-dur) var(--pv-ease);
+  }
+
   .slip:hover {
     transform: translateY(-2px);
+  }
+
+  :global(:root[data-gentle="true"]) .slip:hover {
+    transform: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .slip:hover {
+      transform: none;
+    }
   }
 
   .slip.done {
@@ -564,6 +582,6 @@
   }
 
   .error {
-    color: var(--danger);
+    color: var(--pv-danger);
   }
 </style>

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { t } from "$lib/ui.svelte";
   import Icon from "./Icon.svelte";
+  import WindowControls from "./WindowControls.svelte";
 
   type ViewId = "write" | "notes" | "todos" | "outline" | "book" | "home" | "settings";
 
@@ -41,7 +42,8 @@
   ]);
 </script>
 
-<header class="titlebar">
+<!-- The only window bar (WIN-1): drag it to move the window, double-click it to maximise. -->
+<header class="titlebar" data-tauri-drag-region="deep">
   <button type="button" class="mark" title={t("home")} aria-label={t("home")} onclick={onHome}>
     <img src="/brand/{appearance}.png" alt="" width="22" height="22" />
   </button>
@@ -74,6 +76,7 @@
   <button type="button" class="gear" title={t("settings")} aria-label={t("settings")} aria-pressed={settingsOpen} onclick={onSettings}>
     <Icon name="sliders" />
   </button>
+  <WindowControls />
 </header>
 
 <style>
@@ -88,6 +91,11 @@
     background: var(--pv-chrome);
     color: var(--pv-text);
     font-size: var(--pv-text-md);
+  }
+
+  /* The window buttons sit flush with the right edge. */
+  .titlebar :global(.controls) {
+    margin-right: -16px;
   }
 
   .mark {
@@ -158,7 +166,7 @@
 
   .save.problem,
   .error {
-    color: var(--danger);
+    color: var(--pv-danger);
   }
 
   .error {
@@ -188,6 +196,11 @@
   .lang:hover,
   .gear:hover {
     background: var(--pv-selected);
+  }
+
+  .lang:active,
+  .gear:active {
+    background: var(--pv-pressed);
   }
 
   .gear {

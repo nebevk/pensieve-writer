@@ -72,43 +72,47 @@
     align-content: start;
   }
 
+  /* Each chapter is a card of paper: ink colours, and native fields that stay light in every theme. */
   article {
     background: var(--pv-paper);
     color: var(--pv-ink);
-    border-radius: 0;
+    color-scheme: light;
+    border-radius: var(--pv-radius-0);
     box-shadow: var(--pv-shadow-card);
     padding: 0.8rem 0.9rem 1rem;
   }
 
   h2 {
-    font-family: var(--font-writing);
-    font-weight: 500;
+    font-family: var(--pv-writing-font, var(--pv-font-manuscript));
+    font-weight: 400;
     font-size: 1.25rem;
     margin: 0;
   }
 
   p {
     margin: 0.2rem 0 0.6rem;
-    color: var(--muted);
-    font-size: 0.85rem;
+    color: var(--pv-ink-muted);
+    font-size: var(--pv-text-md);
   }
 
   label {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    color: var(--muted);
-    font-size: 0.8rem;
+    color: var(--pv-ink-muted);
+    font-size: var(--pv-text-sm);
     margin-top: 0.45rem;
   }
 
+  input,
   textarea,
   select {
     font: inherit;
-    color: var(--ink);
-    background: var(--desk);
-    border: 1px solid var(--line);
-    border-radius: 6px;
+    font-size: var(--pv-text-base);
+    color: var(--pv-ink);
+    background: var(--pv-ink-chip);
+    border: 0;
+    border-radius: var(--pv-radius-xs);
     padding: 0.35rem 0.45rem;
   }
 </style>

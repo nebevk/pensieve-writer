@@ -33,6 +33,8 @@ export type Project = {
   updatedAt: string;
   language: WritingLanguage;
   kind: ProjectKind;
+  /** Words planned for the whole book; 0 means Home adds up the chapter goals instead. */
+  wordGoal: number;
   chapters: Chapter[];
 };
 
@@ -60,6 +62,7 @@ export function createProject(): Project {
     title: "Untitled",
     language: "en",
     kind: "novel",
+    wordGoal: 0,
     createdAt: now,
     updatedAt: now,
     chapters: [createChapter(projectId, "Chapter 1", 0, now)],
