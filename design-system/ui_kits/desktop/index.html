@@ -2,6 +2,7 @@
 <!DOCTYPE html>
 <html data-theme="daylight"><head><meta charset="utf-8"><title>Pensieve — desktop UI kit</title>
 <link rel="stylesheet" href="../../styles.css">
+<link rel="icon" href="../../assets/brand/favicon.svg" type="image/svg+xml">
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
@@ -23,6 +24,7 @@ PensieveDS.ready.then((P) => {
     const [tools, setTools] = React.useState(false);
     const [settings, setSettings] = React.useState(false);
     const [zen, setZen] = React.useState(false);
+    const [panels, setPanels] = React.useState({ todos: true, notes: true });
     React.useEffect(() => {
       const t = theme === 'sunset' ? (new Date().getHours() >= 19 || new Date().getHours() < 7 ? 'candlelit' : 'daylight') : theme;
       document.documentElement.dataset.theme = t;
@@ -32,13 +34,14 @@ PensieveDS.ready.then((P) => {
     const ambience = { daylight: { icon: 'rain', label: 'Rain' }, candlelit: { icon: 'flame', label: 'Fireplace' }, moonlit: { icon: 'rain', label: 'Night rain' } }[document.documentElement.dataset.theme] || { icon: 'rain', label: 'Rain' };
     const openSettings = () => setSettings(true);
     let body;
-    if (screen === 'home') body = <HomeScreen onOpen={() => { setScreen('project'); setView('Write'); }} onSettings={openSettings} />;
+    const openWrite = () => { setScreen('project'); setView('Write'); };
+    if (screen === 'home') body = <HomeScreen theme={theme} setTheme={setTheme} ambience={ambience} onOpen={openWrite} onZen={() => { openWrite(); setZen(true); }} onSettings={openSettings} onTodos={() => { setScreen('project'); setView('Notes'); setPane('todos'); }} onNotes={() => { setScreen('project'); setView('Notes'); setPane('notes'); }} />;
     else body = (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         {!zen && <TitleBar project="The Lantern House" view={view} onViewChange={setView} onHome={() => setScreen('home')} onSettings={openSettings} />}
-        {!zen && view === 'Write' && <Toolbar expanded={tools} onToggleExpanded={() => setTools(!tools)} active={['bold', 'alignLeft']} />}
+        {!zen && view === 'Write' && <Toolbar expanded={tools} onToggleExpanded={() => setTools(!tools)} active={['bold', 'alignLeft']} panels={{ ...panels, todosCount: 2, notesCount: 3 }} onPanel={(p) => setPanels({ ...panels, [p]: !panels[p] })} />}
         <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-          {view === 'Write' && <WriteScreen zen={zen} onZen={() => setZen(!zen)} ambience={ambience} />}
+          {view === 'Write' && <WriteScreen zen={zen} onZen={() => setZen(!zen)} ambience={ambience} panels={panels} setPanels={setPanels} onOpenNotes={() => { setView('Notes'); setPane('notes'); }} />}
           {view === 'Notes' && (pane === 'notes' ? <NotesScreen pane={pane} setPane={setPane} /> : <TodosScreen pane={pane} setPane={setPane} />)}
           {(view === 'Outline' || view === 'Book') && <PlaceholderScreen name={view} />}
         </div>

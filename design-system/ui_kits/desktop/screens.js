@@ -2,11 +2,14 @@ window.PvScreens = function (P) {
   const D = window.PvData;
   const { ChapterList, Desk, Sheet, Paragraph, FloatingBar, Segmented, SearchField, SectionLabel, SidebarItem, NoteCard, NoteLink, AsideList,
     QuickAdd, BoardColumn, TodoSlip, BrandMark, SavedIndicator, LangBadge, Icon, Stat, ContinueCard, ProjectCard, NewProjectTile, DecorCircles,
-    Button, ThemeSwatch, FontChoice, Slider, Toggle, SettingRow } = P;
+    Button, ThemeSwatch, FontChoice, Slider, Toggle, SettingRow, ChapterPanel, ChecklistItem, NoteMini, ThemeSwitch, ChapterStrip, ProjectRow, HomeSection } = P;
 
-  function WriteScreen({ zen, onZen, ambience }) {
+  function WriteScreen({ zen, onZen, ambience, panels, setPanels, onOpenNotes }) {
     const [ch, setCh] = React.useState(2);
+    const [ptodos, setPtodos] = React.useState(D.panelTodos);
     const page = D.pages[ch];
+    const next = { open: 'doing', doing: 'done', done: 'open' };
+    const showPanel = !zen && (panels.todos || panels.notes);
     return (<>
       {!zen && <ChapterList chapters={D.chapters} activeIndex={ch} onSelect={setCh} />}
       <Desk>
@@ -23,6 +26,11 @@ window.PvScreens = function (P) {
           <FloatingBar ambience={ambience} words={1412} today={340} goal={500} onZen={onZen} zenLabel={zen ? 'Exit Zen' : 'Zen'} />
         </div>
       </Desk>
+      {showPanel && <ChapterPanel chapterLabel={'Chapter ' + (ch + 1)} title={D.chapters[ch].title || 'Untitled'} showTodos={panels.todos} showNotes={panels.notes}
+        todos={ch === 2 ? ptodos : []} notes={ch === 2 ? D.panelNotes : []}
+        onTodoToggle={(i) => setPtodos(ptodos.map((t, j) => j === i ? { ...t, state: next[t.state] } : t))}
+        onAddTodo={(text) => setPtodos([...ptodos, { text, state: 'open' }])}
+        onClose={() => setPanels({ todos: false, notes: false })} onOpenNotes={onOpenNotes} />}
     </>);
   }
 
@@ -98,38 +106,50 @@ window.PvScreens = function (P) {
       <span style={{ fontFamily: 'var(--pv-font-heading)', fontSize: 21, color: 'var(--pv-text)' }}>{name}</span>Not designed yet.</div></Desk>;
   }
 
-  function HomeScreen({ onOpen, onSettings }) {
+  function HomeScreen({ onOpen, onZen, onSettings, theme, setTheme, onTodos, onNotes, ambience }) {
+    const night = theme === 'moonlit' || theme === 'candlelit';
     return (<div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
       <DecorCircles variant="home" />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 40px', height: 60, borderBottom: '1px solid var(--pv-divider)', position: 'relative' }}>
+      <span aria-hidden="true" style={{ position: 'absolute', left: -90, bottom: -110, width: 260, height: 260, borderRadius: '50%', background: 'var(--pv-decor-2)', opacity: 0.45 }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 40px', height: 60, borderBottom: '1px solid var(--pv-divider)', position: 'relative', flex: 'none' }}>
         <BrandMark size={26} withName />
         <div style={{ flex: 1 }} />
         <SavedIndicator size="lg" label="Backed up to Google Drive · 12 min ago" />
-        <span style={{ marginLeft: 12 }}><LangBadge code="EN" size="lg" /></span>
+        <span style={{ width: 1, height: 18, background: 'var(--pv-divider)', margin: '0 6px' }} />
+        <ThemeSwitch value={theme === 'sunset' ? 'daylight' : theme} onChange={setTheme} />
+        <LangBadge code="EN" size="lg" />
         <button type="button" className="pv-reset pv-i" onClick={onSettings} title="Settings" style={{ color: 'var(--pv-text-muted)', padding: 3, borderRadius: 3, display: 'flex' }}><Icon name="settings" size={18} /></button>
       </div>
-      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 460px', gap: 56, padding: '48px 64px 0', minHeight: 0, position: 'relative' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ fontSize: 12, letterSpacing: '.16em', textTransform: 'uppercase', color: 'var(--pv-text-faint)', fontWeight: 600 }}>Thursday, 2 October</div>
-          <div style={{ font: '52px/1.08 var(--pv-font-heading)', maxWidth: 560, textWrap: 'pretty' }}>Good evening. Ana is still in the kitchen.</div>
-          <div style={{ display: 'flex', gap: 40, marginTop: 22, paddingTop: 22, borderTop: '1px solid var(--pv-divider)' }}>
-            <Stat value={340} of={500} label="words today" /><Stat value={9} label="day streak" /><Stat value={6} label="open to-dos" />
-          </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 440px', gap: 56, padding: '36px 64px 0', position: 'relative', flex: 'none' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+          <div style={{ fontSize: 12, letterSpacing: '.16em', textTransform: 'uppercase', color: 'var(--pv-text-faint)', fontWeight: 600 }}>{night ? 'Thursday, 2 October · 23:15' : 'Thursday, 2 October · 18:40'}</div>
+          <div style={{ font: '46px/1.08 var(--pv-font-heading)', maxWidth: 560, textWrap: 'pretty' }}>{night ? 'Late again. The attic is waiting.' : 'Good evening. Ana is still in the kitchen.'}</div>
+          <div style={{ display: 'flex', gap: 40, marginTop: 14 }}><Stat value={340} of={500} label="words today" /><Stat value={9} label="day streak" /><Stat value="48,930" of="80k" label="in the book" /></div>
+          <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--pv-divider)' }}><ChapterStrip book="The Lantern House" chapters={D.chapters} activeIndex={2} onSelect={onOpen} /></div>
         </div>
-        <ContinueCard project="The Lantern House" location="Ch. III · p. 47" previous="…as if they had been waiting in the dark for someone to remember them."
-          current={'"Start with the attic," her mother said from the kitchen, without turning around.'} meta="Grandmother's Keys · edited 2 h ago" onContinue={onOpen} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <ContinueCard height={250} project="The Lantern House" location="Ch. III · p. 47" previous="…as if they had been waiting in the dark for someone to remember them."
+            current={'"Start with the attic," her mother said from the kitchen, without turning around.'} meta="Edited 2 h ago" onContinue={onOpen} onZen={onZen} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--pv-text-subtle)', paddingLeft: 2 }}><Icon name={ambience.icon} size={13} />{ambience.label} will play when you start · <span style={{ color: 'var(--pv-accent)', fontWeight: 600 }}>Change</span></div>
+        </div>
       </div>
-      <div style={{ padding: '0 64px 44px', position: 'relative' }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, paddingBottom: 18, borderBottom: '1px solid var(--pv-divider)', marginBottom: 24 }}>
-          <span style={{ fontFamily: 'var(--pv-font-heading)', fontSize: 21 }}>Projects</span><span style={{ fontSize: 13, color: 'var(--pv-text-faint)' }}>3</span>
-          <div style={{ flex: 1 }} /><Button variant="ghost">+ New project</Button>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 28 }}>
-          <ProjectCard kind="Novel" title="The Lantern House" progress={0.61} stats="48,930 / 80,000" when="Today" stacked onClick={onOpen} />
-          <ProjectCard kind="Kratke zgodbe" title="Zgodbe ob reki" tone="success" progress={0.5} stats="6 of 12 stories · SL" when="Last week" stacked />
-          <ProjectCard kind="Article" title="Why I write by hand first" tone="neutral" progress={1} stats="1,240 words · Final" when="September" />
-          <NewProjectTile />
-        </div>
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 44, padding: '30px 64px 0', position: 'relative', minHeight: 0 }}>
+        <HomeSection title="Open to-dos" count={6} link="All to-dos →" onLink={onTodos}>
+          {D.todos.filter((t) => t.col !== 'done').sort((a, b) => (a.col === 'doing' ? -1 : 0) - (b.col === 'doing' ? -1 : 0)).slice(0, 4).map((t, i) =>
+            <ChecklistItem key={i} truncate padding="6px 0" text={t.text} state={t.col === 'doing' ? 'doing' : 'open'} meta={t.tags.map((g) => g.label).join(' · ')} />)}
+        </HomeSection>
+        <HomeSection title="Recent notes" count={12} link="All notes →" onLink={onNotes}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+            <NoteMini variant="card" kind="Place" title="The attic" meta="Edited today" onClick={onNotes} />
+            <NoteMini variant="card" kind="Character" title="Ana Novak" meta="Yesterday" onClick={onNotes} />
+            <NoteMini variant="card" kind="Research" title="Ljubljana trams, 1950s" meta="Sept" onClick={onNotes} />
+          </div>
+        </HomeSection>
+        <HomeSection title="Projects" count={3} link="+ New">
+          <ProjectRow kind="Novel" title="The Lantern House" lang="EN" status="61%" progress={0.61} stacked onClick={onOpen} />
+          <ProjectRow kind="Kratke zgodbe" title="Zgodbe ob reki" lang="SL" status="6 of 12" progress={0.5} tone="success" stacked />
+          <ProjectRow kind="Article" title="Why I write by hand first" lang="EN" status="Final" progress={1} tone="success" />
+        </HomeSection>
       </div>
     </div>);
   }

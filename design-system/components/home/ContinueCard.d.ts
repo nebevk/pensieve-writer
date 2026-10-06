@@ -10,6 +10,7 @@ export interface ContinueCardProps {
   current: string;
   meta?: string;
   onContinue?: () => void;
+  onZen?: () => void;
   height?: number;
   label?: string;
 }

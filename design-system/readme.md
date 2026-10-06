@@ -2,7 +2,7 @@
 
 Pensieve is a minimalist desktop writing app for long-form work: books split into chapters, notes (characters, places, research) with their own to-dos, a to-do board, Zen mode and per-project writing languages (EN, SL, …). This folder is the design system for building it: tokens, React primitives, specimen cards and a click-through UI kit.
 
-**Source:** `Pensieve Directions.dc.html` in this project, rounds 3 and 4 (3a Daylight, 3b All tools, 3c Candlelit, 3d Settings, 4a Moonlit, 4b Notes, 4c To-dos) plus the Home screen from 2c. Earlier rounds (1a–2b) are superseded. The visual starting point was the Organic design system; Pensieve keeps its warm palette and soft circles (Home and Settings only) and replaces its heavy rounding with paper-and-desk styling.
+**Source:** `Pensieve Directions.dc.html` in this project: rounds 3–6 (3a Daylight, 3b All tools, 3c Candlelit, 3d Settings, 4a Moonlit, 4b Notes, 4c To-dos, 5a/5b Write with the chapter panel, 6a/6b revamped Home). The app icon is option 1a from `Pensieve Icon.dc.html`. Earlier rounds (1a–2b) are superseded. The visual starting point was the Organic design system; Pensieve keeps its warm palette and soft circles (Home and Settings only) and replaces its heavy rounding with paper-and-desk styling.
 
 **Not designed yet:** Outline view, Book view, Zen mode layout, Settings sections other than Appearance. The UI kit shows these as "Not designed yet".
 
@@ -22,14 +22,15 @@ Pensieve is a minimalist desktop writing app for long-form work: books split int
 - `tokens/fonts.css` — Google Fonts import
 - `tokens/base.css` — resets, link colours, interaction-state classes, range slider
 - `components/core` — Icon, Button, Tag, LangBadge, SavedIndicator, BrandMark, DecorCircles
-- `components/chrome` — TitleBar, ViewTabs, Toolbar, ToolButton, ToolDivider, ToolGroup, StyleSelect, FloatingBar
+- `components/chrome` — TitleBar, ViewTabs, Toolbar, ToolButton, ToolDivider, ToolGroup, StyleSelect, PanelToggle, FloatingBar
 - `components/navigation` — ChapterList, ChapterItem, StatusDot, SidebarItem, SectionLabel, AsideList
 - `components/forms` — Segmented, SearchField, Toggle, Slider, Checkbox, FontChoice, ThemeSwatch, SettingRow
 - `components/manuscript` — Desk, Sheet, Paragraph, Caret
-- `components/notes` — NoteCard, NoteLink, TodoItem, TodoSlip, BoardColumn, QuickAdd
-- `components/home` — Stat, ContinueCard, ProjectCard, NewProjectTile
+- `components/notes` — NoteCard, NoteLink, TodoItem, TodoSlip, BoardColumn, QuickAdd, ChecklistItem, NoteMini, ChapterPanel
+- `components/home` — Stat, ContinueCard, ChapterStrip, ThemeSwitch, HomeSection, ProjectRow (current Home); ProjectCard, NewProjectTile (2c Home, kept for a full projects page)
+- `assets/brand/` — app icon per theme, favicon, phoenix mark (SVG). PNG/ICO exports live in `exports/icon/`
 - `guidelines/` — foundation specimen cards (colour, type, spacing, elevation, surfaces)
-- `ui_kits/desktop/` — click-through app: Home → Write (quiet / all tools) → Notes → To-dos, Settings window with live theme switching
+- `ui_kits/desktop/` — click-through app: Home (theme switch, to-dos, notes, projects) → Write with chapter panel (To-dos / Notes toggles) → Notes → To-dos, Settings window with live theme switching
 - `SKILL.md` — agent skill wrapper
 
 ## Content fundamentals
@@ -54,7 +55,7 @@ Pensieve is a minimalist desktop writing app for long-form work: books split int
 - **Elevation:** only paper casts shadow, in three soft layers (`--pv-shadow-sheet`). The next sheet peeks out underneath, offset 5/6px and rotated 0.6°. Dark themes use deeper, neutral black shadows.
 - **Texture:** a faint fractal-noise grain on all paper (`--pv-grain`, toggle in Settings). Dark themes add a vignette to the sheet and a radial lamp glow on the desk behind it (`--pv-glow`).
 - **Decoration:** Organic's soft circles (`DecorCircles`) appear only on Home and Settings. Never behind the manuscript, notes or board.
-- **Layout:** fixed chrome — 34px title bar, 40px toolbar, 232px chapter sidebar (260px for notes), 250px context column. Content centres on the desk. Floating bar is pinned bottom-centre over the desk.
+- **Layout:** fixed chrome — 34px title bar, 40px toolbar, 232px chapter sidebar (260px for notes), 250px context column, 300px chapter panel in Write (to-dos on chrome, notes on a strip of desk). Content centres on the desk. Floating bar is pinned bottom-centre over the desk.
 - **Hover:** background tints to `--pv-selected`; pressed `--pv-pressed`. Solid buttons brighten 8% on hover, darken on press. Tabs darken text on hover. Project cards lift 2px.
 - **Focus:** 2px accent outline, 2px offset. Never the browser default.
 - **Motion:** short and quiet. 120ms colour fades, 180ms lifts and toggles with `cubic-bezier(.2,.7,.2,1)`, 400ms for theme changes. No bounces. Respect reduced motion.
@@ -67,7 +68,8 @@ Pensieve is a minimalist desktop writing app for long-form work: books split int
 - The paths used by the designs are embedded in `components/core/Icon.jsx` (`Icon.names` lists them). For more icons, install `lucide-react` and keep stroke 1.75.
 - Some tools are typographic glyphs, not icons: B, I (Literata italic), U, S, x², “, * *, ¹, [[ ]].
 - No icon font, no PNG icons, no emoji.
-- There is no logo file. The mark is a 3px-rounded square with "P" in Young Serif, inverted per theme (`BrandMark`).
+- App icon and favicon: the phoenix holding a quill (`assets/brand/`). Use the theme-matching app icon; the bird stays terracotta/amber in all themes.
+- Inside the app chrome the small mark is still the "P" square in Young Serif (`BrandMark`), which reads better at 18px.
 
 ## Intentional additions
 

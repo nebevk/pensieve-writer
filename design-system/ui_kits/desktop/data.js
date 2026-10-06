@@ -1,4 +1,14 @@
 window.PvData = {
+  panelTodos: [
+    { text: 'Check 1950s Ljubljana tram routes', state: 'doing', meta: 'From note · Ljubljana trams' },
+    { text: 'Decide which key opens the trunk', state: 'open' },
+    { text: 'Move the funeral to a Tuesday', state: 'done' }
+  ],
+  panelNotes: [
+    { kind: 'Character', title: 'Ana Novak', meta: '22× here', fields: [['Age', '34'], ['Wants', 'To sell the house']], body: ['Notices hinges, locks and old varnish before faces. Keeps ', { link: 'Grandmother Marija' }, "'s letters unopened."] },
+    { kind: 'Character', title: 'Grandmother Marija', meta: '11×' },
+    { kind: 'Character', title: 'Vera, her mother', meta: '4×' }
+  ],
   chapters: [
     { title: 'The Letter', status: 'final', words: '3.2k' },
     { title: 'Fog on the Sava', status: 'final', words: '2.8k' },

@@ -4,6 +4,7 @@ import { ToolButton } from './ToolButton.jsx';
 import { ToolDivider } from './ToolDivider.jsx';
 import { ToolGroup } from './ToolGroup.jsx';
 import { StyleSelect } from './StyleSelect.jsx';
+import { PanelToggle } from './PanelToggle.jsx';
 
 const glyph = {
   bold: <b style={{ fontWeight: 700 }}>B</b>,
@@ -15,7 +16,7 @@ const glyph = {
 };
 
 // Quiet row (default) or the expanded, grouped "All tools" row.
-export function Toolbar({ expanded = false, onToggleExpanded, active = [], onTool, paragraphStyle = 'Normal text', font = 'Literata', size = 17 }) {
+export function Toolbar({ expanded = false, onToggleExpanded, active = [], onTool, paragraphStyle = 'Normal text', font = 'Literata', size = 17, panels, onPanel }) {
   const on = (id) => active.includes(id);
   const tb = (id, props) => <ToolButton key={id} active={on(id)} onClick={() => onTool && onTool(id)} title={props.title || id} {...props} />;
   const bar = { display: 'flex', borderBottom: '1px solid var(--pv-line)', color: 'var(--pv-text-2)', fontFamily: 'var(--pv-font-ui)', flex: 'none', boxSizing: 'border-box' };
@@ -38,6 +39,11 @@ export function Toolbar({ expanded = false, onToggleExpanded, active = [], onToo
         All tools<Icon name="chevronDown" size={11} strokeWidth={2} />
       </button>
       <div style={{ flex: 1 }} />
+      {panels && <>
+        <PanelToggle icon="listTodo" label="To-dos" count={panels.todosCount} active={panels.todos} onClick={() => onPanel && onPanel('todos')} />
+        <PanelToggle icon="newNote" label="Notes" count={panels.notesCount} active={panels.notes} onClick={() => onPanel && onPanel('notes')} />
+        <ToolDivider />
+      </>}
       <ToolButton icon="search" title="Find" style={{ color: 'var(--pv-text-subtle)' }} onClick={() => onTool && onTool('find')} />
     </div>
   );

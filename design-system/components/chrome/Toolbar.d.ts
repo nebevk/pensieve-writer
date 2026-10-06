@@ -12,6 +12,8 @@ export interface ToolbarProps {
   paragraphStyle?: string;
   font?: string;
   size?: number;
+  panels?: { todos?: boolean; notes?: boolean; todosCount?: number; notesCount?: number };
+  onPanel?: (p: 'todos' | 'notes') => void;
 }
 
 export declare function Toolbar(props: ToolbarProps): JSX.Element;
