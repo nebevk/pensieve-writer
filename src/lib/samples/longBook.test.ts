@@ -4,28 +4,28 @@ import { notesInChapter } from "$lib/chapters/mentions";
 import { buildLongBook } from "./longBook";
 
 describe("the long test book", () => {
-  const { project, notes, tasks } = buildLongBook("book", "Long test book", (n) => `Chapter ${n}`);
+  const { writing, notes, tasks } = buildLongBook("project", "Long test book", (n) => `Chapter ${n}`);
 
   it("has about 150,000 words in 15 chapters of about 10,000", () => {
-    const counts = project.chapters.map((chapter) => countWords(chapter.plainText));
+    const counts = writing.chapters.map((chapter) => countWords(chapter.plainText));
     expect(counts).toHaveLength(15);
     for (const words of counts) expect(words).toBeGreaterThanOrEqual(10_000);
     const total = counts.reduce((sum, words) => sum + words, 0);
     expect(total).toBeGreaterThan(150_000);
     expect(total).toBeLessThan(160_000);
-    expect(project.wordGoal).toBe(150_000);
+    expect(writing.wordGoal).toBe(150_000);
   });
 
   it("comes out the same every time", () => {
     const again = buildLongBook("other", "Long test book", (n) => `Chapter ${n}`);
-    expect(again.project.chapters.map((chapter) => chapter.plainText)).toEqual(project.chapters.map((chapter) => chapter.plainText));
+    expect(again.writing.chapters.map((chapter) => chapter.plainText)).toEqual(writing.chapters.map((chapter) => chapter.plainText));
   });
 
   it("has notes the chapters mention and to-dos that point at real chapters and notes", () => {
-    const here = notesInChapter(notes, project.chapters[3]);
+    const here = notesInChapter(notes, writing.chapters[3]);
     expect(here.length).toBeGreaterThanOrEqual(6);
     expect(here[0].count).toBeGreaterThan(50);
-    const chapterIds = new Set(project.chapters.map((chapter) => chapter.id));
+    const chapterIds = new Set(writing.chapters.map((chapter) => chapter.id));
     const noteIds = new Set(notes.map((note) => note.id));
     for (const task of tasks) {
       if (task.chapterId) expect(chapterIds.has(task.chapterId)).toBe(true);

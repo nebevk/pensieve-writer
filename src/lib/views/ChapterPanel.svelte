@@ -2,72 +2,75 @@
   import { tick } from "svelte";
   import Icon from "$lib/editor/Icon.svelte";
   import type { NoteHere } from "$lib/chapters/mentions";
-  import type { Note, NoteCategory, Task } from "$lib/storage/organize";
-  import type { UiKey } from "$lib/i18n";
-  import { plural, t } from "$lib/ui.svelte";
+  import type { Note, Task } from "$lib/storage/organize";
+  import { num, plural, t } from "$lib/ui.svelte";
   import ChecklistItem from "./ChecklistItem.svelte";
-  import NoteMini from "./NoteMini.svelte";
 
   let {
-    chapterLabel,
-    title,
+    list,
     todos,
     notes,
     book,
-    showTodos,
-    showNotes,
     openNoteId = "",
     addFocus = 0,
+    onAddFocused,
     onToggleTodo,
     onAddTodo,
     onShowNote,
     onOpenInNotes,
+    wordsToday = 0,
+    dailyGoal = 0,
+    chapterWords = 0,
+    chapterGoal = 0,
+    onDailyGoal,
+    onChapterGoal,
     onClose,
   }: {
-    chapterLabel: string;
-    title: string;
+    /** The one list the panel shows; the toolbar's To-dos, Notes and Goals buttons switch between them. */
+    list: "todos" | "notes" | "goals";
     /** The open chapter's to-dos. */
     todos: Task[];
     /** The notes the chapter mentions, most mentioned first. */
     notes: NoteHere[];
     /** Every note in the book, for "From note" lines and the links in a note's text. */
     book: Note[];
-    showTodos: boolean;
-    showNotes: boolean;
-    /** The note shown open; the most mentioned one when empty. */
+    /** The note unfolded in the list, or "" when none is. */
     openNoteId?: string;
-    /** Bumps to put the keyboard in the add field. */
+    /** Above 0, the keyboard goes to the add field; then onAddFocused, so it happens once. */
     addFocus?: number;
+    onAddFocused?: () => void;
     onToggleTodo: (task: Task) => void;
     onAddTodo: (text: string) => void;
+    /** Unfolds a note in the list; "" folds it again. */
     onShowNote: (id: string) => void;
     onOpenInNotes: (id: string) => void;
+    /** Words written today, and the day's goal (0 for none). */
+    wordsToday?: number;
+    dailyGoal?: number;
+    /** The open chapter's words, and its goal (0 for none). */
+    chapterWords?: number;
+    chapterGoal?: number;
+    onDailyGoal: (goal: number) => void;
+    onChapterGoal: (goal: number) => void;
+    /** Folds the panel away; the toolbar's buttons bring it back. */
     onClose: () => void;
   } = $props();
 
-  const KINDS: Record<NoteCategory, UiKey> = {
-    characters: "kindCharacter",
-    places: "kindPlace",
-    research: "kindResearch",
-    ideas: "kindNote",
-  };
   // Doing first, then what is left to do, then what is done.
   const ORDER = { doing: 0, todo: 1, done: 2 } as const;
 
   let draft = $state("");
   let addInput = $state<HTMLInputElement | undefined>(undefined);
-  let seenFocus = 0;
 
   const ordered = $derived([...todos].sort((a, b) => ORDER[a.todoState] - ORDER[b.todoState]));
   const open = $derived(todos.filter((task) => task.todoState !== "done").length);
-  const shown = $derived(notes.find((here) => here.note.id === openNoteId) ?? notes[0]);
-  const rest = $derived(notes.filter((here) => here !== shown));
 
   $effect(() => {
-    if (addFocus !== seenFocus) {
-      seenFocus = addFocus;
-      if (addFocus > 0) void tick().then(() => addInput?.focus());
-    }
+    if (addFocus <= 0) return;
+    void tick().then(() => {
+      addInput?.focus();
+      onAddFocused?.();
+    });
   });
 
   function noteTitle(id: string): string {
@@ -78,7 +81,7 @@
     return note.fields.filter((field) => field.key.trim() || field.value.trim()).slice(0, 4);
   }
 
-  /** A note's first paragraph, with its [[links]] as pieces that open the linked note. */
+  /** A note's first paragraph, with its [[links]] as pieces that unfold the linked note. */
   function pieces(text: string): { text: string; link?: Note }[] {
     const first = text.trim().split(/\n\s*\n/)[0] ?? "";
     return first
@@ -92,6 +95,14 @@
       });
   }
 
+  /** A goal as typed: a whole number of words, where a dot only groups thousands, as in "12.000". */
+  function goalFrom(input: HTMLInputElement): number {
+    const goal = Number(input.value.replace(/\D/g, "")) || 0;
+    // The field shows what was kept, also when that is the goal it had.
+    input.value = String(goal);
+    return goal;
+  }
+
   function add(event: SubmitEvent) {
     event.preventDefault();
     const text = draft.trim();
@@ -101,23 +112,48 @@
   }
 </script>
 
-<!-- Beside the page in Write: the open chapter's to-dos, on chrome, and the notes it mentions, on a strip of desk. -->
-<aside class="panel" aria-label={t("chapterPanel")}>
-  <div class="head">
-    <span class="faint">{chapterLabel}</span>
-    <span class="faint" aria-hidden="true">·</span>
-    <span class="name">{title}</span>
-    <button type="button" class="close" title={t("closePanel")} aria-label={t("closePanel")} onclick={onClose}>
-      <Icon name="x" />
+{#snippet heading(title: string, aside: string)}
+  <div class="heading">
+    <h3>{title}</h3>
+    {#if aside}<span class="aside">{aside}</span>{/if}
+    <button type="button" class="close" title={t("hidePanel")} aria-label={t("hidePanel")} onclick={onClose}>
+      <Icon name="panelRightClose" />
     </button>
   </div>
+{/snippet}
 
-  {#if showTodos}
-    <section class="todos" class:alone={!showNotes}>
-      <div class="heading">
-        <h3>{t("todos")}</h3>
-        <span>{plural("openCount", open)}</span>
+<!-- One goal: the words so far, a bar toward the goal, and the goal itself to change. -->
+{#snippet goal(title: string, words: number, target: number, label: string, onSet: (goal: number) => void)}
+  {@const reached = target > 0 && words >= target}
+  <section class="goal" class:reached>
+    <div class="goal-head">
+      <h4>{title}</h4>
+      {#if reached}
+        <span class="aside">{t("goalReached")}</span>
+      {:else if target > 0}
+        <span class="aside">{t("percent", { n: Math.floor((words / target) * 100) })}</span>
+      {/if}
+    </div>
+    {#if target > 0}
+      <p class="words"><b>{num(words)}</b> {plural("wordsOf", target)}</p>
+      <div class="bar" role="progressbar" aria-label={title} aria-valuemin={0} aria-valuemax={target} aria-valuenow={Math.min(words, target)}>
+        <span style:width="{Math.min(100, (words / target) * 100)}%"></span>
       </div>
+    {:else}
+      <p class="words"><b>{plural("words", words)}</b></p>
+    {/if}
+    <label class="target">
+      {label}
+      <input type="number" min="0" step="50" value={target} onchange={(event) => onSet(goalFrom(event.currentTarget))} />
+    </label>
+  </section>
+{/snippet}
+
+<!-- Beside the page in Write: one list at a time, the open chapter's to-dos, the notes it mentions or the word goals. -->
+<aside class="panel" aria-label={t("chapterPanel")}>
+  {#if list === "todos"}
+    {@render heading(t("todos"), plural("openCount", open))}
+    <div class="items">
       {#each ordered as task (task.id)}
         <ChecklistItem
           text={task.title}
@@ -130,49 +166,43 @@
         <span aria-hidden="true">+</span>
         <input bind:this={addInput} bind:value={draft} placeholder={t("addChapterTodo")} aria-label={t("addChapterTodo")} />
       </form>
-    </section>
-  {/if}
-
-  {#if showNotes}
-    <section class="notes">
-      <div class="heading">
-        <h3>{t("notes")}</h3>
-        <span>{t("mentionedHere")}</span>
-      </div>
-      {#if shown}
-        {@const note = shown.note}
-        <article class="open-note">
-          <div class="top">
-            <span class="kind">{t(KINDS[note.category])}</span>
-            <span class="meta">{shown.count > 0 ? t("timesHere", { n: shown.count }) : t("linkedHere")}</span>
+    </div>
+  {:else if list === "goals"}
+    {@render heading(t("wordGoals"), "")}
+    <div class="items goals">
+      {@render goal(t("today"), wordsToday, dailyGoal, t("dailyGoal"), onDailyGoal)}
+      {@render goal(t("thisChapter"), chapterWords, chapterGoal, t("chapterGoal"), onChapterGoal)}
+    </div>
+  {:else}
+    {@render heading(t("notes"), "")}
+    <div class="items">
+      {#each notes as here (here.note.id)}
+        {@const note = here.note}
+        {@const unfolded = note.id === openNoteId}
+        <button type="button" class="row" aria-expanded={unfolded} onclick={() => onShowNote(unfolded ? "" : note.id)}>
+          <span class="name">{note.title}</span>
+          {#if here.count > 0}<span class="times">{t("timesShort", { n: here.count })}</span>{/if}
+        </button>
+        {#if unfolded}
+          <div class="details">
+            {#if fields(note).length > 0}
+              <dl class="fields">
+                {#each fields(note) as field, index (index)}
+                  <dt>{field.key}</dt>
+                  <dd>{field.value}</dd>
+                {/each}
+              </dl>
+            {/if}
+            {#if note.plainText.trim()}
+              <p class="body">{#each pieces(note.plainText) as piece, index (index)}{#if piece.link}{@const target = piece.link}<button type="button" class="link" onclick={() => onShowNote(target.id)}>{piece.text}</button>{:else}{piece.text}{/if}{/each}</p>
+            {/if}
+            <button type="button" class="more" onclick={() => onOpenInNotes(note.id)}>{t("openInNotes")}</button>
           </div>
-          <button type="button" class="title" title={t("openInNotes")} onclick={() => onOpenInNotes(note.id)}>{note.title}</button>
-          {#if fields(note).length > 0}
-            <dl class="fields">
-              {#each fields(note) as field, index (index)}
-                <dt>{field.key}</dt>
-                <dd>{field.value}</dd>
-              {/each}
-            </dl>
-          {/if}
-          {#if note.plainText.trim()}
-            <p class="body">{#each pieces(note.plainText) as piece, index (index)}{#if piece.link}{@const target = piece.link}<button type="button" class="link" onclick={() => onShowNote(target.id)}>{piece.text}</button>{:else}{piece.text}{/if}{/each}</p>
-          {/if}
-        </article>
-        {#each rest as here (here.note.id)}
-          <NoteMini
-            kind={t(KINDS[here.note.category])}
-            title={here.note.title}
-            meta={here.count > 0 ? t("timesShort", { n: here.count }) : t("linkedHere")}
-            onclick={() => onShowNote(here.note.id)}
-          />
-        {/each}
-        <span class="spacer"></span>
-        <button type="button" class="more" onclick={() => onOpenInNotes(note.id)}>{t("openInNotes")}</button>
+        {/if}
       {:else}
         <p class="empty">{t("noNotesHere")}</p>
-      {/if}
-    </section>
+      {/each}
+    </div>
   {/if}
 </aside>
 
@@ -186,29 +216,25 @@
     border-left: 1px solid var(--pv-line);
   }
 
-  .head {
+  .heading {
     display: flex;
     align-items: center;
     gap: 8px;
     flex: none;
-    height: 44px;
-    padding: 0 14px 0 20px;
-    border-bottom: 1px solid var(--pv-line);
-    font-size: var(--pv-text-md);
+    padding: 16px 14px 10px 20px;
   }
 
-  .faint {
-    color: var(--pv-text-faint);
-    white-space: nowrap;
-  }
-
-  .name {
+  .heading h3 {
     flex: 1;
-    min-width: 0;
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    margin: 0;
+    font-family: var(--pv-font-heading);
+    font-size: var(--pv-heading-sm);
+    font-weight: 400;
+  }
+
+  .aside {
+    font-size: var(--pv-text-sm);
+    color: var(--pv-text-faint);
   }
 
   .close {
@@ -221,8 +247,8 @@
   }
 
   .close :global(svg) {
-    width: 13px;
-    height: 13px;
+    width: 15px;
+    height: 15px;
   }
 
   .close:hover {
@@ -233,40 +259,14 @@
     background: var(--pv-pressed);
   }
 
-  .todos {
+  .items {
     display: flex;
     flex-direction: column;
     gap: 1px;
-    flex: none;
-    max-height: 45%;
-    overflow: auto;
-    padding: 16px 12px 6px;
-    border-bottom: 1px solid var(--pv-line);
-  }
-
-  .todos.alone {
     flex: 1;
-    max-height: none;
-    border-bottom: 0;
-  }
-
-  .heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 8px 6px;
-  }
-
-  .heading h3 {
-    margin: 0;
-    font-family: var(--pv-font-heading);
-    font-size: var(--pv-heading-sm);
-    font-weight: 400;
-  }
-
-  .heading span {
-    font-size: var(--pv-text-sm);
-    color: var(--pv-text-faint);
+    min-height: 0;
+    overflow: auto;
+    padding: 0 12px 16px;
   }
 
   .add {
@@ -275,7 +275,7 @@
     gap: 10px;
     flex: none;
     height: 32px;
-    margin: 6px 8px 10px;
+    margin: 6px 8px 0;
     padding: 0 10px;
     border: 1px dashed var(--pv-line-strong);
     border-radius: var(--pv-radius-xs);
@@ -303,75 +303,59 @@
     outline: none;
   }
 
-  .notes {
+  /* A note is one line: its name, and how often the chapter mentions it. */
+  .row {
     display: flex;
-    flex-direction: column;
-    gap: 10px;
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-    padding: 16px 20px;
-    background: var(--pv-desk);
-  }
-
-  .notes .heading {
-    padding: 0;
-  }
-
-  .open-note {
-    display: flex;
-    flex-direction: column;
-    gap: 9px;
+    align-items: baseline;
+    gap: 8px;
     flex: none;
-    padding: 14px 16px 16px;
-    background-color: var(--pv-paper);
-    box-shadow: var(--pv-shadow-sheet);
-    color: var(--pv-ink);
-  }
-
-  :global(:root[data-grain="true"]) .open-note {
-    background-image: var(--pv-grain);
-  }
-
-  .top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-bottom: 8px;
-    border-bottom: 1.5px solid var(--pv-ink-rule-accent);
-  }
-
-  .kind {
-    font-size: 9.5px;
-    font-weight: 600;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--pv-ink-accent);
-  }
-
-  .meta {
-    font-size: var(--pv-text-sm);
-    color: var(--pv-ink-muted);
-  }
-
-  .title {
     border: 0;
-    padding: 0;
+    border-radius: var(--pv-radius-xs);
+    padding: 7px 8px;
     background: transparent;
-    color: inherit;
+    color: var(--pv-text);
+    font-size: var(--pv-text-md);
     text-align: left;
-    font-family: var(--pv-font-heading);
-    font-size: 19px;
   }
 
-  .title:hover {
-    text-decoration: underline;
-    text-decoration-color: var(--pv-ink-link-underline);
+  .row:hover {
+    background: var(--pv-selected);
+  }
+
+  .row:active {
+    background: var(--pv-pressed);
+  }
+
+  .row[aria-expanded="true"] {
+    font-weight: 600;
+  }
+
+  .name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .times {
+    flex: none;
+    font-size: var(--pv-text-sm);
+    font-weight: 400;
+    color: var(--pv-text-faint);
+  }
+
+  .details {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: none;
+    padding: 2px 8px 12px;
   }
 
   .fields {
     display: grid;
-    grid-template-columns: 52px 1fr;
+    grid-template-columns: 56px 1fr;
     row-gap: 4px;
     column-gap: 8px;
     margin: 0;
@@ -379,7 +363,7 @@
   }
 
   .fields dt {
-    color: var(--pv-ink-muted);
+    color: var(--pv-text-faint);
     overflow: hidden;
     text-overflow: ellipsis;
   }
@@ -387,6 +371,7 @@
   .fields dd {
     margin: 0;
     min-width: 0;
+    color: var(--pv-text-2);
   }
 
   .body {
@@ -399,28 +384,17 @@
     font-family: var(--pv-font-manuscript);
     font-size: 13px;
     line-height: 1.6;
-    color: var(--pv-ink-2);
+    color: var(--pv-text-2);
   }
 
   .link {
     border: 0;
     padding: 0;
     background: none;
-    color: var(--pv-ink-accent);
+    color: var(--pv-accent);
     font: inherit;
     text-decoration: underline;
-    text-decoration-color: var(--pv-ink-link-underline);
     text-underline-offset: 2px;
-  }
-
-  .empty {
-    margin: 0;
-    font-size: var(--pv-text-md);
-    color: var(--pv-text-faint);
-  }
-
-  .spacer {
-    flex: 1;
   }
 
   .more {
@@ -429,11 +403,103 @@
     padding: 0;
     background: none;
     color: var(--pv-accent);
-    font-size: var(--pv-text-md);
+    font-size: var(--pv-text-sm);
     font-weight: 600;
   }
 
   .more:hover {
     text-decoration: underline;
+  }
+
+  .empty {
+    margin: 0;
+    padding: 0 8px;
+    font-size: var(--pv-text-md);
+    color: var(--pv-text-faint);
+  }
+
+  .goals {
+    gap: 22px;
+    padding-top: 4px;
+  }
+
+  .goal {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: none;
+    padding: 0 8px;
+  }
+
+  .goal-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .goal h4 {
+    flex: 1;
+    margin: 0;
+    font-size: var(--pv-text-xs);
+    font-weight: 600;
+    letter-spacing: var(--pv-track-eyebrow);
+    text-transform: uppercase;
+    color: var(--pv-text-faint);
+  }
+
+  .goal.reached .aside {
+    color: var(--pv-status-final);
+    font-weight: 600;
+  }
+
+  .words {
+    margin: 0;
+    font-size: var(--pv-text-md);
+    color: var(--pv-text-muted);
+  }
+
+  .words b {
+    font-family: var(--pv-font-heading);
+    font-size: var(--pv-heading-sm);
+    font-weight: 400;
+    color: var(--pv-text);
+  }
+
+  .bar {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--pv-line);
+    overflow: hidden;
+  }
+
+  .bar span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--pv-accent);
+    transition: width var(--pv-dur) var(--pv-ease);
+  }
+
+  .goal.reached .bar span {
+    background: var(--pv-status-final);
+  }
+
+  .target {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: var(--pv-text-md);
+    color: var(--pv-text-muted);
+  }
+
+  .target input {
+    width: 84px;
+    margin-left: auto;
+    padding: 4px 8px;
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-xs);
+    background: var(--pv-field);
+    color: var(--pv-text);
+    text-align: right;
   }
 </style>

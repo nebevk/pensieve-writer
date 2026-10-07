@@ -2,7 +2,8 @@
   import type { ManuscriptFont, PageWidth, Prefs, ThemeName } from "$lib/prefs";
   import type { WritingLanguage } from "$lib/model";
   import type { UiKey } from "$lib/i18n";
-  import { ago, plural, t } from "$lib/ui.svelte";
+  import { ago, num, plural, t } from "$lib/ui.svelte";
+  import { LONG_PAGE_WORDS } from "$lib/chapters/page";
   import Icon from "$lib/editor/Icon.svelte";
 
   let {
@@ -41,6 +42,14 @@
     examplesAdded = false,
     onAddLongBook,
     longBookAdded = false,
+    libraryFolder = "",
+    onChooseLibraryFolder,
+    insideLibrary = true,
+    split = true,
+    writingWords = 0,
+    onSplit,
+    projectTitle = "",
+    wordCopyName = "",
     onClose,
   }: {
     prefs: Prefs;
@@ -82,8 +91,25 @@
     examplesAdded?: boolean;
     onAddLongBook: () => void;
     longBookAdded?: boolean;
+    /** Where projects live, each in its own folder. */
+    libraryFolder?: string;
+    onChooseLibraryFolder: () => void;
+    /** Whether the open project is in the library; one kept elsewhere can be moved in. */
+    insideLibrary?: boolean;
+    /** The open writing's "Split into chapters". */
+    split?: boolean;
+    /** The open writing's words: joining a long one into one page warns that typing will be slower. */
+    writingWords?: number;
+    /** Split into chapters (true) or join into one page (false). */
+    onSplit: (split: boolean) => void;
+    projectTitle?: string;
+    /** The name the Word copy is written under. */
+    wordCopyName?: string;
     onClose: () => void;
   } = $props();
+
+  // Turning "Split into chapters" off joins the chapters, so it asks first.
+  let joinAsked = $state(false);
 
   type Section = "General" | "Writing & goals" | "Appearance" | "Ambience" | "Backup & export" | "Language" | "Shortcuts";
 
@@ -230,16 +256,17 @@
 
           <div class="split">
             <label class="slider">
-              <span>{t("textSize")} <b>{prefs.manuscriptSize} px</b></span>
+              <!-- In points, as Word counts them: 12 pt is Word's usual size. -->
+              <span>{t("textSize")} <b>{num(prefs.manuscriptPt)} pt</b></span>
               <input
                 type="range"
-                min="13"
-                max="24"
-                step="1"
-                value={prefs.manuscriptSize}
-                style:--pv-fill="{((prefs.manuscriptSize - 13) / 11) * 100}%"
+                min="10"
+                max="18"
+                step="0.5"
+                value={prefs.manuscriptPt}
+                style:--pv-fill="{((prefs.manuscriptPt - 10) / 8) * 100}%"
                 oninput={(event) =>
-                  onChange({ manuscriptSize: Number((event.currentTarget as HTMLInputElement).value) })}
+                  onChange({ manuscriptPt: Number((event.currentTarget as HTMLInputElement).value) })}
               />
             </label>
             <div>
@@ -282,6 +309,12 @@
           </div>
         {:else if section === "General"}
           <h2>{t("general")}</h2>
+          <p class="lab">{t("libraryFolder")}</p>
+          <p class="hint">{t("libraryFolderHint")}</p>
+          <p class="path">{libraryFolder}</p>
+          <div class="actions">
+            <button type="button" onclick={onChooseLibraryFolder}>{t("chooseFolderEllipsis")}</button>
+          </div>
           <div class="rows">
             <div class="row last">
               <span>{t("gentleMode")} <em>· {t("gentleModeNote")}</em></span>
@@ -310,6 +343,41 @@
           {/if}
         {:else if section === "Writing & goals"}
           <h2>{t("goals")}</h2>
+          <div class="rows">
+            <div class="row last">
+              <span>{t("splitChapters")} <em>· {bookTitle}</em></span>
+              <button
+                type="button"
+                class="toggle"
+                class:on={split}
+                role="switch"
+                aria-checked={split}
+                aria-label={t("splitChapters")}
+                onclick={() => {
+                  if (split) joinAsked = true;
+                  else onSplit(true);
+                }}
+              >
+                <span></span>
+              </button>
+            </div>
+          </div>
+          <p class="hint">{t("splitChaptersHint")}</p>
+          {#if joinAsked}
+            <div class="offer" role="alert">
+              <p>{t("joinQuestion")}{#if writingWords > LONG_PAGE_WORDS}{" "}{t("joinLong", { words: plural("hasWords", writingWords) })}{/if}</p>
+              <div class="actions">
+                <button
+                  type="button"
+                  onclick={() => {
+                    joinAsked = false;
+                    onSplit(false);
+                  }}>{t("join")}</button
+                >
+                <button type="button" onclick={() => (joinAsked = false)}>{t("cancel")}</button>
+              </div>
+            </div>
+          {/if}
           <label class="field">
             {t("bookGoal")}
             <input
@@ -353,9 +421,11 @@
         {:else if section === "Backup & export"}
           <h2>{t("backup")}</h2>
           <p class="hint">{t("backupHint")}</p>
-          <p class="path">{projectLocation || t("appFolder")}</p>
+          <p class="path">{projectTitle ? `${projectTitle} · ` : ""}{projectLocation || t("appFolder")}</p>
           <div class="actions">
-            <button type="button" onclick={onMoveProject}>{t("moveProject")}</button>
+            {#if !insideLibrary}
+              <button type="button" onclick={onMoveProject}>{t("moveIntoLibrary")}</button>
+            {/if}
             <button type="button" onclick={onExport}>{t("exportWord")}</button>
             <button type="button" onclick={() => onExportText("markdown")}>{t("exportMarkdown")}</button>
             <button type="button" onclick={() => onExportText("plain")}>{t("exportPlain")}</button>
@@ -401,7 +471,7 @@
             </div>
           {/if}
           <p class="lab">{t("wordCopy")}</p>
-          <p class="hint">{t("wordCopyHint", { file: bookTitle || t("untitled") })}</p>
+          <p class="hint">{t("wordCopyHint", { file: wordCopyName || bookTitle || t("untitled") })}</p>
           <p class="path">{prefs.wordCopyFolder || t("noWordCopyFolder")}</p>
           <div class="actions">
             <button type="button" onclick={onChooseWordFolder}>{t("chooseFolderEllipsis")}</button>

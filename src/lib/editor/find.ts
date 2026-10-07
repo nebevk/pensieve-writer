@@ -54,7 +54,8 @@ export function replaceNext(editor: Editor, query: string, replacement: string):
   return true;
 }
 
-export function replaceAll(editor: Editor, query: string, replacement: string): number {
+/** Replaces every match from position `start` on (the whole page by default) and says how many there were. */
+export function replaceAll(editor: Editor, query: string, replacement: string, start = 0): number {
   const needle = query.toLowerCase();
   if (!needle) return 0;
   const matches: { from: number; to: number }[] = [];
@@ -63,7 +64,7 @@ export function replaceAll(editor: Editor, query: string, replacement: string): 
     const text = node.text.toLowerCase();
     let index = text.indexOf(needle);
     while (index !== -1) {
-      matches.push({ from: pos + index, to: pos + index + needle.length });
+      if (pos + index >= start) matches.push({ from: pos + index, to: pos + index + needle.length });
       index = text.indexOf(needle, index + needle.length);
     }
   });

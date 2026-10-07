@@ -68,17 +68,13 @@ function parseDoc(raw: string): DocumentJson {
   return emptyDocument();
 }
 
-export async function readNotesWith(db: Database, projectId: string): Promise<Note[]> {
+/** Every note in the file: a file is one project, and all its notes are the project's. */
+export async function readNotesWith(db: Database): Promise<Note[]> {
   const rows = await db.select<NoteRow[]>(
     `SELECT id, project_id, title, content_json, plain_text, category, tags, todo_state, fields_json, aliases, created_at, updated_at
-     FROM notes WHERE project_id = $1 ORDER BY updated_at DESC`,
-    [projectId],
+     FROM notes ORDER BY updated_at DESC`,
   );
-  const links = await db.select<{ note_id: string; chapter_id: string }[]>(
-    `SELECT note_id, chapter_id FROM note_chapters
-     WHERE note_id IN (SELECT id FROM notes WHERE project_id = $1)`,
-    [projectId],
-  );
+  const links = await db.select<{ note_id: string; chapter_id: string }[]>(`SELECT note_id, chapter_id FROM note_chapters`);
   return rows.map((row) => ({
     id: row.id,
     projectId: row.project_id,
@@ -135,11 +131,10 @@ export async function writeNoteWith(db: Database, note: Note): Promise<void> {
   }
 }
 
-export async function readTasksWith(db: Database, projectId: string): Promise<Task[]> {
+/** Every to-do in the file, the project's. */
+export async function readTasksWith(db: Database): Promise<Task[]> {
   const rows = await db.select<TaskRow[]>(
-    `SELECT id, project_id, title, todo_state, updated_at, chapter_id, note_id FROM tasks
-     WHERE project_id = $1 ORDER BY updated_at DESC`,
-    [projectId],
+    `SELECT id, project_id, title, todo_state, updated_at, chapter_id, note_id FROM tasks ORDER BY updated_at DESC`,
   );
   return rows.map((row) => ({
     id: row.id,

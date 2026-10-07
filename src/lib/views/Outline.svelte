@@ -21,7 +21,7 @@
         {t("part")}
         <input
           value={chapter.part}
-          onchange={(event) => onUpdate(chapter.id, { part: (event.currentTarget as HTMLInputElement).value })}
+          onchange={(event) => onUpdate(chapter.id, { part: (event.currentTarget as HTMLInputElement).value.trim() })}
         />
       </label>
       <label>

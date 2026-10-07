@@ -1,7 +1,7 @@
 import type { DocumentJson } from "$lib/model";
 import { createSaveQueue } from "$lib/save/queue";
 import { readNotesWith, readTasksWith, writeNoteWith, writeTaskWith } from "./noteRows";
-import { withDb } from "./sqlite";
+import { withDb, withProjectDb } from "./sqlite";
 import { t } from "$lib/ui.svelte";
 
 export type TodoState = "todo" | "doing" | "done";
@@ -32,7 +32,7 @@ export type Task = {
   title: string;
   todoState: TodoState;
   updatedAt: string;
-  /** Empty means the to-do belongs to the whole book. */
+  /** Empty means the to-do belongs to the whole project. */
   chapterId: string;
   /** Empty means the to-do was not written on a note. */
   noteId: string;
@@ -52,12 +52,21 @@ const saves = createSaveQueue<Change>({
   delayMs: 800,
   key: (change) =>
     change.kind === "note" ? `note:${change.note.id}` : `task:${change.kind === "task" ? change.task.id : change.id}`,
-  save: (change) =>
-    withDb(async (db) => {
-      if (change.kind === "note") await writeNoteWith(db, change.note);
-      else if (change.kind === "task") await writeTaskWith(db, change.task);
-      else await db.execute(`DELETE FROM tasks WHERE id = $1`, [change.id]);
-    }),
+  save: async (change) => {
+    try {
+      if (change.kind === "note") await withProjectDb(change.note.projectId, (db) => writeNoteWith(db, change.note));
+      else if (change.kind === "task") await withProjectDb(change.task.projectId, (db) => writeTaskWith(db, change.task));
+      else await withDb((db) => db.execute(`DELETE FROM tasks WHERE id = $1`, [change.id]));
+    } catch (error) {
+      // A change for a project that isn't open any more is said once and let go: kept, it would wait
+      // forever and hold up every switch, backup and close behind it.
+      if (error instanceof Error && error.message === t("errOtherProject")) {
+        saveError?.(error.message);
+        return;
+      }
+      throw error;
+    }
+  },
   onError: (error) => {
     saveError?.(error instanceof Error ? error.message : t("notesSaveFailed"));
   },
@@ -66,14 +75,16 @@ const saves = createSaveQueue<Change>({
 /** Lists read what was last typed, not what happened to be saved: pending writes go first. */
 const settled = () => saves.flush().catch(() => undefined);
 
-export async function listNotes(projectId: string): Promise<Note[]> {
+/** The open project's notes. */
+export async function listNotes(): Promise<Note[]> {
   await settled();
-  return withDb((db) => readNotesWith(db, projectId));
+  return withDb((db) => readNotesWith(db));
 }
 
-export async function listTasks(projectId: string): Promise<Task[]> {
+/** The open project's to-dos. */
+export async function listTasks(): Promise<Task[]> {
   await settled();
-  return withDb((db) => readTasksWith(db, projectId));
+  return withDb((db) => readTasksWith(db));
 }
 
 /** Saves a note now, for a click such as a new note or a to-do state; typing uses scheduleNoteSave. */

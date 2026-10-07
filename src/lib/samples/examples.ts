@@ -1,10 +1,10 @@
-import type { Chapter, ChapterStatus, DocumentJson, Project, ProjectKind, WritingLanguage } from "$lib/model";
+import type { Chapter, ChapterStatus, DocumentJson, Writing, WritingLanguage } from "$lib/model";
 import type { Note, NoteCategory, NoteField, Task, TodoState } from "$lib/storage/organize";
 
 /**
- * Example books, one of each kind, so every screen has something to show: chapters in every
- * status, parts and goals, notes of every kind with [[links]], and to-dos in every state.
- * The novel follows the design system's sample story.
+ * Example projects, so every screen has something to show: a novel in parts and an article in one
+ * project, a story collection in Slovenian in another, chapters in every status, goals, notes of every
+ * kind with [[links]], and to-dos in every state. The novel follows the design system's sample story.
  */
 
 type ExampleChapter = {
@@ -37,16 +37,27 @@ type ExampleNote = {
 
 type ExampleTask = { title: string; state: TodoState; chapter?: string; note?: string };
 
+/** One writing of an example project, with the notes and to-dos written for it. */
 export type ExampleBook = {
   slug: string;
   title: string;
-  kind: ProjectKind;
+  /** "Split into chapters"; off, the writing is one page. */
+  split: boolean;
   language: WritingLanguage;
-  /** Words planned for the book; 0 means none. */
+  /** Words planned for the writing; 0 means none. */
   wordGoal?: number;
+  /** The folder it sits in inside its project; none when empty. */
+  folder?: string;
   chapters: ExampleChapter[];
   notes: ExampleNote[];
   tasks: ExampleTask[];
+};
+
+/** An example project: its own folder in the library, holding its writings. */
+export type ExampleProject = {
+  slug: string;
+  title: string;
+  books: ExampleBook[];
 };
 
 type JsonMark = { type: string; attrs?: Record<string, unknown> };
@@ -112,7 +123,7 @@ export const EXAMPLE_BOOKS: ExampleBook[] = [
   {
     slug: "the-lantern-house",
     title: "The Lantern House",
-    kind: "novel",
+    split: true,
     language: "en",
     wordGoal: 80000,
     chapters: [
@@ -267,7 +278,7 @@ export const EXAMPLE_BOOKS: ExampleBook[] = [
   {
     slug: "zgodbe-ob-reki",
     title: "Zgodbe ob reki",
-    kind: "stories",
+    split: true,
     language: "sl",
     chapters: [
       {
@@ -358,7 +369,8 @@ export const EXAMPLE_BOOKS: ExampleBook[] = [
   {
     slug: "why-i-write-by-hand-first",
     title: "Why I write by hand first",
-    kind: "article",
+    split: false,
+    folder: "Published",
     language: "en",
     chapters: [
       {
@@ -398,12 +410,38 @@ export const EXAMPLE_BOOKS: ExampleBook[] = [
   },
 ];
 
-/** The book, notes and to-dos for an example, ready to save into a book file whose project id is `projectId`. */
+/** The example projects: The Lantern series holds the novel and the article; Zgodbe ob reki stands alone. */
+export const EXAMPLE_PROJECTS: ExampleProject[] = [
+  { slug: "the-lantern-series", title: "The Lantern series", books: [EXAMPLE_BOOKS[0], EXAMPLE_BOOKS[2]] },
+  { slug: "zgodbe-ob-reki", title: "Zgodbe ob reki", books: [EXAMPLE_BOOKS[1]] },
+];
+
+/** An example's writing, and the folder it goes in inside its project. */
+export type BuiltWriting = { writing: Writing; folder: string };
+
+/**
+ * An example project's writings, notes and to-dos, ready to save into its file, whose notes and
+ * to-dos are kept under `projectId`. Each writing's notes and to-dos link to its own chapters.
+ */
 export function buildExample(
-  example: ExampleBook,
+  example: ExampleProject,
   projectId: string,
   now = new Date().toISOString(),
-): { project: Project; notes: Note[]; tasks: Task[] } {
+): { writings: BuiltWriting[]; notes: Note[]; tasks: Task[] } {
+  const writings: BuiltWriting[] = [];
+  const notes: Note[] = [];
+  const tasks: Task[] = [];
+  for (const book of example.books) {
+    const built = buildBook(book, projectId, now);
+    writings.push({ writing: built.writing, folder: book.folder ?? "" });
+    notes.push(...built.notes);
+    tasks.push(...built.tasks);
+  }
+  return { writings, notes, tasks };
+}
+
+function buildBook(example: ExampleBook, projectId: string, now: string): { writing: Writing; notes: Note[]; tasks: Task[] } {
+  const writingId = crypto.randomUUID();
   const chapterIds = new Map(example.chapters.map((chapter) => [chapter.key, crypto.randomUUID()]));
   const noteIds = new Map(example.notes.map((note) => [note.key, crypto.randomUUID()]));
   const noteByTitle = new Map(example.notes.map((note) => [note.title.toLowerCase(), noteIds.get(note.key)!]));
@@ -411,7 +449,7 @@ export function buildExample(
     const contentJson = prose(chapter.lines, (title) => noteByTitle.get(title.toLowerCase()));
     return {
       id: chapterIds.get(chapter.key)!,
-      projectId,
+      writingId,
       title: chapter.title,
       position,
       contentJson,
@@ -451,15 +489,15 @@ export function buildExample(
     chapterId: task.chapter ? (chapterIds.get(task.chapter) ?? "") : "",
     noteId: task.note ? (noteIds.get(task.note) ?? "") : "",
   }));
-  const project: Project = {
-    id: projectId,
+  const writing: Writing = {
+    id: writingId,
     title: example.title,
-    kind: example.kind,
+    split: example.split,
     language: example.language,
     wordGoal: example.wordGoal ?? 0,
     createdAt: now,
     updatedAt: now,
     chapters,
   };
-  return { project, notes, tasks };
+  return { writing, notes, tasks };
 }

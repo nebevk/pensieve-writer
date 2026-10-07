@@ -1,4 +1,4 @@
-import type { DocumentJson, Project } from "$lib/model";
+import type { DocumentJson, Writing } from "$lib/model";
 import type { ManuscriptFont, Prefs } from "$lib/prefs";
 // Types only: the writer and its docx library load on the first export, not at startup.
 import type { FontFace, WordFont, WordImage, WordLook } from "./word";
@@ -20,10 +20,10 @@ const FACES: [FontFace, string][] = [
   ["boldItalic", "BoldItalic"],
 ];
 
-export function wordLook(prefs: Pick<Prefs, "manuscriptFont" | "manuscriptSize" | "pageWidth" | "runningHead">): WordLook {
+export function wordLook(prefs: Pick<Prefs, "manuscriptFont" | "manuscriptPt" | "pageWidth" | "runningHead">): WordLook {
   return {
     font: FAMILIES[prefs.manuscriptFont].name,
-    sizePx: prefs.manuscriptSize,
+    sizePt: prefs.manuscriptPt,
     pageWidth: prefs.pageWidth,
     runningHead: prefs.runningHead,
   };
@@ -96,8 +96,8 @@ async function wordImage(src: string): Promise<WordImage | null> {
 
 /** The book as a Word file, laid out like the page in Pensieve. */
 export async function wordFileFor(
-  project: Pick<Project, "title" | "kind" | "language" | "chapters">,
-  prefs: Pick<Prefs, "manuscriptFont" | "manuscriptSize" | "pageWidth" | "runningHead">,
+  project: Pick<Writing, "title" | "split" | "language" | "chapters">,
+  prefs: Pick<Prefs, "manuscriptFont" | "manuscriptPt" | "pageWidth" | "runningHead">,
 ): Promise<Uint8Array> {
   const { wordFile } = await import("./word");
   const sources = new Set<string>();

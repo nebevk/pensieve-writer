@@ -48,7 +48,7 @@
   },
   "plugins": {
     "sql": {
-      "preload": ["sqlite:pensieve.db"]
+      "preload": []
     }
   }
 }

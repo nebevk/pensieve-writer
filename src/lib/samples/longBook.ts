@@ -1,4 +1,4 @@
-import type { Chapter, ChapterStatus, DocumentJson, Project } from "$lib/model";
+import type { Chapter, ChapterStatus, DocumentJson, Writing } from "$lib/model";
 import type { Note, NoteCategory, Task, TodoState } from "$lib/storage/organize";
 import { proseText } from "./examples";
 
@@ -92,19 +92,20 @@ function statusOf(index: number): ChapterStatus {
   return index < 5 ? "final" : index < 10 ? "revised" : "draft";
 }
 
-/** The long book, its notes and its to-dos, for a book file whose project id is `projectId`. */
+/** The long book as a writing, with its notes and to-dos, for a project whose notes are kept under `projectId`. */
 export function buildLongBook(
   projectId: string,
   title: string,
   chapterName: (n: number) => string,
   now = new Date().toISOString(),
-): { project: Project; notes: Note[]; tasks: Task[] } {
+): { writing: Writing; notes: Note[]; tasks: Task[] } {
+  const writingId = crypto.randomUUID();
   const parts = ["Part One", "Part Two", "Part Three"];
   const chapters: Chapter[] = Array.from({ length: CHAPTERS }, (_, index) => {
     const contentJson = chapterDocument(index);
     return {
       id: crypto.randomUUID(),
-      projectId,
+      writingId,
       title: chapterName(index + 1),
       position: index,
       contentJson,
@@ -143,10 +144,10 @@ export function buildLongBook(
     noteId: index % 3 === 0 ? notes[index % notes.length].id : "",
   }));
   return {
-    project: {
-      id: projectId,
+    writing: {
+      id: writingId,
       title,
-      kind: "novel",
+      split: true,
       language: "en",
       wordGoal: CHAPTERS * WORDS_PER_CHAPTER,
       createdAt: now,

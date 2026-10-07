@@ -1,0 +1,830 @@
+<script lang="ts">
+  import type { Snippet } from "svelte";
+  import type { WritingOutline } from "$lib/model";
+  import type { NoteCategory } from "$lib/storage/organize";
+  import { compactWords } from "$lib/editor/counts";
+  import { collator, isInside, projectFile, projectFiles, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "./library";
+  import { answered, isOpen, setOpen } from "./treeState.svelte";
+  import { LONG_PAGE_WORDS } from "./page";
+  import TreeMenu, { type MenuItem } from "./TreeMenu.svelte";
+  import { locale, plural, t } from "$lib/ui.svelte";
+  import type { UiKey } from "$lib/i18n";
+  import Icon from "$lib/editor/Icon.svelte";
+
+  let {
+    library,
+    actions,
+    chapterRows,
+    createRequest = null,
+    writingId,
+    writingTitle,
+    writingSplit,
+    writingWords,
+  }: {
+    library: LibraryView;
+    actions: LibraryActions;
+    /** The open writing as it is now: its title and split as they change, and its words as she types. */
+    writingId: string;
+    writingTitle: string;
+    writingSplit: boolean;
+    writingWords: number;
+    /** The open writing's chapters, drawn at the depth given; a one-page writing has none to draw. */
+    chapterRows?: Snippet<[number | null]>;
+    /** The header's "New writing" or "New project", by the time it was asked. */
+    createRequest?: { kind: "writing" | "project"; at: number } | null;
+  } = $props();
+
+  type Kind =
+    | "folder"
+    | "project"
+    | "wfolder"
+    | "writing"
+    | "chapters"
+    | "part"
+    | "chapter"
+    | "notes"
+    | "group"
+    | "note"
+    | "todos"
+    | "deleted"
+    | "elsewhere"
+    | "input";
+
+  /** One line of the tree. */
+  type Row = {
+    key: string;
+    depth: number;
+    kind: Kind;
+    name: string;
+    icon: string;
+    expandable: boolean;
+    open: boolean;
+    current?: boolean;
+    /** Words, or a count of notes or to-dos, shown at the right. */
+    words?: number;
+    count?: number;
+    /** Words counted as she types, drawn apart so the rows aren't made again at every word: the open writing's, or its project's. */
+    live?: "writing" | "project";
+    /** A library folder's path, or a project's file. */
+    path?: string;
+    /** A writing's, chapter's or note's id. */
+    id?: string;
+    writingId?: string;
+    number?: number;
+    deleted?: boolean;
+    category?: NoteCategory;
+    split?: boolean;
+    folder?: string;
+  };
+
+  /** A name being typed in the tree: for something new, or for a new name. */
+  type Editing = {
+    mode: "new" | "rename";
+    what: "project" | "libraryFolder" | "writing" | "writingFolder" | "note";
+    /** The row it opens under (new) or replaces (rename). */
+    key: string;
+    /** For something new: the library folder or writing folder it goes in. For a rename: what is renamed. */
+    target: string;
+    category?: NoteCategory;
+    value: string;
+    error: string;
+  };
+
+  const GROUPS: { id: NoteCategory; key: UiKey; icon: string }[] = [
+    { id: "characters", key: "groupCharacters", icon: "users" },
+    { id: "places", key: "groupPlaces", icon: "mapPin" },
+    { id: "research", key: "groupResearch", icon: "search" },
+    { id: "ideas", key: "groupIdeas", icon: "lightbulb" },
+  ];
+
+  /** How many folders deep the library is listed (DEPTH in library.rs). */
+  const LISTED_DEPTH = 6;
+
+  let editing = $state<Editing | null>(null);
+  let committing = false;
+  let menu = $state<{ x: number; y: number; items: MenuItem[]; back: HTMLElement | null } | null>(null);
+  let tree = $state<HTMLDivElement | undefined>(undefined);
+
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  const currentFile = $derived(library.currentPath);
+  const openProjectRow = $derived(`project:${currentFile.toLowerCase()}`);
+  // Sorted once for each new listing, not again for every change in the rows.
+  const entries = $derived(sortEntries(library.entries, locale()));
+  const listed = $derived(new Set(projectFiles(library.entries).map((file) => file.toLowerCase())));
+  // The open project's words apart from the open writing's, which are added as she types.
+  const otherWords = $derived(
+    (library.shelf?.writings ?? [])
+      .filter((item) => !item.deletedAt && item.id !== writingId)
+      .reduce((sum, item) => sum + item.chapters.reduce((total, chapter) => total + chapter.words, 0), 0),
+  );
+
+  // A name to type for something new, asked for by the header or by Home, once.
+  $effect(() => {
+    const asked = createRequest;
+    if (!asked || asked.at <= answered.header) return;
+    answered.header = asked.at;
+    if (asked.kind === "project") startNew("project", "root", library.root);
+    else startNew("writing", openProjectRow, "");
+  });
+  $effect(() => {
+    const asked = library.create;
+    if (!asked || asked.at <= answered.home) return;
+    answered.home = asked.at;
+    startNew("project", "root", asked.parent || library.root);
+  });
+
+  const rows = $derived.by(() => {
+    const list: Row[] = [];
+    const known = library.known;
+    const shelf = library.shelf;
+    const order = collator(locale());
+
+    const pushInput = (key: string, depth: number) => {
+      const edit = editing;
+      if (!edit || edit.mode !== "new" || edit.key !== key) return;
+      const icon =
+        edit.what === "project" ? "library" : edit.what === "writing" ? "book" : edit.what === "note" ? "notes" : edit.what === "writingFolder" ? "layers" : "folder";
+      list.push({ key: `input:${key}`, depth, kind: "input", name: "", icon, expandable: false, open: false });
+    };
+    const renamed = (key: string, depth: number, icon: string): boolean => {
+      const edit = editing;
+      if (!edit || edit.mode !== "rename" || edit.key !== key) return false;
+      list.push({ key: `input:${key}`, depth, kind: "input", name: "", icon, expandable: false, open: false });
+      return true;
+    };
+
+    const pushOutline = (outline: WritingOutline, depth: number) => {
+      // Chapters in the part they are read in: the last one begun before them, as in Word.
+      let lastPart = "";
+      let group = "";
+      let groupOpen = true;
+      const ordered = [...outline.chapters].sort((a, b) => a.position - b.position);
+      ordered.forEach((chapter, index) => {
+        const part = chapter.part.trim();
+        if (part && part !== lastPart) {
+          const key = `part:${outline.id}:${index}:${part}`;
+          groupOpen = isOpen(key, true);
+          list.push({ key, depth, kind: "part", name: part, icon: "bookmark", expandable: true, open: groupOpen });
+        }
+        lastPart = part;
+        if (part) group = part;
+        if (group && !groupOpen) return;
+        list.push({
+          key: `oc:${chapter.id}`,
+          depth: depth + (group ? 1 : 0),
+          kind: "chapter",
+          name: chapter.title,
+          icon: "",
+          expandable: false,
+          open: false,
+          id: chapter.id,
+          writingId: outline.id,
+          number: index + 1,
+          words: chapter.words,
+        });
+      });
+    };
+
+    const pushWriting = (outline: WritingOutline, depth: number, deleted = false) => {
+      const current = outline.id === writingId;
+      const title = current ? writingTitle : outline.title;
+      const split = current ? writingSplit : outline.split;
+      const key = `writing:${outline.id}`;
+      const icon = !split ? "fileText" : current ? "bookOpen" : "book";
+      if (renamed(key, depth, icon)) return;
+      const unfolds = !deleted && split && (current || outline.chapters.length > 0);
+      const open = unfolds && isOpen(key, current);
+      list.push({
+        key,
+        depth,
+        kind: "writing",
+        name: title,
+        icon,
+        expandable: unfolds,
+        open,
+        current,
+        id: outline.id,
+        path: currentFile,
+        words: current ? undefined : outline.chapters.reduce((sum, chapter) => sum + chapter.words, 0),
+        live: current ? "writing" : undefined,
+        deleted,
+        split,
+        folder: outline.folder,
+      });
+      if (!open) return;
+      if (current) list.push({ key: `chapters:${outline.id}`, depth: depth + 1, kind: "chapters", name: "", icon: "", expandable: false, open: false });
+      else pushOutline(outline, depth + 1);
+    };
+
+    const pushShelf = (depth: number) => {
+      if (!shelf) return;
+      pushInput(openProjectRow, depth);
+      const live = shelf.writings.filter((item) => !item.deletedAt);
+      for (const folder of shelf.folders) {
+        const key = `wf:${folder}`;
+        if (renamed(key, depth, "layers")) continue;
+        const inside = live.filter((item) => item.folder === folder);
+        const open = isOpen(key, true);
+        list.push({ key, depth, kind: "wfolder", name: folder, icon: "layers", expandable: true, open, count: inside.length, folder });
+        if (!open) continue;
+        pushInput(key, depth + 1);
+        for (const item of inside) pushWriting(item, depth + 1);
+      }
+      for (const item of live.filter((entry) => !entry.folder || !shelf.folders.includes(entry.folder))) pushWriting(item, depth);
+
+      const notesOpen = isOpen("notes", false);
+      list.push({ key: "notes", depth, kind: "notes", name: t("notes"), icon: "notebook", expandable: true, open: notesOpen, count: library.notes.length });
+      if (notesOpen) {
+        pushInput("notes", depth + 1);
+        for (const group of GROUPS) {
+          const key = `group:${group.id}`;
+          const inGroup = library.notes.filter((note) => note.category === group.id).sort((a, b) => order.compare(a.title, b.title));
+          const open = isOpen(key, true);
+          list.push({ key, depth: depth + 1, kind: "group", name: t(group.key), icon: group.icon, expandable: inGroup.length > 0, open, count: inGroup.length, category: group.id });
+          pushInput(key, depth + 2);
+          if (!open) continue;
+          for (const note of inGroup) {
+            const noteKey = `note:${note.id}`;
+            if (renamed(noteKey, depth + 2, "notes")) continue;
+            list.push({ key: noteKey, depth: depth + 2, kind: "note", name: note.title, icon: "notes", expandable: false, open: false, id: note.id, category: note.category });
+          }
+        }
+      }
+      list.push({ key: "todos", depth, kind: "todos", name: t("todos"), icon: "todos", expandable: false, open: false, count: library.openTodos });
+
+      const deleted = shelf.writings.filter((item) => item.deletedAt);
+      if (deleted.length > 0) {
+        const open = isOpen("deleted", false);
+        list.push({ key: "deleted", depth, kind: "deleted", name: t("deletedFolder"), icon: "trash", expandable: true, open, count: deleted.length });
+        if (open) for (const item of deleted) pushWriting(item, depth + 1, true);
+      }
+    };
+
+    const pushProject = (file: string, name: string, depth: number) => {
+      const key = `project:${file.toLowerCase()}`;
+      if (same(file, currentFile) && shelf) {
+        const open = isOpen(key, true);
+        list.push({ key, depth, kind: "project", name: name || shelf.title, icon: "library", expandable: true, open, current: true, path: file, live: "project" });
+        if (open) pushShelf(depth + 1);
+        return;
+      }
+      const summary = known.find((item) => same(item.path, file))?.summary;
+      const writings = summary?.writings ?? [];
+      const open = writings.length > 0 && isOpen(key, false);
+      list.push({ key, depth, kind: "project", name, icon: "library", expandable: writings.length > 0, open, path: file, words: summary?.words });
+      if (!open) return;
+      for (const item of writings) {
+        list.push({
+          key: `cw:${file.toLowerCase()}:${item.id}`,
+          depth: depth + 1,
+          kind: "writing",
+          name: item.title,
+          icon: item.split ? "book" : "fileText",
+          expandable: false,
+          open: false,
+          id: item.id,
+          path: file,
+          words: item.words,
+          split: item.split,
+        });
+      }
+    };
+
+    const walk = (entries: LibraryEntry[], depth: number) => {
+      for (const folder of entries.filter((entry) => !entry.project)) {
+        const key = `dir:${folder.path.toLowerCase()}`;
+        const open = isOpen(key, true);
+        list.push({ key, depth, kind: "folder", name: folder.name, icon: open ? "folderOpen" : "folder", expandable: true, open, path: folder.path });
+        if (!open) continue;
+        pushInput(key, depth + 1);
+        walk(folder.children, depth + 1);
+      }
+      for (const project of entries.filter((entry) => entry.project)) pushProject(projectFile(project.path), project.name, depth);
+    };
+
+    pushInput("root", 0);
+    walk(entries, 0);
+
+    // Projects kept outside the library: opened from elsewhere, or from before the library. The open
+    // project is always somewhere: here, when the library's listing doesn't have it (yet).
+    const inLibrary = (file: string) => !!library.root && isInside(file, library.root);
+    const elsewhere = known.filter((item) => !inLibrary(item.path));
+    if (currentFile && !listed.has(currentFile.toLowerCase()) && !elsewhere.some((item) => same(item.path, currentFile))) {
+      elsewhere.unshift({ path: currentFile, title: shelf?.title ?? "" });
+    }
+    if (elsewhere.length > 0) {
+      const open = isOpen("elsewhere", true);
+      list.push({ key: "elsewhere", depth: 0, kind: "elsewhere", name: t("elsewhere"), icon: open ? "folderOpen" : "folder", expandable: true, open });
+      if (open) for (const item of elsewhere) pushProject(item.path, item.title || shelf?.title || "", 1);
+    }
+    return list;
+  });
+
+  function toggle(row: Row) {
+    if (row.expandable) setOpen(row.key, !row.open);
+  }
+
+  function activate(row: Row, element: HTMLElement) {
+    if (row.kind === "folder" || row.kind === "wfolder" || row.kind === "notes" || row.kind === "group" || row.kind === "deleted" || row.kind === "elsewhere" || row.kind === "part") {
+      toggle(row);
+    } else if (row.kind === "project") {
+      if (row.current) toggle(row);
+      else if (row.path) actions.openProject(row.path);
+    } else if (row.kind === "writing") {
+      if (row.deleted) openMenu(row, element);
+      else if (row.current) toggle(row);
+      else if (row.path && row.id) actions.openWriting(row.path, row.id);
+    } else if (row.kind === "chapter") {
+      if (row.writingId && row.id) actions.openWriting(currentFile, row.writingId, row.id);
+    } else if (row.kind === "note") {
+      if (row.id) actions.openNote(row.id);
+    } else if (row.kind === "todos") {
+      actions.openTodos();
+    }
+  }
+
+  function startNew(what: Editing["what"], key: string, target: string, category?: NoteCategory) {
+    // Something new in the open project: the rows down to it unfold, so its name can be typed where it will be.
+    if (what === "writing" || what === "writingFolder" || what === "note") revealOpenProject();
+    if (key !== "root") setOpen(key, true);
+    if (what === "note") setOpen("notes", true);
+    editing = { mode: "new", what, key, target, category, value: "", error: "" };
+  }
+
+  /** Unfolds the library folders that hold the open project, and the project itself. */
+  function revealOpenProject() {
+    const walk = (entries: LibraryEntry[]) => {
+      for (const entry of entries) {
+        if (entry.project || !isInside(currentFile, entry.path)) continue;
+        setOpen(`dir:${entry.path.toLowerCase()}`, true);
+        walk(entry.children);
+      }
+    };
+    walk(library.entries);
+    setOpen("elsewhere", true);
+    setOpen(openProjectRow, true);
+  }
+
+  function startRename(row: Row) {
+    if (row.kind === "writing" && row.id && !row.deleted && same(row.path ?? "", currentFile)) {
+      editing = { mode: "rename", what: "writing", key: row.key, target: row.id, value: row.name, error: "" };
+    } else if (row.kind === "wfolder" && row.folder) {
+      editing = { mode: "rename", what: "writingFolder", key: row.key, target: row.folder, value: row.name, error: "" };
+    } else if (row.kind === "note" && row.id) {
+      editing = { mode: "rename", what: "note", key: row.key, target: row.id, value: row.name, error: "" };
+    }
+  }
+
+  async function commit() {
+    const edit = editing;
+    if (!edit || committing) return;
+    const value = edit.value.trim();
+    if (!value || (edit.mode === "rename" && value === edit.target && edit.what !== "writing")) {
+      editing = null;
+      return;
+    }
+    committing = true;
+    try {
+      let problem: string | null = null;
+      if (edit.mode === "new") {
+        if (edit.what === "project") problem = await actions.newProject(edit.target, value);
+        else if (edit.what === "libraryFolder") problem = await actions.newLibraryFolder(edit.target, value);
+        else if (edit.what === "writing") problem = await actions.newWriting(edit.target, value);
+        else if (edit.what === "writingFolder") problem = await actions.newWritingFolder(value);
+        else if (edit.what === "note" && edit.category) actions.newNote(edit.category, value);
+      } else if (edit.what === "writing") actions.renameWriting(edit.target, value);
+      else if (edit.what === "writingFolder") problem = await actions.renameWritingFolder(edit.target, value);
+      else if (edit.what === "note") actions.renameNote(edit.target, value);
+      editing = problem ? { ...edit, error: problem } : null;
+    } finally {
+      committing = false;
+    }
+  }
+
+  function onInputKey(event: KeyboardEvent) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void commit();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      editing = null;
+    }
+  }
+
+  /** The new name's field takes the keyboard, with what is there selected, as Explorer does. */
+  function takeKeyboard(node: HTMLInputElement) {
+    node.focus();
+    node.select();
+  }
+
+  /** Asks before something that can't simply be put back. */
+  function confirm(back: HTMLElement | null, at: { x: number; y: number }, question: string, label: string, run: () => void) {
+    menu = {
+      ...at,
+      back,
+      items: [{ text: question }, "rule", { label, danger: true, run }, { label: t("cancel"), run: () => undefined }],
+    };
+  }
+
+  function menuFor(row: Row, back: HTMLElement | null, at: { x: number; y: number }): MenuItem[] {
+    const shelf = library.shelf;
+    if (row.kind === "folder" && row.path) {
+      const path = row.path;
+      // The library is read six folders deep; something made deeper than that wouldn't show.
+      if (row.depth >= LISTED_DEPTH - 1) return [];
+      return [
+        { label: t("newProjectTitle"), run: () => startNew("project", row.key, path) },
+        { label: t("newFolderTitle"), run: () => startNew("libraryFolder", row.key, path) },
+      ];
+    }
+    if (row.kind === "project") {
+      if (!row.current || !shelf) return [{ label: t("openItem"), run: () => row.path && actions.openProject(row.path) }];
+      const items: MenuItem[] = [
+        { label: t("newWritingTitle"), run: () => startNew("writing", row.key, "") },
+        { label: t("newFolderTitle"), run: () => startNew("writingFolder", row.key, "") },
+        { label: t("newNoteTitle"), run: () => startNew("note", "group:ideas", "", "ideas") },
+      ];
+      if (library.root && !isInside(currentFile, library.root)) items.push("rule", { label: t("moveIntoLibrary"), run: () => actions.moveIntoLibrary() });
+      return items;
+    }
+    if (row.kind === "wfolder" && row.folder) {
+      const folder = row.folder;
+      return [
+        { label: t("newWritingTitle"), run: () => startNew("writing", row.key, folder) },
+        "rule",
+        { label: t("rename"), keys: "F2", run: () => startRename(row) },
+        { label: t("deleteFolder"), run: () => actions.deleteWritingFolder(folder) },
+      ];
+    }
+    if (row.kind === "writing" && row.id) {
+      const id = row.id;
+      if (!same(row.path ?? "", currentFile)) return [{ label: t("openItem"), run: () => row.path && actions.openWriting(row.path, id) }];
+      if (row.deleted) {
+        return [
+          { label: t("putBack"), run: () => actions.putBack(id) },
+          {
+            label: t("deleteForGood"),
+            danger: true,
+            run: () => confirm(back, at, t("deleteForGoodQuestion", { title: row.name }), t("deleteForGood"), () => actions.eraseWriting(id)),
+          },
+        ];
+      }
+      const items: MenuItem[] = [
+        { label: t("openItem"), run: () => actions.openWriting(currentFile, id) },
+        { label: t("rename"), keys: "F2", run: () => startRename(row) },
+        { label: t("duplicate"), run: () => actions.duplicateWriting(id) },
+        {
+          label: t("splitChapters"),
+          checked: !!row.split,
+          run: () => {
+            if (!row.split) return actions.setSplit(id, true);
+            const words = row.live ? writingWords : (row.words ?? 0);
+            const question = t("joinQuestion") + (words > LONG_PAGE_WORDS ? ` ${t("joinLong", { words: plural("hasWords", words) })}` : "");
+            confirm(back, at, question, t("join"), () => actions.setSplit(id, false));
+          },
+        },
+      ];
+      const folders = (shelf?.folders ?? []).filter((name) => name !== row.folder);
+      if (folders.length > 0 || row.folder) items.push("rule");
+      for (const name of folders) items.push({ label: t("moveTo", { name }), run: () => actions.moveWriting(id, name) });
+      if (row.folder) items.push({ label: t("moveOutOfFolder"), run: () => actions.moveWriting(id, "") });
+      items.push("rule", { label: t("delete"), keys: "Del", danger: true, run: () => actions.deleteWriting(id) });
+      return items;
+    }
+    if (row.kind === "notes") return [{ label: t("newNoteTitle"), run: () => startNew("note", "group:ideas", "", "ideas") }];
+    if (row.kind === "group" && row.category) {
+      const category = row.category;
+      return [{ label: t("newNoteTitle"), run: () => startNew("note", row.key, "", category) }];
+    }
+    if (row.kind === "note" && row.id) {
+      const id = row.id;
+      const items: MenuItem[] = [
+        { label: t("openItem"), run: () => actions.openNote(id) },
+        { label: t("rename"), keys: "F2", run: () => startRename(row) },
+        { label: t("duplicate"), run: () => actions.duplicateNote(id) },
+        "rule",
+      ];
+      for (const group of GROUPS.filter((item) => item.id !== row.category)) {
+        items.push({ label: t("moveTo", { name: t(group.key) }), run: () => actions.moveNote(id, group.id) });
+      }
+      items.push("rule", {
+        label: t("delete"),
+        keys: "Del",
+        danger: true,
+        run: () => confirm(back, at, t("deleteNoteQuestion", { title: row.name }), t("delete"), () => actions.deleteNote(id)),
+      });
+      return items;
+    }
+    if (row.kind === "todos") return [{ label: t("openItem"), run: () => actions.openTodos() }];
+    if (row.kind === "chapter" && row.id && row.writingId) {
+      const writingId = row.writingId;
+      const id = row.id;
+      return [{ label: t("openItem"), run: () => actions.openWriting(currentFile, writingId, id) }];
+    }
+    return [];
+  }
+
+  function openMenu(row: Row, element: HTMLElement, event?: MouseEvent) {
+    const box = element.getBoundingClientRect();
+    const at = event ? { x: event.clientX, y: event.clientY } : { x: box.left + 24, y: box.bottom };
+    const items = menuFor(row, element, at);
+    if (items.length > 0) menu = { ...at, items, back: element };
+  }
+
+  function rowOf(element: Element | null): Row | undefined {
+    const key = element instanceof HTMLElement ? element.dataset.key : undefined;
+    return key ? rows.find((row) => row.key === key) : undefined;
+  }
+
+  /**
+   * The keyboard moves through the rows as in a file explorer: up and down, Home and End, right to unfold
+   * a row and left to fold it; F2 renames, Delete deletes, and the menu key or Shift+F10 opens the menu.
+   */
+  function onKeydown(event: KeyboardEvent) {
+    const button = event.target instanceof HTMLButtonElement ? event.target : null;
+    const all = [...(event.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>("button.tree-row")];
+    const index = button ? all.indexOf(button) : -1;
+    if (!button || index < 0) return;
+    const row = rowOf(button);
+    if (row && (event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey))) {
+      event.preventDefault();
+      openMenu(row, button);
+      return;
+    }
+    if (row && event.key === "F2") {
+      event.preventDefault();
+      startRename(row);
+      return;
+    }
+    if (row && event.key === "Delete") {
+      if (row.kind === "writing" && row.id && !row.deleted && same(row.path ?? "", currentFile)) {
+        event.preventDefault();
+        actions.deleteWriting(row.id);
+      } else if (row.kind === "note" && row.id) {
+        event.preventDefault();
+        const box = button.getBoundingClientRect();
+        const id = row.id;
+        confirm(button, { x: box.left + 24, y: box.bottom }, t("deleteNoteQuestion", { title: row.name }), t("delete"), () => actions.deleteNote(id));
+      }
+      return;
+    }
+    const expanded = button.getAttribute("aria-expanded");
+    if ((event.key === "ArrowRight" && expanded === "false") || (event.key === "ArrowLeft" && expanded === "true")) {
+      event.preventDefault();
+      // Unfolding a closed project shows its writings; only a click opens it. A part of the open writing folds by its own click.
+      if (row?.expandable) toggle(row);
+      else button.click();
+      return;
+    }
+    const next =
+      event.key === "ArrowDown" ? index + 1 : event.key === "ArrowUp" ? index - 1 : event.key === "Home" ? 0 : event.key === "End" ? all.length - 1 : -2;
+    if (next === -2) return;
+    event.preventDefault();
+    all[Math.max(0, Math.min(all.length - 1, next))].focus();
+  }
+</script>
+
+<!-- The library, drawn as a file explorer: its folders and projects, the open project's writings, notes and to-dos. -->
+<div class="library" role="presentation" bind:this={tree} onkeydown={onKeydown}>
+  {#each rows as row (row.key)}
+    {#if row.kind === "chapters"}
+      {@render chapterRows?.(row.depth)}
+    {:else if row.kind === "input" && editing}
+      <div class="tree-input" style:--depth={row.depth}>
+        <span class="twist" aria-hidden="true"></span>
+        <span class="tree-icon" aria-hidden="true"><Icon name={row.icon} /></span>
+        <input
+          bind:value={editing.value}
+          use:takeKeyboard
+          aria-label={editing.mode === "rename" ? t("rename") : t(editing.what === "project" ? "newProjectTitle" : editing.what === "writing" ? "newWritingTitle" : editing.what === "note" ? "newNoteTitle" : "newFolderTitle")}
+          aria-invalid={!!editing.error}
+          onkeydown={onInputKey}
+          onblur={() => void commit()}
+        />
+      </div>
+      {#if editing.error}
+        <p class="problem" role="alert" style:--depth={row.depth}>{editing.error}</p>
+      {/if}
+    {:else}
+      <button
+        type="button"
+        class="tree-row {row.kind}"
+        class:current={row.current}
+        class:gone={row.deleted}
+        data-key={row.key}
+        style:--depth={row.depth}
+        aria-expanded={row.expandable ? row.open : undefined}
+        title={row.path && (row.kind === "folder" || row.kind === "project") ? row.path : row.name}
+        onclick={(event) => activate(row, event.currentTarget)}
+        ondblclick={() => {
+          // A double click on another writing is two clicks that open it; renaming is for the one open.
+          if (row.kind === "writing" && !row.current) return;
+          startRename(row);
+        }}
+        oncontextmenu={(event) => {
+          event.preventDefault();
+          openMenu(row, event.currentTarget, event);
+        }}
+      >
+        <span class="twist" class:open={row.open} aria-hidden="true">{#if row.expandable}<Icon name="chevronRight" />{/if}</span>
+        {#if row.kind === "chapter"}
+          <span class="num">{row.number}</span>
+        {:else}
+          <span class="tree-icon" aria-hidden="true"><Icon name={row.icon} /></span>
+        {/if}
+        <span class="name">{row.name}</span>
+        {#if row.live}
+          <span class="words">{compactWords(row.live === "writing" ? writingWords : otherWords + writingWords)}</span>
+        {:else if row.words !== undefined}
+          <span class="words">{compactWords(row.words)}</span>
+        {:else if row.count}
+          <span class="words">{row.count}</span>
+        {/if}
+      </button>
+    {/if}
+  {:else}
+    <p class="empty">{t("emptyLibrary")}</p>
+  {/each}
+</div>
+{#if menu}
+  <!-- A question that takes a menu's place is a menu of its own: it fits the window and takes the keyboard. -->
+  {#key menu}
+    <TreeMenu
+      x={menu.x}
+      y={menu.y}
+      items={menu.items}
+      onClose={() => {
+        const back = menu?.back;
+        menu = null;
+        // Once the menu is gone, the row that opened it gets the keyboard back, unless the choice took it elsewhere.
+        setTimeout(() => {
+          if (back?.isConnected && (document.activeElement === document.body || !document.activeElement)) back.focus();
+        });
+      }}
+    />
+  {/key}
+{/if}
+
+<style>
+  .library {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 0 6px 8px;
+  }
+
+  /* The guides between a row and its parent show while the pointer or the keyboard is in the tree. */
+  .library:hover,
+  .library:focus-within {
+    --tree-guide: var(--pv-line-strong);
+  }
+
+  /*
+   * One row of the tree, the chapter list's rows under the open writing too: one line, indented by its
+   * --depth, with a guide under each parent's arrow (at 11px, then every 10px).
+   */
+  .library :global(.tree-row),
+  .tree-input {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: none;
+    width: 100%;
+    height: 24px;
+    padding: 0 6px 0 calc(4px + var(--depth, 0) * 10px);
+    border: 0;
+    border-radius: var(--pv-radius-xs);
+    background-color: transparent;
+    background-image: repeating-linear-gradient(90deg, var(--tree-guide, transparent) 0 1px, transparent 1px 10px);
+    background-repeat: no-repeat;
+    background-position: 11px 0;
+    background-size: calc(var(--depth, 0) * 10px) 100%;
+    color: var(--pv-text);
+    font-size: var(--pv-text-base);
+    text-align: left;
+  }
+
+  .library :global(.tree-row:hover) {
+    background-color: var(--pv-selected);
+  }
+
+  .library :global(.tree-row:active) {
+    background-color: var(--pv-pressed);
+  }
+
+  /* The chapter on the page, and a chapter something is dragged over, marked as in the chapter list. */
+  .library :global(.tree-row.active),
+  .library :global(li.drop-target > .tree-row) {
+    background-color: var(--pv-selected);
+    font-weight: 600;
+  }
+
+  /* Inside the row, so it doesn't run into the rows above and below. */
+  .library :global(.tree-row:focus-visible) {
+    outline-offset: -2px;
+  }
+
+  .library :global(.twist) {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 14px;
+    height: 14px;
+    color: var(--pv-text-faint);
+    transition: transform var(--pv-dur-fast) ease;
+  }
+
+  .library :global(.twist.open) {
+    transform: rotate(90deg);
+  }
+
+  .library :global(.twist svg) {
+    width: 12px;
+    height: 12px;
+  }
+
+  .library :global(.tree-icon) {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 16px;
+    height: 16px;
+    color: var(--pv-text-subtle);
+  }
+
+  .library :global(.tree-icon svg) {
+    width: 15px;
+    height: 15px;
+  }
+
+  .current .tree-icon {
+    color: var(--pv-accent);
+  }
+
+  .current > .name {
+    font-weight: 600;
+  }
+
+  /* A writing in the Deleted folder. */
+  .gone {
+    color: var(--pv-text-faint);
+  }
+
+  .num {
+    width: 16px;
+    flex: none;
+    text-align: center;
+    color: var(--pv-text-faint);
+    font-size: 11px;
+  }
+
+  .name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .words {
+    flex: none;
+    font-size: var(--pv-text-sm);
+    color: var(--pv-text-faint);
+  }
+
+  .tree-input input {
+    flex: 1;
+    min-width: 0;
+    height: 20px;
+    padding: 0 5px;
+    border: 1px solid var(--pv-accent);
+    border-radius: var(--pv-radius-xs);
+    background: var(--pv-field);
+    color: var(--pv-text);
+    font: inherit;
+  }
+
+  .tree-input input:focus-visible {
+    outline: none;
+  }
+
+  .tree-input input[aria-invalid="true"] {
+    border-color: var(--pv-danger);
+  }
+
+  .problem {
+    margin: 2px 6px 4px calc(26px + var(--depth, 0) * 10px);
+    color: var(--pv-danger);
+    font-size: var(--pv-text-sm);
+    line-height: 1.35;
+  }
+
+  .empty {
+    margin: 8px 10px;
+    color: var(--pv-text-faint);
+    font-size: var(--pv-text-sm);
+  }
+</style>

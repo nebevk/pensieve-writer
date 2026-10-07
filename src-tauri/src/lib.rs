@@ -1,5 +1,6 @@
 mod backup;
 mod export;
+mod library;
 mod project;
 mod spellcheck;
 
@@ -40,6 +41,10 @@ pub fn run() {
             backup::write_backup,
             backup::read_backup_file,
             export::write_document,
+            library::library_places,
+            library::list_library,
+            library::create_library_folder,
+            library::new_project_folder,
             project::default_project_path,
             project::project_file_exists,
             project::example_book_path,

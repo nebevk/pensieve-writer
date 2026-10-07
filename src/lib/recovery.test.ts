@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createProject } from "$lib/model";
+import { createWriting } from "$lib/model";
 import { createSaveQueue } from "$lib/save/queue";
-import { missingItems, normalizeNote, normalizeTask, projectFromBackup, snapshotPayload } from "$lib/storage/restore";
+import { missingItems, normalizeNote, normalizeTask, snapshotPayload, writingFromBackup, writingFromSnapshot } from "$lib/storage/restore";
 import { backupBookKey, backupFile, backupFileName, backupSignature, parseBackup } from "$lib/storage/backupFile";
 import { hasTransparency, imageType } from "$lib/editor/imageSize";
 import type { Note, Task } from "$lib/storage/organize";
@@ -132,7 +132,7 @@ describe("note save queue", () => {
 
 describe("notes in snapshots", () => {
   it("keeps notes and to-dos with the chapters", () => {
-    const project = createProject();
+    const project = createWriting();
     const payload = snapshotPayload(project, [note("n1", "Ana")], [task("t1", "n1")]);
     expect(payload.chapters).toEqual(project.chapters);
     expect(payload.notes?.map((item) => item.id)).toEqual(["n1"]);
@@ -159,47 +159,96 @@ describe("notes in snapshots", () => {
 });
 
 describe("Drive backups", () => {
-  it("names each backup after its book", () => {
+  it("names each backup after its project", () => {
     expect(backupBookKey("3f2a9c1b-1111-2222-3333-444455556666")).toBe("3f2a9c1b");
     expect(backupFileName("3f2a9c1b-1111", "2026-10-05T14:02:11.123Z")).toBe(
       "pensieve-3f2a9c1b-2026-10-05T14-02-11.123Z.json",
     );
   });
 
-  it("sees an unchanged book as unchanged, even when edit times moved", () => {
-    const project = createProject();
-    project.chapters[0].plainText = "Ana took the keys.";
-    const before = backupSignature(project, [note("n1", "x")], [task("t1")]);
+  it("sees an unchanged project as unchanged, even when edit and open times moved", () => {
+    const writing = createWriting();
+    writing.chapters[0].plainText = "Ana took the keys.";
+    const before = backupSignature("p", { writings: [writing], notes: [note("n1", "x")], tasks: [task("t1")] });
     const later = "2030-01-01T00:00:00.000Z";
     const touched = {
-      ...project,
+      ...writing,
       updatedAt: later,
-      chapters: project.chapters.map((chapter) => ({ ...chapter, updatedAt: later })),
+      openedAt: later,
+      chapters: writing.chapters.map((chapter) => ({ ...chapter, updatedAt: later })),
     };
-    expect(backupSignature(touched, [{ ...note("n1", "x"), updatedAt: later }], [{ ...task("t1"), updatedAt: later }])).toBe(
-      before,
+    expect(
+      backupSignature("p", { writings: [touched], notes: [{ ...note("n1", "x"), updatedAt: later }], tasks: [{ ...task("t1"), updatedAt: later }] }),
+    ).toBe(backupSignature("p", { writings: [{ ...writing, openedAt: "" }], notes: [note("n1", "x")], tasks: [task("t1")] }));
+    expect(before).toContain("p:");
+  });
+
+  it("notices a one-letter change, in any writing", () => {
+    const first = createWriting();
+    const second = createWriting();
+    second.chapters[0].plainText = "Ana took the keys.";
+    const before = backupSignature("p", { writings: [first, second] });
+    second.chapters[0].plainText = "Ana took the key.";
+    expect(backupSignature("p", { writings: [first, second] })).not.toBe(before);
+  });
+
+  it("reads a project's backup back, every writing in it, including č š ž", () => {
+    const first = createWriting();
+    first.title = "Zgodbe ob reki";
+    first.chapters[0].plainText = "Čaša, šal, žaba";
+    const second = { ...createWriting(), split: false };
+    const text = JSON.stringify(
+      backupFile(
+        { id: "project-1", title: "Reka", folders: ["Osnutki"] },
+        [
+          { ...first, folder: "", position: 0 },
+          { ...second, folder: "Osnutki", position: 1 },
+        ],
+        [note("n1", "")],
+        [task("t1")],
+        when,
+      ),
     );
-  });
-
-  it("notices a one-letter change", () => {
-    const project = createProject();
-    project.chapters[0].plainText = "Ana took the keys.";
-    const before = backupSignature(project, [], []);
-    project.chapters[0].plainText = "Ana took the key.";
-    expect(backupSignature(project, [], [])).not.toBe(before);
-  });
-
-  it("reads a backup file back, including č š ž", () => {
-    const project = createProject();
-    project.title = "Zgodbe ob reki";
-    project.chapters[0].plainText = "Čaša, šal, žaba";
-    const text = JSON.stringify(backupFile(project, [note("n1", "")], [task("t1")], when));
     const backup = parseBackup(text);
-    expect(backup.savedAt).toBe(when);
-    expect(backup.project.title).toBe("Zgodbe ob reki");
-    expect(backup.project.chapters[0].plainText).toBe("Čaša, šal, žaba");
+    expect(backup).toMatchObject({ format: 2, savedAt: when, projectId: "project-1", title: "Reka", folders: ["Osnutki"] });
+    expect(backup.writings.map((item) => [item.title, item.split, item.folder])).toEqual([
+      ["Zgodbe ob reki", true, ""],
+      [second.title, false, "Osnutki"],
+    ]);
+    expect(backup.writings[0].chapters[0].plainText).toBe("Čaša, šal, žaba");
     expect(backup.notes).toHaveLength(1);
     expect(backup.tasks).toHaveLength(1);
+  });
+
+  it("still reads a backup of one book, from before projects held several writings", () => {
+    const book = createWriting();
+    const old = {
+      kind: "pensieve-backup",
+      savedAt: when,
+      project: { id: book.id, title: "Why I write", kind: "article", language: "en", wordGoal: 400, chapters: book.chapters },
+      notes: [note("n1", "")],
+      tasks: [],
+    };
+    const backup = parseBackup(JSON.stringify(old));
+    expect(backup.format).toBe(1);
+    expect(backup.projectId).toBe(book.id);
+    expect(backup.writings).toHaveLength(1);
+    expect(backup.writings[0]).toMatchObject({ id: book.id, title: "Why I write", split: false, folder: "" });
+    expect(backup.notes).toHaveLength(1);
+  });
+
+  it("leaves out a writing with no chapters (a save cut short) instead of refusing the whole backup", () => {
+    const kept = createWriting();
+    const empty = { ...createWriting(), chapters: [] };
+    const file = backupFile({ id: "p1", title: "Projekt", folders: [] }, [
+      { ...kept, folder: "", position: 0 },
+      { ...empty, folder: "", position: 1, deletedAt: "2026-10-07T10:00:00.000Z" },
+    ], [], [], new Date().toISOString());
+    const backup = parseBackup(JSON.stringify(file));
+    expect(backup.writings.map((item) => item.id)).toEqual([kept.id]);
+    // Nothing with text in it at all: that isn't a backup to restore.
+    const nothing = backupFile({ id: "p1", title: "Projekt", folders: [] }, [{ ...empty, folder: "", position: 0 }], [], [], new Date().toISOString());
+    expect(() => parseBackup(JSON.stringify(nothing))).toThrow("isn't a Pensieve backup");
   });
 
   it("refuses files that aren't backups", () => {
@@ -212,18 +261,41 @@ describe("Drive backups", () => {
     ).toThrow("can't read");
   });
 
-  it("restores a backup from another computer into the open book", () => {
-    const open = createProject();
-    const saved = createProject();
+  it("restores a backup from another computer into a writing, which keeps its own id", () => {
+    const open = createWriting();
+    const saved = createWriting();
     saved.title = "The Lantern House";
-    saved.kind = "stories";
     saved.chapters[0].plainText = "The keys hung on a nail.";
-    const restored = projectFromBackup(open, saved);
+    const restored = writingFromBackup(open, saved);
     expect(restored.id).toBe(open.id);
     expect(restored.title).toBe("The Lantern House");
-    expect(restored.kind).toBe("stories");
-    expect(restored.chapters[0].projectId).toBe(open.id);
+    expect(restored.split).toBe(true);
+    expect(restored.chapters[0].writingId).toBe(open.id);
     expect(restored.chapters[0].plainText).toBe("The keys hung on a nail.");
+  });
+
+  it("reads an old book's kind as the switch: an article was one page, a novel or collection in chapters", () => {
+    const open = createWriting();
+    // An old backup's book has a kind and no switch.
+    const old = (kind: string) => {
+      const { split: _split, ...book } = createWriting();
+      return { ...book, kind };
+    };
+    expect(writingFromBackup(open, old("article")).split).toBe(false);
+    expect(writingFromBackup(open, old("stories")).split).toBe(true);
+    // An article that somehow holds two chapters shows both, in chapters.
+    const two = old("article");
+    two.chapters.push({ ...two.chapters[0], id: "second", position: 1 });
+    expect(writingFromBackup(open, two).split).toBe(true);
+  });
+
+  it("puts a writing back split into chapters when it was, before it was joined", () => {
+    const joined = { ...createWriting(), split: false };
+    const before = createWriting();
+    before.chapters.push({ ...before.chapters[0], id: "second", position: 1 });
+    expect(writingFromSnapshot(joined, { title: "T", split: true, chapters: before.chapters }).split).toBe(true);
+    // A snapshot from before the switch, of one page, keeps the writing as it is.
+    expect(writingFromSnapshot(joined, { title: "T", chapters: [joined.chapters[0]] }).split).toBe(false);
   });
 });
 

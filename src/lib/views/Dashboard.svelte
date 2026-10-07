@@ -1,20 +1,25 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { bookProgress, summarize, type BookSummary } from "$lib/chapters/progress";
+  import { bookProgress, summarize, type ProjectSummary } from "$lib/chapters/progress";
   import { compactWords, wordsFor } from "$lib/editor/counts";
   import { roman } from "$lib/chapters/labels";
   import type { AmbienceName, KnownProject, Prefs } from "$lib/prefs";
-  import type { Chapter, ChapterStatus, Project, ProjectKind } from "$lib/model";
-  import { isUntitled, translate, type UiKey } from "$lib/i18n";
+  import type { Chapter, ChapterStatus, Writing } from "$lib/model";
+  import { isUntitled, type UiKey } from "$lib/i18n";
   import { ago, locale, num, plural, t, ui } from "$lib/ui.svelte";
   import Icon from "$lib/editor/Icon.svelte";
   import { chapterTitle, isWelcomePage } from "$lib/chapters/welcome";
+  import { WRITER } from "$lib/writer";
+  import { randomQuote } from "$lib/quotes";
   import { listNotes, listTasks, saveTask, type Note, type NoteCategory, type Task } from "$lib/storage/organize";
   import ChecklistItem from "./ChecklistItem.svelte";
   import NoteMini from "./NoteMini.svelte";
 
   let {
-    project,
+    writing,
+    projectTitle = "",
+    openSummary,
+    lastChapterId = "",
     prefs,
     now = Date.now(),
     wordsToday = 0,
@@ -32,7 +37,13 @@
     currentPath = "",
     books = [],
   }: {
-    project: Project;
+    /** The writing open in Write. */
+    writing: Writing;
+    /** The open project's name, and its writings added up. */
+    projectTitle?: string;
+    openSummary: ProjectSummary;
+    /** The chapter that was open last in this writing: what Continue writing opens. */
+    lastChapterId?: string;
     prefs: Prefs;
     /** The page's minute clock, for the time beside the date. */
     now?: number;
@@ -41,7 +52,7 @@
     onZen: (chapterId: string | null) => void;
     onRename: (title: string) => void;
     onOpenProject: () => void;
-    onStartProject: (kind: ProjectKind) => void;
+    onStartProject: () => void;
     onOpenBook: (path: string) => void;
     onOpenTodos: () => void;
     onOpenNotes: () => void;
@@ -53,8 +64,8 @@
     books?: KnownProject[];
   } = $props();
 
-  const KINDS: Record<ProjectKind, UiKey> = { novel: "novel", stories: "stories", article: "article" };
-  const KIND_LIST: ProjectKind[] = ["novel", "stories", "article"];
+  // A short verse for Eva under her greeting, a different one each time Home opens.
+  const quote = randomQuote();
   const STATUSES: Record<ChapterStatus, UiKey> = { draft: "statusDraft", revised: "statusRevised", final: "statusFinal" };
   const NOTE_KINDS: Record<NoteCategory, UiKey> = {
     characters: "kindCharacter",
@@ -82,13 +93,18 @@
     if (renaming) titleInput?.focus();
   });
 
-  const chapters = $derived([...project.chapters].sort((a, b) => a.position - b.position));
-  const summary = $derived(summarize(project));
-  const latest = $derived([...chapters].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ?? null);
+  const chapters = $derived([...writing.chapters].sort((a, b) => a.position - b.position));
+  const summary = $derived(summarize(writing));
+  // The chapter Continue writing opens: the one open last, else the one written in last.
+  const latest = $derived(
+    chapters.find((chapter) => chapter.id === lastChapterId) ??
+      [...chapters].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ??
+      null,
+  );
   const lines = $derived(paragraphs(latest));
   const currentLine = $derived(lines.at(-1) ?? "");
   const previousLine = $derived(lines.at(-2) ?? "");
-  const otherBooks = $derived(books.filter((book) => book.path !== currentPath));
+  const otherBooks = $derived(books.filter((book) => book.path.toLowerCase() !== currentPath.toLowerCase()));
   // Doing first, as on the board.
   const openTasks = $derived(
     tasks
@@ -120,19 +136,20 @@
   }
 
   /**
-   * "Good evening. The Attic is waiting." (HOME-10): the time of day, then the chapter Continue opens.
-   * Late at night it's "Late again."; a new book's welcome page gets the greeting alone.
+   * "Good evening, Eva. The Attic is waiting." (HOME-10): the time of day, then the chapter Continue
+   * opens. Late at night it's "Late again, Eva."; a new book's welcome page gets the greeting alone.
    */
   function greeting(at: number): string {
     const hour = new Date(at).getHours();
     const hello =
       hour >= 23 || hour < 5 ? t("lateAgain") : hour < 12 ? t("morning") : hour < 18 ? t("afternoon") : t("evening");
+    const greet = `${hello}, ${WRITER}.`;
     const chapter = latest;
-    if (!chapter || isWelcomePage(chapter)) return `${hello}.`;
+    if (!chapter || isWelcomePage(chapter)) return greet;
     const name = isUntitled(chapter.title)
-      ? chapterTitle(project.kind, ui.language, chapters.findIndex((item) => item.id === chapter.id) + 1)
+      ? chapterTitle(ui.language, chapters.findIndex((item) => item.id === chapter.id) + 1)
       : chapter.title.trim();
-    return `${hello}. ${t("chapterWaiting", { chapter: name })}`;
+    return `${greet} ${t("chapterWaiting", { chapter: name })}`;
   }
 
   function clip(text: string, max = 88): string {
@@ -153,22 +170,28 @@
     return new Date(iso).toLocaleDateString(locale(), { day: "numeric", month: "short" });
   }
 
-  /** What a project row says after the kind: "61%", "6 of 12" or "Final". */
-  function rowStatus(book: BookSummary): string {
-    if (book.kind === "stories") return t("ofTotal", { done: num(book.finished), total: num(book.chapters) });
-    if (book.kind === "article") return t(STATUSES[book.status]);
-    return book.target > 0 ? `${Math.round(bookProgress(book) * 100)}%` : plural("words", book.words);
+  /** What a project row says: how many writings, and their words. */
+  function rowStatus(project: ProjectSummary): string {
+    // One remembered before projects held writings knows its words, not yet its writings.
+    if (project.writings.length === 0) return plural("words", project.words);
+    return `${plural("writings", project.writings.length)} · ${plural("words", project.words)}`;
+  }
+
+  /** How far along a project is: its one writing's progress, or none to show for several. */
+  function rowProgress(project: ProjectSummary | undefined): number {
+    return project?.writings.length === 1 ? bookProgress(project.writings[0]) : 0;
   }
 
   function taskMeta(task: Task): string {
     const index = chapters.findIndex((chapter) => chapter.id === task.chapterId);
-    const chapter = index >= 0 ? `${index + 1} · ${chapters[index].title}` : t("wholeBook");
+    // A to-do on another writing's chapter says nothing about where; one on no chapter is the project's.
+    const chapter = index >= 0 ? `${index + 1} · ${chapters[index].title}` : task.chapterId ? "" : t("wholeProject");
     const note = task.noteId ? notes.find((item) => item.id === task.noteId)?.title : "";
-    return note ? `${chapter} · ${note}` : chapter;
+    return note ? (chapter ? `${chapter} · ${note}` : note) : chapter;
   }
 
   function startRename() {
-    titleDraft = project.title;
+    titleDraft = writing.title;
     renaming = true;
   }
 
@@ -195,28 +218,27 @@
 
   async function refresh() {
     try {
-      [notes, tasks] = await Promise.all([listNotes(project.id), listTasks(project.id)]);
+      [notes, tasks] = await Promise.all([listNotes(), listTasks()]);
     } catch (error) {
       message = error instanceof Error ? error.message : t("homeLoadFailed");
     }
   }
 </script>
 
-{#snippet projectRow(title: string, book: BookSummary | undefined, onclick: () => void)}
-  <!-- A project as a tiny title page, with its language and progress (design round 6). -->
+{#snippet projectRow(title: string, project: ProjectSummary | undefined, onclick: () => void)}
+  <!-- A project as a tiny title page, with its writings and words (design round 6; projects since 7 October). -->
   <button type="button" class="project" {onclick}>
-    <span class="page {book?.kind ?? ''}" class:stacked={book && book.kind !== "article" && book.chapters > 1}>
+    <span class="page" class:stacked={(project?.writings.length ?? 0) > 1}>
       {title.trim().charAt(0) || "·"}
     </span>
     <span class="about">
       <span class="line">
         <span class="name">{title}</span>
-        {#if book}<span class="lang">{book.language.toUpperCase()}</span>{/if}
       </span>
-      <span class="bar {book?.kind ?? ''}" aria-hidden="true">
-        <span style:width="{Math.round((book ? bookProgress(book) : 0) * 100)}%"></span>
+      <span class="bar" aria-hidden="true">
+        <span style:width="{Math.round(rowProgress(project) * 100)}%"></span>
       </span>
-      <span class="kind-line">{book ? `${translate(book.language, KINDS[book.kind])} · ${rowStatus(book)}` : t("book")}</span>
+      <span class="kind-line">{project ? rowStatus(project) : t("book")}</span>
     </span>
   </button>
 {/snippet}
@@ -229,6 +251,10 @@
         {new Date(now).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })}
       </p>
       <h1>{greeting(now)}</h1>
+      <blockquote class="quote">
+        <p>{quote.text}</p>
+        <footer>{quote.reference}</footer>
+      </blockquote>
       <div class="stats">
         <div>
           <p class="value">{num(wordsToday)}</p>
@@ -258,7 +284,7 @@
               onblur={finishRename}
             />
           {:else}
-            <button type="button" class="book-title" title={t("renameBook")} onclick={startRename}>{project.title}</button>
+            <button type="button" class="book-title" title={t("renameBook")} onclick={startRename}>{writing.title}</button>
           {/if}
           <span class="counts">{chapterCounts.join(" · ")}</span>
         </div>
@@ -282,7 +308,7 @@
         <div class="under" aria-hidden="true"></div>
         <div class="sheet">
           <div class="running">
-            <span>{project.title}</span>
+            <span>{writing.title}</span>
             <!-- The chapter in Roman numerals, as the page's own running head writes it. -->
             <span>{latest ? t("chapterShort", { n: roman(chapters.findIndex((chapter) => chapter.id === latest.id) + 1) }) : ""}</span>
           </div>
@@ -364,18 +390,16 @@
           </button>
           {#if menuOpen}
             <div class="menu" role="menu">
-              {#each KIND_LIST as kind (kind)}
-                <button
-                  type="button"
-                  role="menuitem"
-                  onclick={() => {
-                    menuOpen = false;
-                    onStartProject(kind);
-                  }}
-                >
-                  {t(KINDS[kind])}
-                </button>
-              {/each}
+              <button
+                type="button"
+                role="menuitem"
+                onclick={() => {
+                  menuOpen = false;
+                  onStartProject();
+                }}
+              >
+                {t("newProjectTitle")}
+              </button>
               <span class="rule" aria-hidden="true"></span>
               <button
                 type="button"
@@ -391,7 +415,7 @@
           {/if}
         </div>
       </div>
-      {@render projectRow(project.title, summary, () => onContinue(latest?.id ?? null))}
+      {@render projectRow(projectTitle || writing.title, openSummary, () => onContinue(null))}
       {#each otherBooks as book (book.path)}
         {@render projectRow(book.title, book.summary, () => onOpenBook(book.path))}
       {/each}
@@ -442,6 +466,27 @@
     font-weight: 400;
     line-height: 1.08;
     text-wrap: pretty;
+  }
+
+  .quote {
+    margin: 10px 0 0;
+    max-width: 34rem;
+  }
+
+  .quote p {
+    margin: 0;
+    font-family: var(--pv-font-manuscript);
+    font-size: 17px;
+    line-height: 1.45;
+    color: var(--pv-text-2);
+  }
+
+  .quote footer {
+    margin-top: 6px;
+    font-size: var(--pv-text-xs);
+    letter-spacing: var(--pv-track-eyebrow);
+    text-transform: uppercase;
+    color: var(--pv-text-faint);
   }
 
   .stats {
@@ -887,11 +932,6 @@
     font-size: 13px;
   }
 
-  .page.stories,
-  .page.article {
-    color: var(--pv-ink-success);
-  }
-
   .page.stacked {
     box-shadow:
       var(--pv-shadow-slip),
@@ -923,15 +963,6 @@
     font-weight: 600;
   }
 
-  .lang {
-    border: 1px solid var(--pv-line-strong);
-    border-radius: var(--pv-radius-xs);
-    padding: 0 4px;
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--pv-text-subtle);
-  }
-
   .bar {
     display: block;
     height: 2px;
@@ -942,11 +973,6 @@
     display: block;
     height: 100%;
     background: var(--pv-accent);
-  }
-
-  .bar.stories span,
-  .bar.article span {
-    background: var(--pv-success);
   }
 
   .kind-line {

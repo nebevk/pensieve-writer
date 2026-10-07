@@ -14,13 +14,14 @@ import {
   TableRow,
   TextRun,
 } from "docx";
-import { createChapter, createProject, type DocumentJson } from "$lib/model";
+import { createChapter, createWriting, type DocumentJson } from "$lib/model";
 import { wordFile, type WordBook, type WordLook } from "./word";
 import { appendBookChapters, looksLikeChapterTitle, readWordFile, replaceBookChapters } from "./wordImport";
+import { WORD_STYLES } from "./wordStyles";
 
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 const pictureSrc = `data:image/png;base64,${png}`;
-const look: WordLook = { font: "Literata", sizePx: 17, pageWidth: "book", runningHead: true };
+const look: WordLook = { font: "Literata", sizePt: 13, pageWidth: "book", runningHead: true };
 const text = (value: string, marks: object[] = []) => (marks.length ? { type: "text", text: value, marks } : { type: "text", text: value });
 const para = (...content: object[]) => ({ type: "paragraph", content });
 
@@ -64,7 +65,7 @@ function book(): WordBook {
   const two = createChapter("p", "The Attic", 1);
   two.contentJson = { type: "doc", content: [para(text("Ana climbed the stairs."))] };
   two.language = "sl";
-  return { title: "The Lantern House", kind: "novel", language: "en", chapters: [one, two] };
+  return { title: "The Lantern House", split: true, language: "en", chapters: [one, two] };
 }
 
 /** A chapter with one comment across differently formatted words and one across two paragraphs. */
@@ -81,7 +82,7 @@ function commentedBook(): WordBook {
       para(text("and put it away.", [long])),
     ],
   };
-  return { title: "Comments", kind: "novel", language: "en", chapters: [chapter] };
+  return { title: "Comments", split: true, language: "en", chapters: [chapter] };
 }
 
 async function documentXml(bytes: Uint8Array): Promise<string> {
@@ -116,14 +117,34 @@ describe("Word export", () => {
     expect(xml).toMatch(/line one<\/w:t>[\s\S]*?<w:br\/>[\s\S]*?line two/);
     expect(xml).toContain('w:pStyle w:val="Quote"');
     expect(xml).toContain("<w:drawing>");
-    expect(xml).toContain('w:pStyle w:val="PensieveChapterLabel"');
-    expect(xml).toContain(">Chapter One<");
-    expect(xml).toContain('w:pStyle w:val="PensieveDropCap"');
-    expect(xml).toContain('w:dropCap="drop"');
+    // As on the page: a chapter's title is a Heading 2, a heading in its text a Heading 3, and there is
+    // no chapter label or drop cap.
+    expect(xml).toMatch(/w:pStyle w:val="Heading2"\/>[\s\S]*?>The Attic</);
+    expect(xml).toMatch(/w:pStyle w:val="Heading3"\/>[\s\S]*?>A heading inside the chapter</);
+    expect(xml).not.toContain("PensieveChapterLabel");
+    expect(xml).not.toContain("w:dropCap");
     expect(xml).toContain('<w:type w:val="nextPage"/>');
     expect(xml).toContain("<w:footnoteReference");
     const numIds = new Set([...xml.matchAll(/w:numId w:val="(\d+)"/g)].map((match) => match[1]));
     expect(numIds.size).toBe(3);
+  });
+
+  it("spaces the text as the page does: lines 1.5 apart, paragraphs a little apart and not indented", async () => {
+    const zip = await JSZip.loadAsync(await wordFile(book(), look));
+    const xml = await zip.file("word/document.xml")!.async("string");
+    const styles = await zip.file("word/styles.xml")!.async("string");
+    // At 13 pt, in twentieths of a point: lines at least 1.5 × 13 pt apart, 0.6 × 13 pt between paragraphs.
+    expect(styles).toContain('w:line="390"');
+    expect(xml).not.toContain("w:firstLine");
+    const paragraphs = xml.split("</w:p>");
+    const holding = (words: string) => paragraphs.find((paragraph) => paragraph.includes(words)) ?? "";
+    // The chapter's first paragraph sits under its title; the next one has the space above it.
+    expect(holding("The keys hung on a nail")).not.toContain('w:before="156"');
+    expect(holding(">under<")).toContain('w:before="156"');
+    // A list sits apart from the text before and after it, as on the page.
+    expect(holding(">first list<")).toContain('w:before="156"');
+    expect(holding(">between<")).toContain('w:before="156"');
+    expect(holding(">a bullet<")).toContain('w:before="156"');
   });
 
   it("packs every style of the manuscript font under one family name", async () => {
@@ -146,21 +167,26 @@ describe("Word export", () => {
     expect(await zip.file("word/settings.xml")!.async("string")).toContain("<w:embedTrueTypeFonts/>");
   });
 
-  it("keeps the drop cap within two lines at every font and size", async () => {
-    for (const font of ["Literata", "EB Garamond", "Courier New"]) {
-      for (const sizePx of [13, 17, 24]) {
-        const zip = await JSZip.loadAsync(await wordFile(book(), { ...look, font, sizePx }));
-        const styles = await zip.file("word/styles.xml")!.async("string");
-        const textLine = Number(/<w:pPrDefault>[\s\S]*?w:line="(\d+)"/.exec(styles)![1]);
-        const cap = /<w:style [^>]*w:styleId="PensieveDropCap"[\s\S]*?<\/w:style>/.exec(styles)![0];
-        const spacing = /<w:spacing [^>]*\/>/.exec(cap)![0];
-        expect(spacing).toContain('w:lineRule="exact"');
-        const height = Number(/w:before="(\d+)"/.exec(spacing)![1]) + Number(/w:line="(\d+)"/.exec(spacing)![1]);
-        // Any taller and Word wraps a third line around the letter.
-        expect(height).toBeGreaterThan(textLine);
-        expect(height).toBeLessThan(2 * textLine);
-      }
-    }
+  it("writes a part's name as Heading 1 where the part begins, and reads the parts back", async () => {
+    const parted = book();
+    parted.chapters = [
+      { ...parted.chapters[0], part: "Part One" },
+      { ...parted.chapters[1], part: "Part One" },
+      { ...createChapter("p", "The Ferry", 2), part: "Part Two", contentJson: { type: "doc", content: [para(text("The ferryman waited."))] } },
+    ];
+    const bytes = await wordFile(parted, look);
+    const xml = await documentXml(bytes);
+    expect(xml.match(/w:pStyle w:val="Heading1"/g)).toHaveLength(2);
+    expect(xml.indexOf(">Part One<")).toBeLessThan(xml.indexOf(">The Attic<"));
+    expect(xml.indexOf(">The Attic<")).toBeLessThan(xml.indexOf(">Part Two<"));
+    const result = await readWordFile(arrayBufferOf(bytes));
+    expect(result.chapters.map((chapter) => [chapter.title, chapter.part])).toEqual([
+      ["Grandmother's Keys", "Part One"],
+      ["The Attic", "Part One"],
+      ["The Ferry", "Part Two"],
+    ]);
+    // A part's name is neither a chapter of its own nor text in one.
+    expect(result.chapters.some((chapter) => chapter.plainText.includes("Part One"))).toBe(false);
   });
 
   it("writes comments as Word comments around the words they cover", async () => {
@@ -190,7 +216,7 @@ describe("Word export", () => {
         para(text("Second"), { type: "footnote", attrs: { text: "second" } }),
       ],
     };
-    const zip = await JSZip.loadAsync(await wordFile({ title: "Notes", kind: "novel", language: "en", chapters: [chapter] }, look));
+    const zip = await JSZip.loadAsync(await wordFile({ title: "Notes", split: true, language: "en", chapters: [chapter] }, look));
     const notes = await zip.file("word/footnotes.xml")!.async("string");
     // Word's own separators aside, exactly the two notes, in the order they appear.
     expect(notes.indexOf(">first<")).toBeGreaterThan(-1);
@@ -208,7 +234,7 @@ describe("Word import", () => {
     expect(result.chapters.map((chapter) => chapter.title)).toEqual(["Grandmother's Keys", "The Attic"]);
 
     const nodes = (result.chapters[0].contentJson.content ?? []) as Node[];
-    // The drop cap is joined back to its paragraph.
+    expect(result.chapters.map((chapter) => chapter.part)).toEqual(["", ""]);
     expect(result.chapters[0].plainText.startsWith("The keys hung on a nail, bold and italic")).toBe(true);
     expect(marked(nodes, "bold")).toContain("bold");
     expect(marked(nodes, "italic")).toContain("italic");
@@ -226,7 +252,7 @@ describe("Word import", () => {
     expect(nodes.filter((node) => node.type === "orderedList")).toHaveLength(2);
     expect(nodes.some((node) => node.type === "bulletList")).toBe(true);
     expect(nodes.find((node) => node.content?.[0]?.text === "indented")?.attrs?.indent).toBe(2);
-    expect(nodes.find((node) => node.type === "heading")?.attrs?.level).toBe(1);
+    expect(nodes.find((node) => node.type === "heading")?.attrs?.level).toBe(3);
     expect(result.chapters[0].plainText).toContain("Čaša, šal, žaba.");
     expect(all(nodes).find((node) => node.type === "footnote")?.attrs?.text).toBe("A note on č, š and ž.");
     expect(result.chapters[1].plainText).toBe("Ana climbed the stairs.");
@@ -245,21 +271,202 @@ describe("Word import", () => {
     expect(result.chapters[0].plainText).toContain("The letter came in March from Krško.");
   });
 
-  it("labels a Slovenian story collection in Slovenian and reads it back", async () => {
-    const stories = { ...book(), kind: "stories" as const, language: "sl" as const };
+  it("writes a Slovenian story collection under the stories' own titles and reads it back", async () => {
+    const stories = { ...book(), split: true as const, language: "sl" as const };
     const bytes = await wordFile(stories, look);
     const xml = await documentXml(bytes);
-    expect(xml).toContain(">Prva zgodba<");
-    expect(xml).toContain(">Druga zgodba<");
+    expect(xml).not.toContain(">Prva zgodba<");
+    expect(xml).not.toContain("PensieveChapterLabel");
     const result = await readWordFile(arrayBufferOf(bytes));
     expect(result.chapters.map((chapter) => chapter.title)).toEqual(["Grandmother's Keys", "The Attic"]);
   });
 
+  it("still reads Pensieve files from before parts, with chapter labels and drop caps", async () => {
+    const doc = new Document({
+      sections: [
+        {
+          children: [
+            new Paragraph({ style: "PensieveTitle", children: [new TextRun("The Lantern House")] }),
+            new Paragraph({ style: "PensieveChapterLabel", children: [new TextRun("Chapter One")] }),
+            new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("The Letter")] }),
+            new Paragraph({ style: "PensieveDropCap", children: [new TextRun("T")] }),
+            new Paragraph({ children: [new TextRun("he letter came on a Tuesday.")] }),
+            new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun("A heading inside")] }),
+            new Paragraph({ children: [new TextRun("More text.")] }),
+            new Paragraph({ style: "PensieveChapterLabel", children: [new TextRun("Chapter Two")] }),
+            new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Fog on the Sava")] }),
+            new Paragraph({ children: [new TextRun("Fog.")] }),
+          ],
+        },
+      ],
+    });
+    const result = await readWordFile(arrayBufferOf(new Uint8Array(await Packer.toBuffer(doc))));
+    expect(result.fromPensieve).toBe(true);
+    expect(result.title).toBe("The Lantern House");
+    expect(result.chapters.map((chapter) => chapter.title)).toEqual(["The Letter", "Fog on the Sava"]);
+    expect(result.chapters[0].plainText.startsWith("The letter came on a Tuesday.")).toBe(true);
+    const nodes = (result.chapters[0].contentJson.content ?? []) as Node[];
+    expect(nodes.find((node) => node.type === "heading")?.attrs?.level).toBe(3);
+    // Those files had no parts, so a book keeps its own.
+    expect(result.chapters.every((chapter) => chapter.part === undefined)).toBe(true);
+  });
+
+  it("reads an article from before parts as it was written: chapters at Heading 1, no parts", async () => {
+    // Articles never had chapter labels, so only the old title style tells these files apart.
+    const doc = new Document({
+      sections: [
+        {
+          children: [
+            new Paragraph({ style: "PensieveTitle", children: [new TextRun("Essay")] }),
+            new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Intro")] }),
+            new Paragraph({ children: [new TextRun("Why I write by hand.")] }),
+            new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun("The pen is slow")] }),
+            new Paragraph({ children: [new TextRun("Slow helps.")] }),
+            new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Body")] }),
+            new Paragraph({ children: [new TextRun("Then the keyboard.")] }),
+          ],
+        },
+      ],
+    });
+    const result = await readWordFile(arrayBufferOf(new Uint8Array(await Packer.toBuffer(doc))));
+    expect(result.chapters.map((chapter) => [chapter.title, chapter.part])).toEqual([
+      ["Intro", undefined],
+      ["Body", undefined],
+    ]);
+    expect((result.chapters[0].contentJson.content as Node[])[1]).toMatchObject({ type: "heading", attrs: { level: 3 } });
+  });
+
+  it("gives a part with no chapter under it an untitled one, as the page does", async () => {
+    const doc = new Document({
+      sections: [
+        {
+          children: [
+            new Paragraph({ style: WORD_STYLES.title, children: [new TextRun("The Lantern House")] }),
+            new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Book One")] }),
+            new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Part One")] }),
+            new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun("The Letter")] }),
+            new Paragraph({ children: [new TextRun("It came.")] }),
+            new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Part Two")] }),
+            new Paragraph({ children: [new TextRun("Text right under the part.")] }),
+            new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Part Three")] }),
+          ],
+        },
+      ],
+    });
+    const result = await readWordFile(arrayBufferOf(new Uint8Array(await Packer.toBuffer(doc))));
+    expect(result.chapters.map((chapter) => [chapter.title, chapter.part])).toEqual([
+      ["Untitled", "Book One"],
+      ["The Letter", "Part One"],
+      ["Untitled", "Part Two"],
+      ["Untitled", "Part Three"],
+    ]);
+    expect(result.chapters[2].plainText).toBe("Text right under the part.");
+  });
+
+  it("makes headings inside a chapter subheadings in a file from elsewhere", async () => {
+    const doc = new Document({
+      sections: [
+        {
+          children: [
+            new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("One")] }),
+            new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun("A scene")] }),
+            new Paragraph("Text."),
+            new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Two")] }),
+            new Paragraph("More."),
+          ],
+        },
+      ],
+    });
+    const result = await readWordFile(arrayBufferOf(new Uint8Array(await Packer.toBuffer(doc))));
+    expect(result.fromPensieve).toBe(false);
+    expect(result.chapters.map((chapter) => chapter.title)).toEqual(["One", "Two"]);
+    expect((result.chapters[0].contentJson.content as Node[])[0]).toMatchObject({ type: "heading", attrs: { level: 3 } });
+  });
+
   it("keeps an exported article in one piece", async () => {
-    const article = { ...book(), kind: "article" as const, chapters: [book().chapters[0]] };
+    const article = { ...book(), split: false as const, chapters: [book().chapters[0]] };
     const result = await readWordFile(arrayBufferOf(await wordFile(article, look)));
     expect(result.chapters).toHaveLength(1);
     expect(result.chapters[0].title).toBe("The Lantern House");
+    expect(result.chapters[0].part).toBe("");
+    // A part line on the article's page goes into the file, so it comes back with it.
+    const parted = { ...article, chapters: [{ ...article.chapters[0], part: "Kicker" }] };
+    const back = await readWordFile(arrayBufferOf(await wordFile(parted, look)));
+    expect(back.chapters.map((chapter) => [chapter.title, chapter.part])).toEqual([["The Lantern House", "Kicker"]]);
+  });
+
+  it("keeps a Heading 1 added to an article in Word, and an empty line after a part line", async () => {
+    // An article edited in Word: a part line above the title, a byline, and a Heading 1 at the end.
+    const article = new Document({
+      sections: [
+        {
+          children: [
+            new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Essay")] }),
+            new Paragraph({ style: WORD_STYLES.articleTitle, children: [new TextRun("Why I write by hand first")] }),
+            new Paragraph({ children: [new TextRun("by Eva")] }),
+            new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun("The pen is slow")] }),
+            new Paragraph({ children: [new TextRun("Slow helps.")] }),
+            new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Further reading")] }),
+            new Paragraph({ children: [new TextRun("Bird by Bird, Anne Lamott.")] }),
+          ],
+        },
+      ],
+    });
+    const read = await readWordFile(arrayBufferOf(new Uint8Array(await Packer.toBuffer(article))));
+    expect(read.chapters.map((chapter) => [chapter.title, chapter.part])).toEqual([["Why I write by hand first", "Essay"]]);
+    expect(read.chapters[0].plainText).toContain("Further reading");
+    const levels = (read.chapters[0].contentJson.content as Node[]).filter((node) => node.type === "heading").map((node) => node.attrs?.level);
+    expect(levels).toEqual([1, 1]);
+    // A book edited in Word: Enter after a new part's name leaves an empty line under it.
+    const book = new Document({
+      sections: [
+        {
+          children: [
+            new Paragraph({ style: WORD_STYLES.title, children: [new TextRun("The Lantern House")] }),
+            new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Part One")] }),
+            new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun("The Letter")] }),
+            new Paragraph({ children: [new TextRun("It came.")] }),
+            new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Part Two")] }),
+            new Paragraph({ children: [] }),
+          ],
+        },
+      ],
+    });
+    const parts = await readWordFile(arrayBufferOf(new Uint8Array(await Packer.toBuffer(book))));
+    expect(parts.chapters.map((chapter) => [chapter.title, chapter.part])).toEqual([
+      ["The Letter", "Part One"],
+      ["Untitled", "Part Two"],
+    ]);
+  });
+
+  it("keeps an article's headings at their levels, one below its title in Word, and back", async () => {
+    const chapter = createChapter("p", "Why I write by hand first", 0);
+    chapter.contentJson = {
+      type: "doc",
+      content: [
+        para(text("I start on paper.")),
+        { type: "heading", attrs: { level: 1 }, content: [text("The pen is slow")] },
+        para(text("Slow helps.")),
+        { type: "heading", attrs: { level: 2 }, content: [text("Ink")] },
+        { type: "heading", attrs: { level: 3 }, content: [text("Fountain pens")] },
+        para(text("Then the keyboard.")),
+      ],
+    };
+    const article = { title: "Why I write by hand first", split: false as const, language: "en" as const, chapters: [chapter] };
+    const bytes = await wordFile(article, look);
+    const xml = await documentXml(bytes);
+    expect(xml).toMatch(/w:pStyle w:val="Heading2"\/>[\s\S]*?>The pen is slow</);
+    expect(xml).toMatch(/w:pStyle w:val="Heading3"\/>[\s\S]*?>Ink</);
+    expect(xml).toMatch(/w:pStyle w:val="Heading4"\/>[\s\S]*?>Fountain pens</);
+    const result = await readWordFile(arrayBufferOf(bytes));
+    expect(result.chapters).toHaveLength(1);
+    expect(result.chapters[0].title).toBe("Why I write by hand first");
+    const headings = (result.chapters[0].contentJson.content as Node[]).filter((node) => node.type === "heading");
+    expect(headings.map((node) => [node.attrs?.level, node.content?.[0]?.text])).toEqual([
+      [1, "The pen is slow"],
+      [2, "Ink"],
+      [3, "Fountain pens"],
+    ]);
   });
 
   it("finds chapters in a hand-formatted manuscript", async () => {
@@ -323,7 +530,7 @@ describe("Word import", () => {
 
 describe("bringing Word edits back", () => {
   it("keeps each chapter's id and settings when its title matches", () => {
-    const project = createProject();
+    const project = createWriting();
     const [first] = project.chapters;
     first.title = "The Letter";
     first.status = "final";
@@ -345,15 +552,28 @@ describe("bringing Word edits back", () => {
   });
 
   it("matches a renamed chapter by its place in the book", () => {
-    const project = createProject();
+    const project = createWriting();
     const id = project.chapters[0].id;
     const next = replaceBookChapters(project, [{ title: "Renamed in Word", contentJson: { type: "doc", content: [] }, plainText: "" }]);
     expect(next.chapters[0].id).toBe(id);
     expect(next.chapters[0].title).toBe("Renamed in Word");
   });
 
+  it("takes parts from a file that has them, and keeps the book's own otherwise", () => {
+    const project = createWriting();
+    project.chapters[0].title = "The Letter";
+    project.chapters[0].part = "Part One";
+    const empty = { type: "doc", content: [] };
+    const kept = replaceBookChapters(project, [{ title: "The Letter", contentJson: empty, plainText: "" }]);
+    expect(kept.chapters[0].part).toBe("Part One");
+    const set = replaceBookChapters(project, [{ title: "The Letter", contentJson: empty, plainText: "", part: "Beginnings" }]);
+    expect(set.chapters[0].part).toBe("Beginnings");
+    const added = appendBookChapters(project, [{ title: "Coda", contentJson: empty, plainText: "", part: "Part Two" }]);
+    expect(added.chapters.at(-1)?.part).toBe("Part Two");
+  });
+
   it("adds imported chapters after the last one", () => {
-    const project = createProject();
+    const project = createWriting();
     const next = appendBookChapters(project, [{ title: "Imported", contentJson: { type: "doc", content: [] }, plainText: "" }]);
     expect(next.chapters.map((chapter) => chapter.position)).toEqual([0, 1]);
   });

@@ -34,8 +34,24 @@ describe("interface language", () => {
       "111 besed",
     ]);
     expect(pluralize("sl", "chapters", 0)).toBe("0 poglavij");
+    // After "ima" (has): "Ima 20.001 besedo", "20.002 besedi", "21.103 besede", "20.011 besed".
+    expect([20001, 20002, 21103, 20011].map((n) => translate("sl", "joinLong", { words: pluralize("sl", "hasWords", n) }).split(":")[0])).toEqual([
+      "Ima 20.001 besedo",
+      "Ima 20.002 besedi",
+      "Ima 21.103 besede",
+      "Ima 20.011 besed",
+    ]);
     expect(pluralize("en", "words", 1)).toBe("1 word");
     expect(pluralize("en", "words", 1240)).toBe("1,240 words");
+    // A goal follows the words written: "230 od 500 besed", "1 od 1 besede".
+    expect([1, 2, 101, 500, 10000].map((n) => pluralize("sl", "wordsOf", n))).toEqual([
+      "od 1 besede",
+      "od 2 besed",
+      "od 101 besede",
+      "od 500 besed",
+      "od 10.000 besed",
+    ]);
+    expect(pluralize("en", "wordsOf", 500)).toBe("of 500 words");
   });
 
   it("says how long ago in both languages", () => {

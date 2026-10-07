@@ -5,11 +5,8 @@ import {
   CommentRangeStart,
   CommentReference,
   Document,
-  DropCapType,
   ExternalHyperlink,
   FootnoteReferenceRun,
-  FrameAnchorType,
-  FrameWrap,
   Header,
   HeadingLevel,
   ImageRun,
@@ -25,28 +22,31 @@ import {
   type ICommentOptions,
   type ISectionOptions,
 } from "docx";
-import type { Chapter, DocumentJson, Project, WritingLanguage } from "$lib/model";
-import { chapterName } from "$lib/chapters/labels";
+import type { Chapter, DocumentJson, WritingLanguage } from "$lib/model";
+import { startsPart } from "$lib/chapters/page";
 import { WORD_STYLES } from "./wordStyles";
 
 /**
- * Writes a book as a Word document that looks like the page in Pensieve: the manuscript font,
- * the app's size and spacing, first-line indents, a drop cap, each chapter on a new page with
- * its label, and a running head with page numbers.
+ * Writes a book as a Word document that looks like the page in Pensieve: the manuscript font, the
+ * app's text size and line spacing, paragraphs a little apart with no indent, and each chapter on a
+ * new page under its title as Heading 2, after its part's name as Heading 1 where a part begins,
+ * with subheadings as Heading 3. A running head with page numbers is the one thing Word has that the
+ * page doesn't.
  */
 
 export type WordBook = {
   title: string;
-  kind: Project["kind"];
+  /** "Split into chapters": off, the writing is one page and keeps its headings' own levels. */
+  split: boolean;
   language: WritingLanguage;
-  chapters: Pick<Chapter, "title" | "position" | "contentJson" | "language">[];
+  chapters: Pick<Chapter, "title" | "position" | "contentJson" | "language" | "part">[];
 };
 
 export type WordLook = {
   /** The font name Word shows, such as "Literata". */
   font: string;
-  /** Manuscript text size in CSS pixels, as set in Settings. */
-  sizePx: number;
+  /** The writing's text size in points, as set in Settings. */
+  sizePt: number;
   pageWidth: "narrow" | "book" | "wide";
   runningHead: boolean;
 };
@@ -77,48 +77,28 @@ const PAGE_HEIGHT = 16838;
 const SHEET_PX = { narrow: 520, book: 600, wide: 720 } as const;
 const SHEET_PADDING_PX = 76;
 const TWIPS_PER_PX = 15; // 1 CSS pixel = 0.75 pt = 15 twips
-const LEADING = 1.85; // the page's line height, as a multiple of the text size
-
-type DropCap = { size: number; before: number; line: number; lower: number };
-
-/**
- * What Word itself sets for a two-line drop cap at LEADING, per point of text size: the letter's
- * size and how far it is lowered (half-points), the space before it and its exact line height
- * (twips). Measured in Word; anything taller pushes the letter's frame into a third line.
- */
-const DROP_CAPS: Record<string, DropCap> = {
-  Literata: { size: 6.22, before: 7.3, line: 59.4, lower: 0.56 },
-  "EB Garamond": { size: 5.8, before: 10.9, line: 52.16, lower: 0.42 },
-  "Courier New": { size: 6.39, before: 14.32, line: 45.3, lower: 0.32 },
-};
+const LEADING = 1.5; // the page's line height, as a multiple of the text size
+const PARAGRAPH_GAP = 0.6; // the space between two paragraphs on the page, in the same measure
 
 type Measures = {
   halfPoints: number;
   pt: number;
   textWidth: number;
   side: number;
-  firstLine: number;
+  paragraphGap: number;
   indentStep: number;
-  dropCap: DropCap;
 };
 
 function measures(look: WordLook): Measures {
-  const pt = Math.round(look.sizePx * 0.75 * 2) / 2;
+  const pt = Math.round(look.sizePt * 2) / 2;
   const textWidth = (SHEET_PX[look.pageWidth] - 2 * SHEET_PADDING_PX) * TWIPS_PER_PX;
-  const cap = DROP_CAPS[look.font] ?? DROP_CAPS.Literata;
   return {
     halfPoints: Math.round(pt * 2),
     pt,
     textWidth,
     side: Math.round((PAGE_WIDTH - textWidth) / 2),
-    firstLine: Math.round(1.6 * pt * 20),
+    paragraphGap: Math.round(PARAGRAPH_GAP * pt * 20),
     indentStep: Math.round(1.5 * pt * 20),
-    dropCap: {
-      size: Math.round(cap.size * pt),
-      before: Math.round(cap.before * pt),
-      line: Math.round(cap.line * pt),
-      lower: Math.round(cap.lower * pt),
-    },
   };
 }
 
@@ -137,6 +117,8 @@ type JsonNode = {
 
 type Context = {
   m: Measures;
+  /** A one-page article, whose headings keep their levels in Word. */
+  article?: boolean;
   assets: WordAssets;
   /** The chapter's language when it differs from the book's; the book's is the document default. */
   language?: { value: string };
@@ -276,32 +258,36 @@ function inlines(nodes: JsonNode[] | undefined, ctx: Context): Inline[] {
 
 type BlockOptions = {
   quote?: boolean;
-  firstLine?: boolean;
+  /** Right after another paragraph, so a little space above it, as on the page. */
+  spaced?: boolean;
   numbering?: ParagraphOptions["numbering"];
   extraLeft?: number;
 };
 
 function paragraph(node: JsonNode, ctx: Context, options: BlockOptions = {}): Paragraph {
-  const alignment = alignmentOf(node.attrs?.textAlign);
-  const leftAligned = alignment === undefined || alignment === AlignmentType.JUSTIFIED;
   const level = Number(node.attrs?.indent ?? 0) || 0;
   const left = level * ctx.m.indentStep + (options.extraLeft ?? 0);
-  const firstLine = options.firstLine && leftAligned ? ctx.m.firstLine : undefined;
   return new Paragraph({
     style: options.quote ? WORD_STYLES.quote : undefined,
-    alignment,
-    indent: left || firstLine ? { left: left || undefined, firstLine } : undefined,
+    alignment: alignmentOf(node.attrs?.textAlign),
+    indent: left ? { left } : undefined,
+    spacing: options.spaced ? { before: ctx.m.paragraphGap } : undefined,
     numbering: options.numbering,
     children: inlines(node.content, ctx),
   });
 }
 
 function heading(node: JsonNode, ctx: Context): Paragraph {
-  const level = Number(node.attrs?.level ?? 1);
-  // Chapter titles are Heading 1, so headings inside a chapter sit one level below.
-  const style = level <= 1 ? HeadingLevel.HEADING_2 : level === 2 ? HeadingLevel.HEADING_3 : HeadingLevel.HEADING_4;
+  // Inside a book's chapter every heading is a subheading: Heading 1 and 2 are parts and chapter titles.
+  if (!ctx.article) {
+    return new Paragraph({ heading: HeadingLevel.HEADING_3, alignment: alignmentOf(node.attrs?.textAlign), children: inlines(node.content, ctx) });
+  }
+  // A one-page article keeps its levels, one below its title: Heading 1 becomes Word's Heading 2, and
+  // so on. Heading 2 opens a chapter in a book, with no space above, so here it gets some.
+  const level = Number(node.attrs?.level ?? 3);
   return new Paragraph({
-    heading: style,
+    heading: level <= 1 ? HeadingLevel.HEADING_2 : level === 2 ? HeadingLevel.HEADING_3 : HeadingLevel.HEADING_4,
+    spacing: level <= 1 ? { before: Math.round(ctx.m.halfPoints * 1.55) * 12 } : undefined,
     alignment: alignmentOf(node.attrs?.textAlign),
     children: inlines(node.content, ctx),
   });
@@ -326,7 +312,8 @@ function picture(node: JsonNode, ctx: Context): Paragraph {
   });
 }
 
-function listParagraphs(list: JsonNode, ctx: Context, level: number, quote: boolean): Paragraph[] {
+/** A list's items as numbered or bulleted paragraphs; `spaced` puts the page's gap above the first. */
+function listParagraphs(list: JsonNode, ctx: Context, level: number, quote: boolean, spaced = false): Paragraph[] {
   const ordered = list.type === "orderedList";
   const reference = ordered ? "pv-numbers" : "pv-bullets";
   // Each numbered list gets its own instance, so it starts again at 1.
@@ -334,6 +321,7 @@ function listParagraphs(list: JsonNode, ctx: Context, level: number, quote: bool
   const out: Paragraph[] = [];
   for (const item of list.content ?? []) {
     let first = true;
+    let previous = "";
     for (const child of item.content ?? []) {
       if (child.type === "bulletList" || child.type === "orderedList") {
         out.push(...listParagraphs(child, ctx, Math.min(level + 1, 5), quote));
@@ -343,12 +331,15 @@ function listParagraphs(list: JsonNode, ctx: Context, level: number, quote: bool
             quote,
             numbering: first ? { reference, level, instance } : undefined,
             extraLeft: first ? 0 : listIndent(level),
+            // A paragraph right after another in the same item sits apart from it, as on the page.
+            spaced: out.length === 0 ? spaced : previous === "paragraph",
           }),
         );
         first = false;
       } else {
         out.push(...blocks([child], ctx, { quote }));
       }
+      previous = child.type ?? "";
     }
   }
   return out;
@@ -358,18 +349,19 @@ function listIndent(level: number): number {
   return 360 * (level + 1);
 }
 
-function blocks(nodes: JsonNode[], ctx: Context, options: { quote?: boolean; afterParagraph?: boolean } = {}): Paragraph[] {
+function blocks(nodes: JsonNode[], ctx: Context, options: { quote?: boolean } = {}): Paragraph[] {
   const out: Paragraph[] = [];
-  let previousParagraph = options.afterParagraph ?? false;
+  // What came before, for the space above: after a paragraph or a list, a paragraph sits a little apart.
+  let previous = "";
   for (const node of nodes) {
     if (node.type === "paragraph") {
-      out.push(paragraph(node, ctx, { quote: options.quote, firstLine: previousParagraph }));
+      out.push(paragraph(node, ctx, { quote: options.quote, spaced: previous === "paragraph" || previous === "list" }));
     } else if (node.type === "heading") {
       out.push(heading(node, ctx));
     } else if (node.type === "blockquote") {
       out.push(...blocks(node.content ?? [], ctx, { quote: true }));
     } else if (node.type === "bulletList" || node.type === "orderedList") {
-      out.push(...listParagraphs(node, ctx, 0, options.quote ?? false));
+      out.push(...listParagraphs(node, ctx, 0, options.quote ?? false, previous !== ""));
     } else if (node.type === "image") {
       out.push(picture(node, ctx));
     } else if (node.type === "horizontalRule") {
@@ -391,53 +383,25 @@ function blocks(nodes: JsonNode[], ctx: Context, options: { quote?: boolean; aft
     } else if (node.content) {
       out.push(...blocks(node.content, ctx, { quote: options.quote }));
     }
-    previousParagraph = node.type === "paragraph";
+    previous = node.type === "bulletList" || node.type === "orderedList" ? "list" : (node.type ?? "");
   }
   return out;
 }
 
-const OPENING_PUNCTUATION = /^[“”"‘’'«»„‚(\[]*/u;
-
-/** The first paragraph of a chapter opens with a drop cap, as on the page. */
-function openingParagraphs(node: JsonNode, ctx: Context): Paragraph[] {
-  const content = structuredClone(node.content ?? []);
-  const first = content.find((child) => child.type === "text" && child.text);
-  const alignment = alignmentOf(node.attrs?.textAlign);
-  const text = first?.text ?? "";
-  const lead = text.match(OPENING_PUNCTUATION)?.[0] ?? "";
-  const letter = [...text.slice(lead.length)][0] ?? "";
-  if (!first || content[0] !== first || !/\p{L}/u.test(letter) || (alignment && alignment !== AlignmentType.JUSTIFIED)) {
-    return [paragraph(node, ctx)];
-  }
-  first.text = text.slice(lead.length + letter.length);
-  const cap = lead + letter;
-  return [
-    new Paragraph({
-      style: WORD_STYLES.dropCap,
-      frame: {
-        type: "absolute",
-        position: { x: 0, y: 0 },
-        width: 0,
-        height: 0,
-        anchor: { horizontal: FrameAnchorType.TEXT, vertical: FrameAnchorType.TEXT },
-        dropCap: DropCapType.DROP,
-        lines: 2,
-        wrap: FrameWrap.AROUND,
-      },
-      children: [new TextRun({ text: cap, language: ctx.language })],
-    }),
-    paragraph({ ...node, content }, ctx),
-  ];
+/** A chapter's text, in reading order and once each, so footnotes and comments are numbered as they appear. */
+function chapterBody(doc: DocumentJson, ctx: Context): Paragraph[] {
+  return blocks((doc.content ?? []) as JsonNode[], ctx);
 }
 
-function chapterBody(doc: DocumentJson, ctx: Context): Paragraph[] {
-  const nodes = (doc.content ?? []) as JsonNode[];
-  if (nodes[0]?.type !== "paragraph") return blocks(nodes, ctx);
-  const [opening, ...rest] = nodes;
-  // In reading order and once each, so footnotes and comments are numbered as they appear.
-  const first = openingParagraphs(opening, ctx);
-  // The paragraph after the opening is indented, as on the page.
-  return [...first, ...blocks(rest, ctx, { afterParagraph: true })];
+/** The part's name as Heading 1, where chapter `index` begins a part. */
+function partLine(chapters: WordBook["chapters"], index: number): Paragraph[] {
+  if (!startsPart(chapters, index)) return [];
+  return [new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun(chapters[index].part.trim())] })];
+}
+
+/** A chapter's title as Heading 2, after its part's name as Heading 1 where a part begins. */
+function chapterHead(chapters: WordBook["chapters"], index: number): Paragraph[] {
+  return [...partLine(chapters, index), new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(chapters[index].title)] })];
 }
 
 function runningHead(title: string, m: Measures): Header {
@@ -465,8 +429,10 @@ export function buildWordDocument(book: WordBook, look: WordLook, assets: WordAs
   const footnotes: Context["footnotes"] = { next: 1, items: {} };
   const comments: ICommentOptions[] = [];
   const chapters = [...book.chapters].sort((a, b) => a.position - b.position);
+  const article = !book.split && chapters.length === 1;
   const contextFor = (chapter: WordBook["chapters"][number]): Context => ({
     m,
+    article,
     assets,
     lists,
     footnotes,
@@ -478,17 +444,16 @@ export function buildWordDocument(book: WordBook, look: WordLook, assets: WordAs
   const headers = look.runningHead ? { default: runningHead(book.title, m), first: new Header({ children: [] }) } : undefined;
 
   let sections: ISectionOptions[];
-  if (book.kind === "article") {
+  if (!book.split) {
     sections = [
       {
         properties: { page },
         headers,
         children: [
-          new Paragraph({ style: WORD_STYLES.title, children: [new TextRun(book.title)] }),
-          ...chapters.flatMap((chapter) => [
-            ...(chapters.length > 1
-              ? [new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun(chapter.title)] })]
-              : []),
+          ...(article ? partLine(chapters, 0) : []),
+          new Paragraph({ style: article ? WORD_STYLES.articleTitle : WORD_STYLES.title, children: [new TextRun(book.title)] }),
+          ...chapters.flatMap((chapter, index) => [
+            ...(chapters.length > 1 ? chapterHead(chapters, index) : []),
             ...chapterBody(chapter.contentJson, contextFor(chapter)),
           ]),
         ],
@@ -504,14 +469,7 @@ export function buildWordDocument(book: WordBook, look: WordLook, assets: WordAs
         (chapter, index): ISectionOptions => ({
           properties: { page, type: SectionType.NEXT_PAGE, titlePage: true },
           headers,
-          children: [
-            new Paragraph({
-              style: WORD_STYLES.chapterLabel,
-              children: [new TextRun(chapterName(index, book.language, book.kind))],
-            }),
-            new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun(chapter.title)] }),
-            ...chapterBody(chapter.contentJson, contextFor(chapter)),
-          ],
+          children: [...chapterHead(chapters, index), ...chapterBody(chapter.contentJson, contextFor(chapter))],
         }),
       ),
     ];
@@ -520,6 +478,9 @@ export function buildWordDocument(book: WordBook, look: WordLook, assets: WordAs
   const font = look.font;
   const headingRun = (size: number) => ({ font, size, bold: false, italics: false, color: INK });
   const headingSpacing = (size: number) => ({ before: Math.round(size * 12), after: Math.round(size * 4), line: 300 });
+  const partSize = Math.round(m.halfPoints * 1.9);
+  const chapterSize = Math.round(m.halfPoints * 1.55);
+  const subheadingSize = Math.round(m.halfPoints * 1.2);
   const bulletGlyphs = ["•", "◦", "▪"];
   const numberFormats = [LevelFormat.DECIMAL, LevelFormat.LOWER_LETTER, LevelFormat.LOWER_ROMAN];
 
@@ -540,44 +501,18 @@ export function buildWordDocument(book: WordBook, look: WordLook, assets: WordAs
           run: { font, size: 56, bold: false, color: INK },
           paragraph: { alignment: AlignmentType.CENTER, spacing: { after: 240, line: 300 } },
         },
-        heading1: {
-          run: headingRun(42),
-          paragraph: { alignment: AlignmentType.CENTER, spacing: { before: 0, after: 660, line: 300 }, keepNext: true },
-        },
-        heading2: { run: headingRun(m.halfPoints * 2), paragraph: { spacing: headingSpacing(m.halfPoints * 2), keepNext: true } },
-        heading3: {
-          run: headingRun(Math.round(m.halfPoints * 1.5)),
-          paragraph: { spacing: headingSpacing(Math.round(m.halfPoints * 1.5)), keepNext: true },
-        },
-        heading4: {
-          run: headingRun(Math.round(m.halfPoints * 1.17)),
-          paragraph: { spacing: headingSpacing(Math.round(m.halfPoints * 1.17)), keepNext: true },
-        },
+        // A part's name and a chapter's title open a page, so they have no space above.
+        heading1: { run: headingRun(partSize), paragraph: { spacing: { before: 0, after: Math.round(partSize * 6), line: 300 }, keepNext: true } },
+        heading2: { run: headingRun(chapterSize), paragraph: { spacing: { before: 0, after: Math.round(chapterSize * 6), line: 300 }, keepNext: true } },
+        heading3: { run: headingRun(subheadingSize), paragraph: { spacing: headingSpacing(subheadingSize), keepNext: true } },
+        // An article's Heading 3, one below its Heading 2.
+        heading4: { run: headingRun(m.halfPoints), paragraph: { spacing: headingSpacing(m.halfPoints), keepNext: true } },
         hyperlink: { run: { color: ACCENT, underline: {} } },
       },
       paragraphStyles: [
         // Word's Title, under a name that tells the importer this file came from Pensieve.
-        { id: WORD_STYLES.title, name: "Pensieve Title", basedOn: "Title", next: "Normal" },
-        {
-          id: WORD_STYLES.chapterLabel,
-          name: "Chapter Label",
-          basedOn: "Normal",
-          next: "Heading1",
-          quickFormat: true,
-          run: { allCaps: true, size: 18, color: ACCENT, characterSpacing: 36 },
-          paragraph: { alignment: AlignmentType.CENTER, spacing: { before: 1440, after: 180, line: 240 }, keepNext: true },
-        },
-        {
-          id: WORD_STYLES.dropCap,
-          name: "Drop Cap",
-          basedOn: "Normal",
-          next: "Normal",
-          run: { color: ACCENT, size: m.dropCap.size, position: `-${m.dropCap.lower / 2}pt` },
-          paragraph: {
-            keepNext: true,
-            spacing: { before: m.dropCap.before, line: m.dropCap.line, lineRule: LineRuleType.EXACT },
-          },
-        },
+        { id: WORD_STYLES.title, name: "Pensieve Book Title", basedOn: "Title", next: "Normal" },
+        { id: WORD_STYLES.articleTitle, name: "Pensieve Article Title", basedOn: "Title", next: "Normal" },
         {
           id: WORD_STYLES.quote,
           name: "Quote",

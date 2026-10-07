@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createChapter, createProject } from "$lib/model";
-import { manuscriptText, projectFromSnapshot, withRestoredChapter } from "$lib/storage/restore";
+import { createChapter, createWriting } from "$lib/model";
+import { manuscriptText, withRestoredChapter, writingFromSnapshot } from "$lib/storage/restore";
 import { backupFile } from "$lib/storage/backupFile";
 import { wordsFor } from "$lib/editor/counts";
 import { replaceInDocument, searchChapters } from "$lib/editor/find";
@@ -10,19 +10,19 @@ import { readWordFile } from "$lib/export/wordImport";
 
 describe("restore drill", () => {
   it("restores snapshot text, including č š ž", () => {
-    const current = createProject();
+    const current = createWriting();
     current.chapters[0].plainText = "Current čšž";
     const saved = structuredClone(current.chapters);
     saved[0].plainText = "Saved čšž";
-    const restored = projectFromSnapshot(current, { title: "Book", language: "sl", chapters: saved });
+    const restored = writingFromSnapshot(current, { title: "Book", language: "sl", chapters: saved });
     expect(manuscriptText(restored)).toBe("Saved čšž");
     expect(restored.language).toBe("sl");
-    const again = projectFromSnapshot(restored, { title: current.title, chapters: current.chapters });
+    const again = writingFromSnapshot(restored, { title: current.title, chapters: current.chapters });
     expect(manuscriptText(again)).toBe("Current čšž");
   });
 
   it("restores one chapter and leaves the others", () => {
-    const project = createProject();
+    const project = createWriting();
     const second = createChapter(project.id, "Two", 1);
     second.plainText = "keep me";
     project.chapters.push(second);
@@ -35,12 +35,12 @@ describe("restore drill", () => {
 
 describe("backup file", () => {
   it("keeps the manuscript text in the JSON", () => {
-    const project = createProject();
-    project.chapters[0].plainText = "Drive copy";
-    const file = backupFile(project, [], [], "2026-10-02T00:00:00.000Z");
+    const writing = createWriting();
+    writing.chapters[0].plainText = "Drive copy";
+    const file = backupFile({ id: "p", title: "Project", folders: [] }, [{ ...writing, folder: "", position: 0 }], [], [], "2026-10-02T00:00:00.000Z");
     const parsed = JSON.parse(JSON.stringify(file));
     expect(parsed.kind).toBe("pensieve-backup");
-    expect(manuscriptText(parsed.project)).toBe("Drive copy");
+    expect(manuscriptText(parsed.writings[0])).toBe("Drive copy");
   });
 });
 
@@ -104,8 +104,8 @@ describe("export", () => {
       ],
     };
     const bytes = await wordFile(
-      { title: "Book", kind: "novel", language: "en", chapters: [chapter] },
-      { font: "Literata", sizePx: 17, pageWidth: "book", runningHead: false },
+      { title: "Book", split: true, language: "en", chapters: [chapter] },
+      { font: "Literata", sizePt: 13, pageWidth: "book", runningHead: false },
     );
     const result = await readWordFile(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
     const back = JSON.stringify(result.chapters[0].contentJson);

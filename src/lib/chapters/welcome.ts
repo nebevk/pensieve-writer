@@ -1,4 +1,4 @@
-import { createChapter, type Chapter, type DocumentJson, type ProjectKind } from "$lib/model";
+import { createChapter, type Chapter, type DocumentJson } from "$lib/model";
 import { translate, type UiLanguage } from "$lib/i18n";
 
 export function welcomePlain(canDelete = true, language: UiLanguage = "en"): string {
@@ -28,26 +28,32 @@ export function isWelcomePage(chapter: Pick<Chapter, "title">): boolean {
   return (["en", "sl"] as const).some((language) => translate(language, "welcomeTitle") === title);
 }
 
-export function openingTitle(kind: ProjectKind, bookTitle: string, language: UiLanguage = "en"): string {
-  if (kind === "article") return bookTitle || translate(language, "articleTitle");
+/** The welcome page's title; a one-page writing's page carries the writing's own title. */
+export function openingTitle(split: boolean, title: string, language: UiLanguage = "en"): string {
+  if (!split) return title || translate(language, "articleTitle");
   return translate(language, "welcomeTitle");
 }
 
-/** The title a new chapter starts with, in the book's language: "Chapter 3", "Zgodba 3". */
-export function chapterTitle(kind: ProjectKind, language: UiLanguage, n: number): string {
-  return translate(language, kind === "stories" ? "defaultStory" : "defaultChapter", { n });
+/** The title a new chapter starts with, in the writing's language: "Chapter 3", "Poglavje 3". */
+export function chapterTitle(language: UiLanguage, n: number): string {
+  return translate(language, "defaultChapter", { n });
 }
 
 /**
- * What a new book starts with: the welcome page, in the interface language, then an empty chapter
- * (an article is one page).
+ * What the first writing of a new library starts with: the welcome page, in the interface language,
+ * then an empty chapter (a one-page writing is the welcome page alone).
  */
-export function firstChapters(projectId: string, kind: ProjectKind, bookTitle: string, language: UiLanguage = "en"): Chapter[] {
+export function firstChapters(writingId: string, split: boolean, title: string, language: UiLanguage = "en"): Chapter[] {
   const now = new Date().toISOString();
   const welcome: Chapter = {
-    ...createChapter(projectId, openingTitle(kind, bookTitle, language), 0, now),
-    contentJson: welcomeDocument(kind !== "article", language),
-    plainText: welcomePlain(kind !== "article", language),
+    ...createChapter(writingId, openingTitle(split, title, language), 0, now),
+    contentJson: welcomeDocument(split, language),
+    plainText: welcomePlain(split, language),
   };
-  return kind === "article" ? [welcome] : [welcome, createChapter(projectId, chapterTitle(kind, language, 1), 1, now)];
+  return split ? [welcome, createChapter(writingId, chapterTitle(language, 1), 1, now)] : [welcome];
+}
+
+/** What a new writing starts with: one empty chapter, or one empty page titled with the writing's title. */
+export function newWritingChapters(writingId: string, split: boolean, title: string, language: UiLanguage = "en"): Chapter[] {
+  return [createChapter(writingId, split ? chapterTitle(language, 1) : title, 0)];
 }

@@ -1,17 +1,20 @@
 import Database from "@tauri-apps/plugin-sql";
-import {
-  createProject,
-  type Chapter,
-  type DocumentJson,
-  type Project,
-  type SnapshotInfo,
-  type WritingLanguage,
+import { invoke } from "@tauri-apps/api/core";
+import type {
+  Chapter,
+  ChapterOutline,
+  DocumentJson,
+  Shelf,
+  SnapshotInfo,
+  Writing,
+  WritingLanguage,
+  WritingOutline,
 } from "$lib/model";
 import { loadPrefs, savePrefs } from "$lib/prefs";
-import { chapterTitle, firstChapters } from "$lib/chapters/welcome";
+import { firstChapters, newWritingChapters } from "$lib/chapters/welcome";
+import { wordsFor } from "$lib/editor/counts";
 import { translate } from "$lib/i18n";
 import { t } from "$lib/ui.svelte";
-import type { Storage } from "./types";
 import type { Note, Task } from "./organize";
 import { readNotesWith, readTasksWith, writeNoteWith, writeTaskWith } from "./noteRows";
 import {
@@ -19,20 +22,30 @@ import {
   normalizeChapter,
   normalizeNote,
   normalizeTask,
-  projectFromBackup,
-  projectFromSnapshot,
   snapshotPayload,
   withRestoredChapter,
+  writingFromBackup,
+  writingFromSnapshot,
   type SnapshotPayload,
 } from "./restore";
+import type { BackupContent, BackupWriting } from "./backupFile";
+
+/*
+ * One file is one project. Its writings are the rows of the `projects` table (the name is older than
+ * writings): each chapter and each snapshot belongs to one writing by `project_id`, which holds the
+ * writing's id. The `shelf` row is the project itself: the id its notes and to-dos are saved under, its
+ * name and its writing folders. A file from before projects held several writings has one row in
+ * `projects`; it becomes the project's first writing and keeps its id, which also becomes the project's,
+ * so nothing in it has to move.
+ */
 
 const DEFAULT_DB_URL = "sqlite:pensieve.db";
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const HOURLY_LIMIT = 48;
 const DAILY_LIMIT = 30;
 const MANUAL_LIMIT = 20;
 
-type ProjectRow = {
+type WritingRow = {
   id: string;
   title: string;
   created_at: string;
@@ -40,7 +53,15 @@ type ProjectRow = {
   language?: string;
   kind?: string;
   word_goal?: number;
+  position?: number;
+  folder?: string;
+  deleted_at?: string;
+  opened_at?: string;
+  opened_chapter?: string;
 };
+
+const WRITING_COLUMNS =
+  "id, title, language, kind, word_goal, position, folder, deleted_at, opened_at, opened_chapter, created_at, updated_at";
 
 type ChapterRow = {
   id: string;
@@ -65,15 +86,25 @@ type SnapshotRow = {
   payload?: string;
 };
 
+type ShelfRow = { project_id: string; title: string; folders_json: string; created_at: string };
+
 type SnapshotKind = SnapshotInfo["kind"];
 
+/**
+ * The open file, kept here: set when a project opens, and never read back from the settings while a switch
+ * runs, where a settings save from the page could still hold the old path.
+ */
+let openPath: string | null = null;
+
 function connectionUrl(): string {
-  const path = loadPrefs().projectPath.trim();
+  const path = (openPath ?? loadPrefs().projectPath).trim();
   return path ? `sqlite:${path}` : DEFAULT_DB_URL;
 }
 
 let databasePromise: Promise<Database> | null = null;
 let writeChain: Promise<unknown> = Promise.resolve();
+/** The open project's id, set once its shelf is read: notes and to-dos for any other project are refused. */
+let openProjectId = "";
 
 function enqueue<T>(work: () => Promise<T>): Promise<T> {
   const run = writeChain.then(work, work);
@@ -98,6 +129,7 @@ async function openDatabase(): Promise<Database> {
   const db = await Database.load(connectionUrl());
   await db.select("PRAGMA journal_mode = WAL");
   await db.select("PRAGMA busy_timeout = 5000");
+  await keepCopyBeforeUpgrade(db);
   await ensureSchema(db);
   const versions = await db.select<{ version: number }[]>(
     "SELECT version FROM schema_version WHERE id = 1",
@@ -131,6 +163,14 @@ const ADDED_COLUMNS: [table: string, column: string, change: string][] = [
   ["chapters", "part", "ALTER TABLE chapters ADD COLUMN part TEXT NOT NULL DEFAULT ''"],
   ["projects", "kind", "ALTER TABLE projects ADD COLUMN kind TEXT NOT NULL DEFAULT 'novel'"],
   ["projects", "word_goal", "ALTER TABLE projects ADD COLUMN word_goal INTEGER NOT NULL DEFAULT 0"],
+  // Writings in a project (version 4): their order, folder, the Deleted folder and the last one opened.
+  ["projects", "position", "ALTER TABLE projects ADD COLUMN position INTEGER NOT NULL DEFAULT 0"],
+  ["projects", "folder", "ALTER TABLE projects ADD COLUMN folder TEXT NOT NULL DEFAULT ''"],
+  ["projects", "deleted_at", "ALTER TABLE projects ADD COLUMN deleted_at TEXT NOT NULL DEFAULT ''"],
+  ["projects", "opened_at", "ALTER TABLE projects ADD COLUMN opened_at TEXT NOT NULL DEFAULT ''"],
+  ["projects", "opened_chapter", "ALTER TABLE projects ADD COLUMN opened_chapter TEXT NOT NULL DEFAULT ''"],
+  // A chapter's words, kept with it so the library's tree needn't read its text; -1 until counted.
+  ["chapters", "words", "ALTER TABLE chapters ADD COLUMN words INTEGER NOT NULL DEFAULT -1"],
 ];
 
 const BOOTSTRAP = [
@@ -211,6 +251,28 @@ async function tableExists(db: Database, name: string): Promise<boolean> {
   return rows.length > 0;
 }
 
+/** Where the open file is on disk. */
+async function databaseFilePath(): Promise<string> {
+  return (openPath ?? loadPrefs().projectPath).trim() || (await invoke<string>("default_project_path"));
+}
+
+/**
+ * A file from an older Pensieve, with a book in it, is copied as it was before it changes for projects
+ * that hold several writings: "pensieve.db.before-projects", beside it, once. The change only adds, but
+ * nothing about her text is risked on it.
+ */
+async function keepCopyBeforeUpgrade(db: Database): Promise<void> {
+  if (!(await tableExists(db, "schema_version")) || !(await tableExists(db, "projects"))) return;
+  const versions = await db.select<{ version: number }[]>("SELECT version FROM schema_version WHERE id = 1");
+  if (Number(versions[0]?.version) >= SCHEMA_VERSION) return;
+  const books = await db.select<{ count: number }[]>("SELECT COUNT(*) AS count FROM projects");
+  if (!Number(books[0]?.count)) return;
+  const copy = `${await databaseFilePath()}.before-projects`;
+  if (await invoke<boolean>("project_file_exists", { path: copy })) return;
+  // VACUUM INTO writes a whole, consistent copy, text still in the write-ahead log included.
+  await db.execute("VACUUM INTO $1", [copy]);
+}
+
 async function ensureSchema(db: Database): Promise<void> {
   if (!(await tableExists(db, "schema_version"))) {
     for (const statement of BOOTSTRAP) {
@@ -238,7 +300,22 @@ async function ensureSchema(db: Database): Promise<void> {
       PRIMARY KEY (language, word)
     )`,
   );
+  await db.execute(
+    `CREATE TABLE IF NOT EXISTS shelf (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      project_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      folders_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL
+    )`,
+  );
+  // A file with one book in it: the book becomes the project's first writing, and its id the project's.
+  await db.execute(
+    `INSERT OR IGNORE INTO shelf (id, project_id, title, folders_json, created_at)
+     SELECT 1, id, title, '[]', created_at FROM projects ORDER BY created_at LIMIT 1`,
+  );
   await db.execute("UPDATE schema_version SET version = 3 WHERE id = 1 AND version < 3");
+  await db.execute("UPDATE schema_version SET version = 4 WHERE id = 1 AND version < 4");
 }
 
 export function shouldTakeSnapshot(latestCreatedAt: string | null, now: Date): boolean {
@@ -254,7 +331,33 @@ function localDay(iso: string): string {
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 }
 
-async function writeProject(db: Database, project: Project): Promise<void> {
+/** "Split into chapters" lives in the old `kind` column: a one-page writing is an "article". */
+function kindOf(split: boolean): string {
+  return split ? "novel" : "article";
+}
+
+/** A one-page writing that holds more than one chapter shows them all: none is ever hidden. */
+function splitOf(kind: string | undefined, chapters: number): boolean {
+  return kind !== "article" || chapters > 1;
+}
+
+function languageOf(value: string | undefined): WritingLanguage {
+  return value === "sl" ? "sl" : "en";
+}
+
+async function writeWriting(db: Database, writing: Writing): Promise<void> {
+  if (writing.chapters.length === 0) {
+    throw new Error(t("errNeedsChapter"));
+  }
+  const ids = writing.chapters.map((chapter) => chapter.id);
+  const placeholders = ids.map((_, index) => `$${index + 2}`).join(", ");
+  // A chapter is in one writing only. Saving one writing must never write over another's chapter.
+  const elsewhere = await db.select<{ id: string }[]>(
+    `SELECT id FROM chapters WHERE project_id <> $1 AND id IN (${placeholders})`,
+    [writing.id, ...ids],
+  );
+  if (elsewhere.length > 0) throw new Error(t("errChapterInOtherWriting"));
+
   const updatedAt = new Date().toISOString();
   await db.execute(
     `INSERT INTO projects (id, title, language, kind, word_goal, created_at, updated_at)
@@ -266,25 +369,31 @@ async function writeProject(db: Database, project: Project): Promise<void> {
        word_goal = excluded.word_goal,
        updated_at = excluded.updated_at`,
     [
-      project.id,
-      project.title,
-      project.language === "sl" ? "sl" : "en",
-      project.kind === "stories" || project.kind === "article" ? project.kind : "novel",
-      Number.isFinite(project.wordGoal) ? project.wordGoal : 0,
-      project.createdAt,
+      writing.id,
+      writing.title,
+      writing.language === "sl" ? "sl" : "en",
+      kindOf(writing.split),
+      Number.isFinite(writing.wordGoal) ? writing.wordGoal : 0,
+      writing.createdAt,
       updatedAt,
     ],
   );
 
-  if (project.chapters.length === 0) {
-    throw new Error(t("errNeedsChapter"));
-  }
-
-  for (const chapter of project.chapters) {
+  // Chapters new to the file are written first. A heading on the page moves text from a chapter into a
+  // new one, and the writes are separate: if Pensieve stops between them, the text is then in both
+  // chapters rather than in neither.
+  const saved = new Set(
+    (await db.select<{ id: string }[]>(`SELECT id FROM chapters WHERE project_id = $1`, [writing.id])).map((row) => row.id),
+  );
+  const ordered = [
+    ...writing.chapters.filter((chapter) => !saved.has(chapter.id)),
+    ...writing.chapters.filter((chapter) => saved.has(chapter.id)),
+  ];
+  for (const chapter of ordered) {
     await db.execute(
       `INSERT INTO chapters (
-         id, project_id, title, position, content_json, plain_text, synopsis, status, language, word_goal, part, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         id, project_id, title, position, content_json, plain_text, synopsis, status, language, word_goal, part, updated_at, words
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        ON CONFLICT(id) DO UPDATE SET
          title = excluded.title,
          position = excluded.position,
@@ -295,10 +404,11 @@ async function writeProject(db: Database, project: Project): Promise<void> {
          language = excluded.language,
          word_goal = excluded.word_goal,
          part = excluded.part,
-         updated_at = excluded.updated_at`,
+         updated_at = excluded.updated_at,
+         words = excluded.words`,
       [
         chapter.id,
-        project.id,
+        writing.id,
         chapter.title,
         chapter.position,
         JSON.stringify(chapter.contentJson),
@@ -309,52 +419,53 @@ async function writeProject(db: Database, project: Project): Promise<void> {
         Number.isFinite(chapter.wordGoal) ? chapter.wordGoal : 0,
         chapter.part ?? "",
         chapter.updatedAt,
+        wordsFor(chapter.id, chapter.plainText),
       ],
     );
   }
 
-  const ids = project.chapters.map((chapter) => chapter.id);
-  const placeholders = ids.map((_, index) => `$${index + 2}`).join(", ");
+  // Only this writing's chapters that it no longer has: every other writing's stay as they are.
   await db.execute(
     `DELETE FROM chapters WHERE project_id = $1 AND id NOT IN (${placeholders})`,
-    [project.id, ...ids],
+    [writing.id, ...ids],
   );
 
-  await maybeSnapshot(db, project);
+  await maybeSnapshot(db, writing);
 }
 
-async function maybeSnapshot(db: Database, project: Project): Promise<void> {
+async function maybeSnapshot(db: Database, writing: Writing): Promise<void> {
   const now = new Date();
   const hourly = await db.select<{ created_at: string }[]>(
     `SELECT created_at FROM snapshots
      WHERE project_id = $1 AND kind = 'hourly'
      ORDER BY created_at DESC LIMIT 1`,
-    [project.id],
+    [writing.id],
   );
   if (shouldTakeSnapshot(hourly[0]?.created_at ?? null, now)) {
-    await insertSnapshot(db, project, "hourly");
+    await insertSnapshot(db, writing, "hourly");
   }
 
   const daily = await db.select<{ created_at: string }[]>(
     `SELECT created_at FROM snapshots
      WHERE project_id = $1 AND kind = 'daily'
      ORDER BY created_at DESC LIMIT 1`,
-    [project.id],
+    [writing.id],
   );
   const latestDay = daily[0]?.created_at ? localDay(daily[0].created_at) : "";
   if (latestDay !== localDay(now.toISOString())) {
-    await insertSnapshot(db, project, "daily");
+    await insertSnapshot(db, writing, "daily");
   }
 }
 
-async function insertSnapshot(db: Database, project: Project, kind: SnapshotKind): Promise<void> {
-  const notes = await readNotesWith(db, project.id);
-  const tasks = await readTasksWith(db, project.id);
-  const payload = snapshotPayload(project, notes, tasks);
+/** Earlier versions belong to a writing; each also keeps the project's notes and to-dos as they were. */
+async function insertSnapshot(db: Database, writing: Writing, kind: SnapshotKind): Promise<void> {
+  const notes = await readNotesWith(db);
+  const tasks = await readTasksWith(db);
+  const payload = snapshotPayload(writing, notes, tasks);
   await db.execute(
     `INSERT INTO snapshots (id, project_id, created_at, kind, payload)
      VALUES ($1, $2, $3, $4, $5)`,
-    [crypto.randomUUID(), project.id, new Date().toISOString(), kind, JSON.stringify(payload)],
+    [crypto.randomUUID(), writing.id, new Date().toISOString(), kind, JSON.stringify(payload)],
   );
   const limit = kind === "daily" ? DAILY_LIMIT : kind === "hourly" ? HOURLY_LIMIT : MANUAL_LIMIT;
   await db.execute(
@@ -367,22 +478,18 @@ async function insertSnapshot(db: Database, project: Project, kind: SnapshotKind
          ORDER BY created_at DESC
          LIMIT $3
        )`,
-    [project.id, kind, limit],
+    [writing.id, kind, limit],
   );
 }
 
-async function readProject(db: Database, projectId?: string): Promise<Project | null> {
-  const projects = projectId
-    ? await db.select<ProjectRow[]>(
-        `SELECT id, title, language, kind, word_goal, created_at, updated_at FROM projects WHERE id = $1`,
-        [projectId],
-      )
-    : await db.select<ProjectRow[]>(
-        `SELECT id, title, language, kind, word_goal, created_at, updated_at FROM projects ORDER BY created_at LIMIT 1`,
-      );
-  const row = projects[0];
-  if (!row) return null;
+async function readWritingRow(db: Database, writingId: string): Promise<WritingRow | null> {
+  const rows = await db.select<WritingRow[]>(`SELECT ${WRITING_COLUMNS} FROM projects WHERE id = $1`, [writingId]);
+  return rows[0] ?? null;
+}
 
+async function readWriting(db: Database, writingId: string): Promise<Writing | null> {
+  const row = await readWritingRow(db, writingId);
+  if (!row) return null;
   const chapters = await db.select<ChapterRow[]>(
     `SELECT id, project_id, title, position, content_json, plain_text, synopsis, status, language, word_goal, part, updated_at
      FROM chapters
@@ -390,12 +497,11 @@ async function readProject(db: Database, projectId?: string): Promise<Project | 
      ORDER BY position ASC, title ASC`,
     [row.id],
   );
-
   return {
     id: row.id,
     title: row.title,
-    language: row.language === "sl" ? "sl" : "en",
-    kind: row.kind === "stories" || row.kind === "article" ? row.kind : "novel",
+    language: languageOf(row.language),
+    split: splitOf(row.kind, chapters.length),
     wordGoal: Number(row.word_goal) || 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -420,7 +526,7 @@ function toChapter(row: ChapterRow): Chapter {
   }
   return {
     id: row.id,
-    projectId: row.project_id,
+    writingId: row.project_id,
     title: row.title,
     position: Number(row.position),
     contentJson,
@@ -434,23 +540,304 @@ function toChapter(row: ChapterRow): Chapter {
   };
 }
 
+async function readShelfRow(db: Database): Promise<ShelfRow | null> {
+  const rows = await db.select<ShelfRow[]>(`SELECT project_id, title, folders_json, created_at FROM shelf WHERE id = 1`);
+  return rows[0] ?? null;
+}
+
+function foldersOf(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((name): name is string => typeof name === "string" && name.trim() !== "") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Every writing of the project in order, with its chapters' titles, parts and words, but not their text. */
+async function readOutline(db: Database): Promise<WritingOutline[]> {
+  const rows = await db.select<WritingRow[]>(`SELECT ${WRITING_COLUMNS} FROM projects ORDER BY position ASC, created_at ASC`);
+  // The text is read only for chapters whose words weren't kept yet (saved by an older Pensieve), once.
+  const chapters = await db.select<{ id: string; project_id: string; title: string; part?: string; position: number; status?: string; words: number; plain_text?: string | null }[]>(
+    `SELECT id, project_id, title, part, position, status, words, CASE WHEN words < 0 THEN plain_text ELSE NULL END AS plain_text
+     FROM chapters ORDER BY position ASC, title ASC`,
+  );
+  const byWriting = new Map<string, ChapterOutline[]>();
+  for (const chapter of chapters) {
+    const list = byWriting.get(chapter.project_id) ?? [];
+    let words = Number(chapter.words);
+    if (words < 0) {
+      words = wordsFor(chapter.id, chapter.plain_text ?? "");
+      await db.execute(`UPDATE chapters SET words = $2 WHERE id = $1`, [chapter.id, words]);
+    }
+    list.push({
+      id: chapter.id,
+      title: chapter.title,
+      part: chapter.part ?? "",
+      position: Number(chapter.position),
+      status: chapter.status === "revised" || chapter.status === "final" ? chapter.status : "draft",
+      words,
+      empty: words === 0,
+    });
+    byWriting.set(chapter.project_id, list);
+  }
+  return rows.map((row) => {
+    const list = byWriting.get(row.id) ?? [];
+    return {
+      id: row.id,
+      title: row.title,
+      folder: row.folder ?? "",
+      position: Number(row.position) || 0,
+      split: splitOf(row.kind, list.length),
+      language: languageOf(row.language),
+      wordGoal: Number(row.word_goal) || 0,
+      deletedAt: row.deleted_at ?? "",
+      openedAt: row.opened_at ?? "",
+      openedChapter: row.opened_chapter ?? "",
+      updatedAt: row.updated_at,
+      chapters: list,
+    };
+  });
+}
+
+async function readShelf(db: Database): Promise<Shelf> {
+  const row = await readShelfRow(db);
+  if (!row) throw new Error(t("errNoSchema"));
+  return { projectId: row.project_id, title: row.title, folders: foldersOf(row.folders_json), writings: await readOutline(db) };
+}
+
+async function nextPosition(db: Database): Promise<number> {
+  const rows = await db.select<{ last: number | null }[]>(`SELECT MAX(position) AS last FROM projects`);
+  const last = rows[0]?.last;
+  return last === null || last === undefined ? 0 : Number(last) + 1;
+}
+
+/** A new writing's row, in its folder and place; its chapters are written by writeWriting after it. */
+async function insertWritingRow(db: Database, writing: Writing, folder: string, position: number): Promise<void> {
+  await db.execute(
+    `INSERT INTO projects (id, title, language, kind, word_goal, position, folder, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [
+      writing.id,
+      writing.title,
+      writing.language,
+      kindOf(writing.split),
+      writing.wordGoal,
+      position,
+      folder,
+      writing.createdAt,
+      writing.updatedAt,
+    ],
+  );
+}
+
+/** A writing with no chapters (a stop between two writes, long ago) gets one empty chapter back. */
+async function readWritingWhole(db: Database, writingId: string): Promise<Writing> {
+  const writing = await readWriting(db, writingId);
+  if (!writing) throw new Error(t("errWritingMissing"));
+  if (writing.chapters.length > 0) return writing;
+  const repaired = { ...writing, chapters: newWritingChapters(writing.id, writing.split, writing.title, writing.language) };
+  await writeWriting(db, repaired);
+  return repaired;
+}
+
+function blankWriting(title: string, split: boolean, language: WritingLanguage, now = new Date().toISOString()): Writing {
+  const id = crypto.randomUUID();
+  return {
+    id,
+    title,
+    language,
+    split,
+    wordGoal: 0,
+    createdAt: now,
+    updatedAt: now,
+    chapters: newWritingChapters(id, split, title, language),
+  };
+}
+
+export type OpenedProject = { shelf: Shelf; writing: Writing };
+
+/** What a new project's file starts with: its name, and its first writing's title. */
+export type NewProject = { title: string; writingTitle: string; welcome: boolean };
+
+/**
+ * Opens the project in the open file: its shelf, and the writing to show (the one asked for if it is
+ * there and not deleted, else the one opened last, else the first). A brand-new file becomes a project
+ * with its first writing, on the welcome page when it is the first one in the library.
+ */
+export function openShelf(writingId: string, fresh: NewProject): Promise<OpenedProject> {
+  return enqueue(async () => {
+    const db = await database();
+    if (!(await readShelfRow(db))) {
+      const language = loadPrefs().uiLanguage;
+      const now = new Date().toISOString();
+      await db.execute(
+        `INSERT OR IGNORE INTO shelf (id, project_id, title, folders_json, created_at) VALUES (1, $1, $2, '[]', $3)`,
+        [crypto.randomUUID(), fresh.title, now],
+      );
+      const writing = blankWriting(fresh.writingTitle, true, language, now);
+      if (fresh.welcome) writing.chapters = firstChapters(writing.id, true, writing.title, language);
+      await insertWritingRow(db, writing, "", await nextPosition(db));
+      await writeWriting(db, writing);
+    }
+    const shelf = await readShelf(db);
+    openProjectId = shelf.projectId;
+    const live = shelf.writings.filter((item) => !item.deletedAt);
+    const lastOpened = [...live].sort((a, b) => (b.openedAt > a.openedAt ? 1 : b.openedAt < a.openedAt ? -1 : 0))[0];
+    const chosen = live.find((item) => item.id === writingId) ?? (lastOpened?.openedAt ? lastOpened : live[0]);
+    if (chosen) return { shelf, writing: await readWritingWhole(db, chosen.id) };
+    // Every writing is in Deleted: a new one, so there is a page to write on.
+    const language = loadPrefs().uiLanguage;
+    const writing = blankWriting(translate(language, "untitled"), true, language);
+    await insertWritingRow(db, writing, "", await nextPosition(db));
+    await writeWriting(db, writing);
+    return { shelf: await readShelf(db), writing };
+  });
+}
+
+/** The open project's shelf as saved now, after a writing was added, moved, renamed or deleted. */
+export function readOpenShelf(): Promise<Shelf> {
+  return enqueue(async () => readShelf(await database()));
+}
+
+/** One writing of the open project, whole, to open it. */
+export function loadWriting(writingId: string): Promise<Writing> {
+  return enqueue(async () => readWritingWhole(await database(), writingId));
+}
+
+/** Adds a writing at the end of the open project, in a folder or none, and returns it. */
+export function addWriting(input: {
+  title: string;
+  folder: string;
+  split: boolean;
+  language: WritingLanguage;
+  wordGoal?: number;
+  chapters?: (writingId: string) => Chapter[];
+}): Promise<Writing> {
+  return enqueue(async () => {
+    const db = await database();
+    const writing = blankWriting(input.title, input.split, input.language);
+    writing.wordGoal = input.wordGoal ?? 0;
+    if (input.chapters) writing.chapters = input.chapters(writing.id);
+    await insertWritingRow(db, writing, input.folder, await nextPosition(db));
+    await writeWriting(db, writing);
+    return writing;
+  });
+}
+
+export type WritingFields = {
+  title?: string;
+  folder?: string;
+  position?: number;
+  deletedAt?: string;
+  openedAt?: string;
+  openedChapter?: string;
+};
+
+const FIELD_COLUMNS: Record<keyof WritingFields, string> = {
+  title: "title",
+  folder: "folder",
+  position: "position",
+  deletedAt: "deleted_at",
+  openedAt: "opened_at",
+  openedChapter: "opened_chapter",
+};
+
+/** Changes a writing's place, name or state without touching its text. */
+export function setWritingFields(writingId: string, fields: WritingFields): Promise<void> {
+  return enqueue(async () => {
+    const keys = (Object.keys(fields) as (keyof WritingFields)[]).filter((key) => fields[key] !== undefined);
+    if (keys.length === 0) return;
+    const sets = keys.map((key, index) => `${FIELD_COLUMNS[key]} = $${index + 2}`).join(", ");
+    await (await database()).execute(`UPDATE projects SET ${sets} WHERE id = $1`, [writingId, ...keys.map((key) => fields[key])]);
+  });
+}
+
+/** A copy of a writing, with new ids for it and its chapters, right after the original. */
+export function duplicateWriting(writingId: string, title: string): Promise<Writing> {
+  return enqueue(async () => {
+    const db = await database();
+    const original = await readWritingWhole(db, writingId);
+    const row = await readWritingRow(db, writingId);
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    // A JSON copy, so the copy shares nothing with the original.
+    const chapters = (JSON.parse(JSON.stringify(original.chapters)) as Chapter[]).map((chapter) => ({
+      ...chapter,
+      id: crypto.randomUUID(),
+      writingId: id,
+      updatedAt: now,
+    }));
+    // A one-page writing's page carries its title on its title line: the copy's says the copy's name.
+    if (!original.split && chapters.length === 1) chapters[0] = { ...chapters[0], title };
+    const copy: Writing = { ...original, id, title, createdAt: now, updatedAt: now, chapters };
+    const position = (Number(row?.position) || 0) + 1;
+    await db.execute(`UPDATE projects SET position = position + 1 WHERE position >= $1`, [position]);
+    await insertWritingRow(db, copy, row?.folder ?? "", position);
+    await writeWriting(db, copy);
+    return copy;
+  });
+}
+
+/** Deletes a writing for good: its chapters and its earlier versions go with it. */
+export function eraseWriting(writingId: string): Promise<void> {
+  return enqueue(async () => {
+    const db = await database();
+    await db.execute(`DELETE FROM chapters WHERE project_id = $1`, [writingId]);
+    await db.execute(`DELETE FROM snapshots WHERE project_id = $1`, [writingId]);
+    await db.execute(`DELETE FROM projects WHERE id = $1`, [writingId]);
+  });
+}
+
+/** Renames the open project, or changes its writing folders. */
+export function setShelf(fields: { title?: string; folders?: string[] }): Promise<void> {
+  return enqueue(async () => {
+    const db = await database();
+    if (fields.title !== undefined) await db.execute(`UPDATE shelf SET title = $1 WHERE id = 1`, [fields.title]);
+    if (fields.folders !== undefined) {
+      await db.execute(`UPDATE shelf SET folders_json = $1 WHERE id = 1`, [JSON.stringify(fields.folders)]);
+    }
+  });
+}
+
+/** Renames a writing folder and moves its writings with it; renaming to "" takes them out of folders. */
+export function renameWritingFolder(from: string, to: string, folders: string[]): Promise<void> {
+  return enqueue(async () => {
+    const db = await database();
+    await db.execute(`UPDATE projects SET folder = $2 WHERE folder = $1`, [from, to]);
+    await db.execute(`UPDATE shelf SET folders_json = $1 WHERE id = 1`, [JSON.stringify(folders)]);
+  });
+}
+
 export function withDb<T>(work: (db: Database) => Promise<T>): Promise<T> {
   return enqueue(async () => work(await database()));
 }
 
-export function keepSnapshot(project: Project): Promise<void> {
+/**
+ * Runs a write of the open project's notes or to-dos. One made for another project (a note still
+ * waiting while the projects switched) is refused rather than written into this one.
+ */
+export function withProjectDb<T>(projectId: string, work: (db: Database) => Promise<T>): Promise<T> {
   return enqueue(async () => {
-    await insertSnapshot(await database(), project, "manual");
+    const db = await database();
+    if (!openProjectId || projectId !== openProjectId) throw new Error(t("errOtherProject"));
+    return work(db);
   });
 }
 
-/** Keeps a snapshot of the book as it is saved right now, for callers that don't hold the project. */
-export function snapshotSavedProject(projectId: string): Promise<void> {
+export function keepSnapshot(writing: Writing): Promise<void> {
+  return enqueue(async () => {
+    await insertSnapshot(await database(), writing, "manual");
+  });
+}
+
+/** Keeps a snapshot of a writing as it is saved right now, with the project's notes as they are. */
+export function snapshotSavedWriting(writingId: string): Promise<void> {
   return enqueue(async () => {
     const db = await database();
-    const project = await readProject(db, projectId);
-    if (!project) throw new Error(t("errNoteBookMissing"));
-    await insertSnapshot(db, project, "manual");
+    const writing = await readWriting(db, writingId);
+    if (!writing) throw new Error(t("errNoteBookMissing"));
+    await insertSnapshot(db, writing, "manual");
   });
 }
 
@@ -462,53 +849,108 @@ export function checkpointDatabase(): Promise<void> {
   });
 }
 
-/** Runs after every write already queued, so a pending save can't land in the next book's file. */
-export function switchProjectFile(absolutePath: string): Promise<void> {
+/** Runs after every write already queued, so a pending save can't land in the next project's file. */
+export function switchProjectFile(absolutePath: string, remember = true): Promise<void> {
   return enqueue(async () => {
     const previous = connectionUrl();
-    savePrefs({ ...loadPrefs(), projectPath: absolutePath });
-    try {
-      await (await database()).close(previous);
-    } catch {
-      // The previous file may have failed to open, or its pool is already closed.
+    const open = databasePromise;
+    openPath = absolutePath;
+    // A sample's file, opened only to be written, never becomes the project that opens at the next start.
+    if (remember) savePrefs({ ...loadPrefs(), projectPath: absolutePath });
+    // Nothing is opened just to close it: at the start, the default file must not be made for nothing.
+    if (open) {
+      try {
+        await (await open).close(previous);
+      } catch {
+        // The previous file may have failed to open, or its pool is already closed.
+      }
     }
     databasePromise = null;
+    openProjectId = "";
     await database();
   });
 }
 
-/** Adds the snapshot's or backup's notes and to-dos that the book no longer has. Existing ones stay as they are. */
-async function addMissingNotesAndTasks(
-  db: Database,
-  projectId: string,
-  notes: Note[] | undefined,
-  tasks: Task[] | undefined,
-): Promise<void> {
-  const noteIds = await db.select<{ id: string }[]>(`SELECT id FROM notes WHERE project_id = $1`, [projectId]);
+/** Adds the snapshot's or backup's notes and to-dos that the project no longer has. Existing ones stay as they are. */
+async function addMissingNotesAndTasks(db: Database, notes: Note[] | undefined, tasks: Task[] | undefined): Promise<void> {
+  if (!openProjectId) return;
+  const noteIds = await db.select<{ id: string }[]>(`SELECT id FROM notes`);
   for (const note of missingItems(notes, noteIds.map((row) => row.id))) {
-    await writeNoteWith(db, normalizeNote(note, projectId));
+    await writeNoteWith(db, normalizeNote(note, openProjectId));
   }
-  const taskIds = await db.select<{ id: string }[]>(`SELECT id FROM tasks WHERE project_id = $1`, [projectId]);
+  const taskIds = await db.select<{ id: string }[]>(`SELECT id FROM tasks`);
   for (const task of missingItems(tasks, taskIds.map((row) => row.id))) {
-    await writeTaskWith(db, normalizeTask(task, projectId));
+    await writeTaskWith(db, normalizeTask(task, openProjectId));
   }
 }
 
-/** Replaces the open book's chapters with a Drive backup's, after keeping a "Before restore" snapshot. */
-export function restoreFromBackup(backup: {
-  project: Pick<Project, "title" | "chapters"> & Partial<Pick<Project, "language" | "kind">>;
-  notes: Note[];
-  tasks: Task[];
-}): Promise<Project> {
+/** The whole open project, every writing with its text, for a Drive backup. */
+export function readWholeProject(): Promise<{ shelf: Shelf; writings: BackupWriting[]; notes: Note[]; tasks: Task[] }> {
   return enqueue(async () => {
     const db = await database();
-    const current = await readProject(db);
-    if (!current) throw new Error(t("errOpenBookFirst"));
-    await insertSnapshot(db, current, "before-restore");
-    const restored = projectFromBackup(current, backup.project);
-    await writeProject(db, restored);
-    await addMissingNotesAndTasks(db, restored.id, backup.notes, backup.tasks);
-    return restored;
+    const shelf = await readShelf(db);
+    const writings: BackupWriting[] = [];
+    for (const outline of shelf.writings) {
+      const writing = await readWriting(db, outline.id);
+      // One with no chapters holds no text (a save cut short): a backup with it couldn't be read back.
+      if (writing && writing.chapters.length > 0) writings.push({ ...writing, folder: outline.folder, position: outline.position, deletedAt: outline.deletedAt });
+    }
+    return { shelf, writings, notes: await readNotesWith(db), tasks: await readTasksWith(db) };
+  });
+}
+
+/**
+ * Puts a Drive backup back into the open project. Each writing in it replaces the writing with its id,
+ * after a "Before restore" snapshot of that one, or comes back as a writing of its own when the project
+ * no longer has it. A backup of one book (from before projects held several writings) restores into the
+ * writing it came from when the project has it, and otherwise comes in as a new writing; nothing else is
+ * written over. Writings the backup doesn't have stay, and so do notes and to-dos it doesn't have.
+ * Returns the id of the writing to open.
+ */
+export function restoreFromBackup(backup: BackupContent): Promise<string> {
+  return enqueue(async () => {
+    const db = await database();
+    let first = "";
+    for (const saved of backup.writings) {
+      // One that was in Deleted when the backup was made doesn't come back onto the shelf.
+      const deletedAt = typeof saved.deletedAt === "string" ? saved.deletedAt : "";
+      const current = await readWriting(db, saved.id);
+      if (current) {
+        await insertSnapshot(db, current, "before-restore");
+        await writeWriting(db, writingFromBackup(current, saved));
+        if (!deletedAt) {
+          await db.execute(`UPDATE projects SET deleted_at = '' WHERE id = $1`, [current.id]);
+          first ||= current.id;
+        }
+        continue;
+      }
+      // Back as a writing of its own. A chapter id another writing has now gets a new one.
+      const taken = new Set((await db.select<{ id: string }[]>(`SELECT id FROM chapters`)).map((row) => row.id));
+      const now = new Date().toISOString();
+      const shell: Writing = {
+        id: saved.id,
+        title: saved.title,
+        language: languageOf(saved.language),
+        split: saved.split,
+        wordGoal: 0,
+        createdAt: now,
+        updatedAt: now,
+        chapters: [],
+      };
+      const restored = writingFromBackup(shell, saved);
+      restored.chapters = restored.chapters.map((chapter) => (taken.has(chapter.id) ? { ...chapter, id: crypto.randomUUID() } : chapter));
+      await insertWritingRow(db, restored, saved.folder, await nextPosition(db));
+      await writeWriting(db, restored);
+      if (deletedAt) await db.execute(`UPDATE projects SET deleted_at = $1 WHERE id = $2`, [deletedAt, restored.id]);
+      else first ||= restored.id;
+    }
+    if (backup.folders.length > 0) {
+      const row = await readShelfRow(db);
+      const folders = [...new Set([...(row ? foldersOf(row.folders_json) : []), ...backup.folders])];
+      await db.execute(`UPDATE shelf SET folders_json = $1 WHERE id = 1`, [JSON.stringify(folders)]);
+    }
+    await addMissingNotesAndTasks(db, backup.notes, backup.tasks);
+    return first;
   });
 }
 
@@ -536,7 +978,7 @@ export function forgetPersonalWord(language: WritingLanguage, word: string): Pro
 async function readSnapshotPayload(
   db: Database,
   snapshotId: string,
-): Promise<{ projectId: string; payload: SnapshotPayload }> {
+): Promise<{ writingId: string; payload: SnapshotPayload }> {
   const rows = await db.select<SnapshotRow[]>(
     `SELECT id, project_id, created_at, payload FROM snapshots WHERE id = $1`,
     [snapshotId],
@@ -550,7 +992,7 @@ async function readSnapshotPayload(
     throw new Error(t("errSnapshotUnreadable"));
   }
   if (!payload.chapters?.length) throw new Error(t("errSnapshotEmpty"));
-  return { projectId: row.project_id, payload };
+  return { writingId: row.project_id, payload };
 }
 
 export function readSnapshotChapters(snapshotId: string): Promise<Chapter[]> {
@@ -560,17 +1002,17 @@ export function readSnapshotChapters(snapshotId: string): Promise<Chapter[]> {
   });
 }
 
-export function restoreChapter(snapshotId: string, chapterId: string): Promise<Project> {
+export function restoreChapter(snapshotId: string, chapterId: string): Promise<Writing> {
   return enqueue(async () => {
     const db = await database();
-    const { projectId, payload } = await readSnapshotPayload(db, snapshotId);
+    const { writingId, payload } = await readSnapshotPayload(db, snapshotId);
     const older = payload.chapters.find((chapter) => chapter.id === chapterId);
     if (!older) throw new Error(t("errChapterNotInSnapshot"));
-    const current = await readProject(db, projectId);
+    const current = await readWriting(db, writingId);
     if (!current) throw new Error(t("errSnapshotProjectMissing"));
     await insertSnapshot(db, current, "before-restore");
     const restored = withRestoredChapter(current, older);
-    await writeProject(db, restored);
+    await writeWriting(db, restored);
     return restored;
   });
 }
@@ -589,58 +1031,64 @@ export function rememberPersonalWord(language: WritingLanguage, word: string): P
 }
 
 /**
- * A brand-new book file, including the one made on first launch, opens on the welcome page.
- * It starts in the interface language: someone using Pensieve in Slovenian likely writes in it too.
+ * Writes a sample project into the open file, which was just made for it or held it before: its
+ * earlier writings go to Deleted (so anything she wrote in them can still be put back), its notes and
+ * to-dos go, and the sample's writings, notes and to-dos come in. Returns the first writing's id.
  */
-function newBook(): Project {
-  const language = loadPrefs().uiLanguage;
-  const project = createProject();
-  return {
-    ...project,
-    title: translate(language, "untitled"),
-    language,
-    chapters: firstChapters(project.id, project.kind, project.title, language),
-  };
+export function writeSampleProject(sample: {
+  /** The sample's own file: anything else open is refused. */
+  path: string;
+  title: string;
+  /** The writing a brand-new file started with, which simply goes; empty when the file held the sample before. */
+  placeholder: string;
+  writings: { writing: Writing; folder: string }[];
+  notes: Note[];
+  tasks: Task[];
+}): Promise<string> {
+  return enqueue(async () => {
+    if (!openPath || openPath.toLowerCase() !== sample.path.toLowerCase()) throw new Error(t("errOtherProject"));
+    const db = await database();
+    const now = new Date().toISOString();
+    if (sample.placeholder) {
+      await db.execute(`DELETE FROM chapters WHERE project_id = $1`, [sample.placeholder]);
+      await db.execute(`DELETE FROM snapshots WHERE project_id = $1`, [sample.placeholder]);
+      await db.execute(`DELETE FROM projects WHERE id = $1`, [sample.placeholder]);
+    }
+    // An earlier version of a writing holds every note and to-do as they were, before they go.
+    const live = await db.select<{ id: string }[]>(`SELECT id FROM projects WHERE deleted_at = '' ORDER BY position LIMIT 1`);
+    const keeper = live[0] ? await readWriting(db, live[0].id) : null;
+    if (keeper) await insertSnapshot(db, keeper, "manual");
+    await db.execute(`UPDATE projects SET deleted_at = $1 WHERE deleted_at = ''`, [now]);
+    await db.execute(`DELETE FROM note_chapters`);
+    await db.execute(`DELETE FROM tasks`);
+    await db.execute(`DELETE FROM notes`);
+    await db.execute(`UPDATE shelf SET title = $1, folders_json = $2 WHERE id = 1`, [
+      sample.title,
+      JSON.stringify([...new Set(sample.writings.map((item) => item.folder).filter(Boolean))]),
+    ]);
+    for (const { writing, folder } of sample.writings) {
+      await insertWritingRow(db, writing, folder, await nextPosition(db));
+      await writeWriting(db, writing);
+    }
+    for (const note of sample.notes) await writeNoteWith(db, normalizeNote(note, openProjectId));
+    for (const task of sample.tasks) await writeTaskWith(db, normalizeTask(task, openProjectId));
+    return sample.writings[0]?.writing.id ?? "";
+  });
 }
 
-export const sqliteStorage: Storage = {
-  save(project) {
+/** The open project's id, the key its notes and to-dos are saved under; empty until its shelf is read. */
+export function openProject(): string {
+  return openProjectId;
+}
+
+export const sqliteStorage = {
+  save(writing: Writing): Promise<void> {
     return enqueue(async () => {
-      await writeProject(await database(), project);
+      await writeWriting(await database(), writing);
     });
   },
 
-  load() {
-    return enqueue(async () => {
-      const db = await database();
-      const existing = await readProject(db);
-      if (existing && existing.chapters.length > 0) return existing;
-      const project = existing ?? newBook();
-      if (existing && existing.chapters.length === 0) {
-        const now = new Date().toISOString();
-        project.chapters = [
-          {
-            id: crypto.randomUUID(),
-            projectId: project.id,
-            title: chapterTitle(project.kind, project.language, 1),
-            position: 0,
-            contentJson: { type: "doc", content: [{ type: "paragraph" }] },
-            plainText: "",
-            synopsis: "",
-            status: "draft",
-            language: "",
-            wordGoal: 0,
-            part: "",
-            updatedAt: now,
-          },
-        ];
-      }
-      await writeProject(db, project);
-      return project;
-    });
-  },
-
-  listSnapshots(projectId) {
+  listSnapshots(writingId: string): Promise<SnapshotInfo[]> {
     return enqueue(async () => {
       const rows = await (
         await database()
@@ -648,12 +1096,12 @@ export const sqliteStorage: Storage = {
         `SELECT id, project_id, created_at, kind FROM snapshots
          WHERE project_id = $1
          ORDER BY created_at DESC`,
-        [projectId],
+        [writingId],
       );
       return rows.map(
         (row): SnapshotInfo => ({
           id: row.id,
-          projectId: row.project_id,
+          writingId: row.project_id,
           createdAt: row.created_at,
           kind:
             row.kind === "daily" || row.kind === "manual" || row.kind === "before-restore"
@@ -664,41 +1112,17 @@ export const sqliteStorage: Storage = {
     });
   },
 
-  restore(snapshotId) {
+  /** Puts a writing back as it was in a snapshot, after keeping it as it is now. */
+  restore(snapshotId: string): Promise<Writing> {
     return enqueue(async () => {
       const db = await database();
-      const rows = await db.select<SnapshotRow[]>(
-        `SELECT id, project_id, created_at, payload FROM snapshots WHERE id = $1`,
-        [snapshotId],
-      );
-      const row = rows[0];
-      if (!row?.payload) throw new Error(t("errSnapshotMissing"));
-
-      let payload: SnapshotPayload;
-      try {
-        payload = JSON.parse(row.payload) as SnapshotPayload;
-      } catch {
-        throw new Error(t("errSnapshotUnreadable"));
-      }
-      if (!payload.chapters?.length) throw new Error(t("errSnapshotEmpty"));
-
-      const current = await readProject(db, row.project_id);
+      const { writingId, payload } = await readSnapshotPayload(db, snapshotId);
+      const current = await readWriting(db, writingId);
       if (!current) throw new Error(t("errSnapshotProjectMissing"));
-
       await insertSnapshot(db, current, "before-restore");
-      const restored = projectFromSnapshot(current, payload);
-      await writeProject(db, restored);
-      await addMissingNotesAndTasks(db, restored.id, payload.notes, payload.tasks);
-
-      const keep = restored.chapters.map((chapter) => chapter.id);
-      const placeholders = keep.map((_, index) => `$${index + 2}`).join(", ");
-      await db.execute(
-        `DELETE FROM chapters
-         WHERE project_id = $1
-           AND id NOT IN (${placeholders})`,
-        [restored.id, ...keep],
-      );
-      return restored;
+      await writeWriting(db, writingFromSnapshot(current, payload));
+      await addMissingNotesAndTasks(db, payload.notes, payload.tasks);
+      return (await readWriting(db, writingId)) ?? current;
     });
   },
 };

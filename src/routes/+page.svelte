@@ -5,11 +5,13 @@
   import Sidebar from "$lib/chapters/Sidebar.svelte";
   import Ribbon from "$lib/editor/Ribbon.svelte";
   import StatusBar from "$lib/editor/StatusBar.svelte";
+  import Icon from "$lib/editor/Icon.svelte";
   import TitleBar from "$lib/editor/TitleBar.svelte";
+  import ZenBar from "$lib/editor/ZenBar.svelte";
   import { countWords, wordsFor } from "$lib/editor/counts";
   import { shrinkImage } from "$lib/editor/imageSize";
   import { replaceInDocument, searchChapters, findNext, replaceAll, replaceNext } from "$lib/editor/find";
-  import { createChapter, createProject, effectiveLanguage, type Chapter, type DocumentJson, type Project, type ProjectKind, type SnapshotInfo, type WritingLanguage } from "$lib/model";
+  import { createChapter, createWriting, effectiveLanguage, type Chapter, type DocumentJson, type Shelf, type SnapshotInfo, type Writing, type WritingLanguage } from "$lib/model";
   import { createAutosave, errorMessage, type SaveStatus } from "$lib/save/autosave";
   import { chaptersToHtml, chaptersToMarkdown, chaptersToPlain } from "$lib/export/document";
   import { ALREADY_EXISTS, CHANGED_ELSEWHERE, MUST_BE_NEW, chooseSavePath, inFolder, writeFileTo, type ExportKind } from "$lib/export/files";
@@ -23,18 +25,19 @@
   import HomeHeader from "$lib/views/HomeHeader.svelte";
   import ChapterPanel from "$lib/views/ChapterPanel.svelte";
   import { flushPrefs, loadPrefs, loadPrefsFile, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs, type KnownProject } from "$lib/prefs";
-  import { duplicateChapterProject, patchChapter, removeChapter, renameChapterProject, reorderChapterList, setChapterText } from "$lib/chapters/mutate";
-  import { chapterTitle, firstChapters } from "$lib/chapters/welcome";
-  import { chapterName, roman } from "$lib/chapters/labels";
-  import { summarize } from "$lib/chapters/progress";
+  import { duplicateChapterIn, patchChapter, removeChapter, renameChapterIn, reorderChapterList, setChapterText } from "$lib/chapters/mutate";
+  import { chapterTitle } from "$lib/chapters/welcome";
+  import { applyPage, chapterBreak, composePage, heldHeading, isLeadLine, joinWriting, leadLines, readPage, splitWriting, startsPart, textStart, withoutBreaks } from "$lib/chapters/page";
+  import { summarize, summarizeOutline, summarizeProject } from "$lib/chapters/progress";
+  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, joinPath, looksSynced, projectFile, projectFiles, projectName, type LibraryActions, type LibraryEntry } from "$lib/chapters/library";
   import { notesInChapter } from "$lib/chapters/mentions";
   import { isUntitled } from "$lib/i18n";
   import { locale, snapshotName, t, ui } from "$lib/ui.svelte";
-  import { deleteNote, deleteTask, flushNoteSave, listNotes, listTasks, saveNote, saveTask, type Note, type Task } from "$lib/storage/organize";
+  import { deleteNote, flushNoteSave, listNotes, listTasks, saveNote, saveTask, type Note, type NoteCategory, type Task } from "$lib/storage/organize";
   import { noteFromComment, todoFromComment } from "$lib/storage/fromComment";
   import type { NoteTarget } from "$lib/editor/noteLinks";
   import type { CommentInfo } from "$lib/editor/comments";
-  import { checkpointDatabase, forgetPersonalWord, keepSnapshot, listPersonalWords, readSnapshotChapters, rememberPersonalWord, restoreChapter, restoreFromBackup, sqliteStorage, switchProjectFile } from "$lib/storage/sqlite";
+  import { addWriting, checkpointDatabase, duplicateWriting, eraseWriting, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readSnapshotChapters, rememberPersonalWord, renameWritingFolder, restoreChapter, restoreFromBackup, setShelf, setWritingFields, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
   import type { Editor as TiptapEditor } from "@tiptap/core";
   import type { NodeSelection } from "@tiptap/pm/state";
   import { lazy } from "$lib/lazy.svelte";
@@ -48,12 +51,28 @@
   const OutlinePart = lazy(() => import("$lib/views/Outline.svelte"));
   const BookPart = lazy(() => import("$lib/views/Book.svelte"));
 
-  let project = $state<Project | null>(null);
+  // The writing open in Write: one of the open project's writings, with all its chapters.
+  let writing = $state<Writing | null>(null);
+  // The open project, as its file holds it: the key for its notes and to-dos, its name, folders and writings.
+  let shelf = $state.raw<Shelf | null>(null);
+  // The library folder, and its folders and projects as last read from disk.
+  let libraryRoot = $state("");
+  let libraryEntries = $state.raw<LibraryEntry[]>([]);
   let activeId = $state<string | null>(null);
   let collapsed = $state(false);
   let saveStatus = $state<SaveStatus>({ state: "saved" });
   let loadError = $state<string | null>(null);
   let textEditor = $state<TiptapEditor | null>(null);
+  // The chapter the open editor holds. Saving goes by this, not by the chapter picked in the list,
+  // which can change a moment before the editor does.
+  let editorChapter = "";
+  // Whether the open page was given a part line when it opened. Chapters can be reordered while it is
+  // open, and its page is read against what it showed (chapters/page.ts, applyPage).
+  let editorBegan = false;
+  // The writing the open page belongs to, and whether that writing was split into chapters when it opened:
+  // the page goes back into that writing, read as it was shown, even if another one is open by then.
+  let editorWriting = "";
+  let editorSplit = true;
   let editorRevision = $state(0);
   let findOpen = $state(false);
   let findQuery = $state("");
@@ -68,7 +87,7 @@
   let historyChapterId = $state("");
   // Restoring the whole book asks once more before it happens.
   let bookRestoreAsked = $state(false);
-  let settingsSection = $state<"Appearance" | "Ambience" | "Shortcuts">("Appearance");
+  let settingsSection = $state<"Appearance" | "Ambience" | "Shortcuts" | "General" | "Writing & goals">("Appearance");
   let settingsReturn: HTMLElement | null = null;
   // One-shot requests to the Notes view: make a note (tied to the chapter being written), or open one.
   let noteCreate = $state<{ at: number; chapterId: string } | null>(null);
@@ -100,6 +119,8 @@
   let dictionary = $state<{ language: WritingLanguage; word: string }[]>([]);
   let settingsOpen = $state(false);
   let restoring = $state(false);
+  // How many closings of the editor are under way; it opens again when the last one is done.
+  let closings = 0;
   let pendingBackup = $state<BackupContent | null>(null);
   let importOffer = $state<{ fileName: string; result: WordImport } | null>(null);
   // A Word copy path that was changed elsewhere; automatic updates leave it alone until "Update now".
@@ -113,8 +134,11 @@
     delayMs: 2000,
     save: async () => {
       captureEditor();
-      if (!project) return;
-      await sqliteStorage.save(project);
+      if (!writing) return;
+      // Storage has another project's file open (a sample being written, a project being moved): the change
+      // stays unsaved, and autosave tries again in a moment, into her own file.
+      if (switchingBooks) throw new Error(t("saveWaitsForSwitch"));
+      await sqliteStorage.save(writing);
     },
     onStatus: (status) => {
       saveStatus = status;
@@ -122,23 +146,33 @@
   });
 
   const chapters = $derived(
-    project ? [...project.chapters].sort((a, b) => a.position - b.position) : [],
+    writing ? [...writing.chapters].sort((a, b) => a.position - b.position) : [],
   );
   const activeChapter = $derived(chapters.find((chapter) => chapter.id === activeId) ?? null);
-  const projectId = $derived(project?.id ?? "");
+  // The key the open project's notes and to-dos are saved under (never a writing's id).
+  const projectId = $derived(shelf?.projectId ?? "");
+  const writingId = $derived(writing?.id ?? "");
   // The panel follows the chapter's text as it is reported after a pause in typing, not every key.
   const chapterTodos = $derived(bookTasks.filter((task) => task.chapterId === activeId));
   const chapterNotes = $derived(activeChapter ? notesInChapter(bookNotes, activeChapter) : []);
-  const panelOpen = $derived(!zen && (prefs.panelTodos || prefs.panelNotes));
-  // Sample books live in the app folder's examples folder; Settings offers to reset the ones already there.
-  const sampleNames = $derived(
-    prefs.knownProjects.flatMap((book) => /[\\/]examples[\\/]([a-z0-9-]+)\.db$/i.exec(book.path)?.[1] ?? []),
-  );
+  const panelOpen = $derived(!zen && prefs.panel !== "");
+  // A one-page writing has no chapter list: the library shows beside it, whichever tab was chosen.
+  const libraryShown = $derived(prefs.sidebarView === "library" || (!!writing && !writing.split));
+  // The example projects and the long test book written so far; Settings offers to put them back as they were.
+  const sampleNames = $derived(Object.keys(prefs.samples));
+  // Home's projects: every project in the library, then the ones kept elsewhere, with what is known of each.
+  const homeProjects = $derived.by(() => {
+    const known = prefs.knownProjects;
+    const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+    const inLibrary = projectFiles(libraryEntries).map((file) => known.find((item) => same(item.path, file)) ?? { path: file, title: projectName(file) });
+    const elsewhere = known.filter((item) => !libraryRoot || !isInside(item.path, libraryRoot));
+    return [...inLibrary, ...elsewhere];
+  });
   const chapterWords = $derived(activeChapter ? wordsFor(activeChapter.id, activeChapter.plainText) : 0);
-  const projectWords = $derived(chapters.reduce((sum, chapter) => sum + wordsFor(chapter.id, chapter.plainText), 0));
+  const writingWords = $derived(chapters.reduce((sum, chapter) => sum + wordsFor(chapter.id, chapter.plainText), 0));
   const bookHits = $derived(findScope === "book" ? searchChapters(chapters, findQuery) : []);
   const wordsToday = $derived(
-    prefs.writingDay === dayKey(new Date()) ? Math.max(0, projectWords - prefs.dayStartWords) : 0,
+    prefs.writingDay === dayKey(new Date(clock)) ? Math.max(0, writingWords - prefs.dayStartWords) : 0,
   );
 
   function dayKey(date: Date): string {
@@ -151,7 +185,7 @@
 
   // Back in Write, the panel reads the notes and to-dos again: they may have changed in their views.
   $effect(() => {
-    if (view === "write" && projectId) void loadOrganizer();
+    if (view === "write" && projectId && projectLocation) void loadOrganizer();
   });
 
   /**
@@ -178,9 +212,8 @@
 
   $effect(() => {
     document.documentElement.style.setProperty("--pv-writing-font", manuscriptFamily(prefs.manuscriptFont));
-    document.documentElement.style.setProperty("--pv-writing-size", `${prefs.manuscriptSize}px`);
+    document.documentElement.style.setProperty("--pv-writing-size", `${prefs.manuscriptPt}pt`);
     document.documentElement.dataset.grain = prefs.grain ? "true" : "false";
-    document.documentElement.dataset.running = prefs.runningHead ? "true" : "false";
     if (prefs.gentle) document.documentElement.dataset.gentle = "true";
     else delete document.documentElement.dataset.gentle;
     ui.language = prefs.uiLanguage;
@@ -189,9 +222,9 @@
   });
 
   $effect(() => {
-    if (!project) return;
-    const words = projectWords;
-    const today = dayKey(new Date());
+    if (!writing) return;
+    const words = writingWords;
+    const today = dayKey(new Date(clock));
     if (prefs.writingDay !== today) {
       prefs = { ...prefs, writingDay: today, dayStartWords: words };
     }
@@ -233,18 +266,16 @@
         } catch {
           // Keep the settings already in this window if the file cannot be read.
         }
-        const loaded = await sqliteStorage.load();
+        await openAtStart();
         if (disposed) return;
-        project = loaded;
-        activeId = loaded.chapters[0]?.id ?? null;
         saveStatus = { state: "saved" };
         await refreshWritingExtras();
-        rememberBook(loadPrefs().projectPath || projectLocation, loaded);
+        rememberProject();
       } catch (error) {
         if (disposed) return;
         loadError = errorMessage(error);
-        const draft = createProject();
-        project = draft;
+        const draft = createWriting(t("untitled"), chapterTitle(ui.language, 1));
+        writing = draft;
         activeId = draft.chapters[0]?.id ?? null;
         saveStatus = { state: "error", message: loadError };
       }
@@ -281,6 +312,8 @@
           }
         });
         unlistenFocus = await win.onFocusChanged(({ payload: focused }) => {
+          // Back in the window: the library may have changed in Explorer meanwhile.
+          if (focused) void refreshLibrary();
           if (!focused) {
             // Leaving the window is a good moment to refresh the Word copy: nobody is typing.
             void flushNoteSave()
@@ -303,7 +336,7 @@
     }, 60_000);
 
     const backupTimer = window.setInterval(() => {
-      if (!prefs.backupFolder || !project) return;
+      if (!prefs.backupFolder || !writing) return;
       const last = Date.parse(prefs.lastBackupAt);
       if (!Number.isNaN(last) && Date.now() - last < 60 * 60 * 1000) return;
       void runDriveBackup(false);
@@ -378,6 +411,11 @@
   async function newComment() {
     const editor = textEditor;
     if (!editor || editor.isDestroyed || zen) return;
+    const { selection, doc } = editor.state;
+    if (isLeadLine(doc, selection.$from.index(0))) {
+      notice(t("plainLeadLines"));
+      return;
+    }
     const { addComment } = await import("$lib/editor/comments");
     if (editor.isDestroyed) return;
     const id = crypto.randomUUID();
@@ -393,8 +431,8 @@
   /** A comment becomes a to-do for this chapter; it leaves the page and appears in the panel. */
   async function commentToTodo(comment: CommentInfo) {
     const editor = textEditor;
-    if (!editor || editor.isDestroyed || !project || !activeId) return;
-    const task = todoFromComment(comment, project.id, activeId, new Date().toISOString());
+    if (!editor || editor.isDestroyed || !writing || !activeId) return;
+    const task = todoFromComment(comment, projectId, activeId, new Date().toISOString());
     try {
       await saveTask(task);
     } catch (error) {
@@ -405,14 +443,14 @@
     if (editor.isDestroyed) return;
     editor.view.dispatch(removeComment(editor.state, comment.id));
     bookTasks = [...bookTasks, task];
-    prefs = { ...prefs, panelTodos: true };
+    prefs = { ...prefs, panel: "todos" };
   }
 
   /** A comment becomes a note tied to this chapter, and its words link to the note from then on. */
   async function commentToNote(comment: CommentInfo) {
     const editor = textEditor;
-    if (!editor || editor.isDestroyed || !project || !activeId) return;
-    const note = noteFromComment(comment, project.id, activeId, new Date().toISOString());
+    if (!editor || editor.isDestroyed || !writing || !activeId) return;
+    const note = noteFromComment(comment, projectId, activeId, new Date().toISOString());
     try {
       await saveNote(note);
     } catch (error) {
@@ -424,15 +462,15 @@
     editor.view.dispatch(removeComment(editor.state, comment.id, { noteId: note.id, title: note.title }));
     bookNotes = [note, ...bookNotes];
     panelNote = note.id;
-    prefs = { ...prefs, panelNotes: true };
+    prefs = { ...prefs, panel: "notes" };
   }
 
-  /** Reads the book's notes and to-dos again for the panel, as they may have changed elsewhere. */
+  /** Reads the project's notes and to-dos again for the panel, as they may have changed elsewhere. */
   async function loadOrganizer() {
     const id = projectId;
     if (!id) return;
     try {
-      const [notes, tasks] = await Promise.all([listNotes(id), listTasks(id)]);
+      const [notes, tasks] = await Promise.all([listNotes(), listTasks()]);
       if (id !== projectId) return;
       bookNotes = notes;
       bookTasks = tasks;
@@ -455,10 +493,10 @@
   }
 
   async function addChapterTodo(title: string) {
-    if (!project || !activeId) return;
+    if (!writing || !activeId) return;
     const task: Task = {
       id: crypto.randomUUID(),
-      projectId: project.id,
+      projectId,
       title,
       todoState: "todo",
       updatedAt: new Date().toISOString(),
@@ -482,10 +520,10 @@
   }
 
   function reorderChapters(draggedId: string, targetId: string) {
-    if (!project) return;
-    const next = reorderChapterList(project, draggedId, targetId);
+    if (!writing) return;
+    const next = reorderChapterList(writing, draggedId, targetId);
     if (!next) return;
-    project = next;
+    writing = next;
     autosave.schedule();
     void autosave.flush().catch(() => undefined);
   }
@@ -508,7 +546,7 @@
   }
 
   async function runReplaceAll() {
-    if (findScope === "book" && project && findQuery) {
+    if (findScope === "book" && writing && findQuery) {
       captureEditor();
       if (bookHits.length === 0) {
         findMissing = true;
@@ -516,15 +554,15 @@
       }
       try {
         // Undo only reaches the open chapter, so keep the whole book first.
-        await keepSnapshot(project);
+        await keepSnapshot(writing);
       } catch (error) {
         saveStatus = { state: "error", message: errorMessage(error) };
         return;
       }
-      if (!project) return;
+      if (!writing) return;
       let total = 0;
       const now = new Date().toISOString();
-      const chapters = project.chapters.map((chapter) => {
+      const chapters = writing.chapters.map((chapter) => {
         if (chapter.id === activeId && textEditor && !textEditor.isDestroyed) return chapter;
         const next = replaceInDocument(chapter.contentJson, chapter.plainText, findQuery, replaceQuery);
         total += next.count;
@@ -532,8 +570,8 @@
           ? { ...chapter, contentJson: next.contentJson, plainText: next.plainText, updatedAt: now }
           : chapter;
       });
-      project = { ...project, chapters };
-      if (textEditor && !textEditor.isDestroyed) total += replaceAll(textEditor, findQuery, replaceQuery);
+      writing = { ...writing, chapters };
+      if (textEditor && !textEditor.isDestroyed) total += replaceAll(textEditor, findQuery, replaceQuery, textStart(textEditor.state.doc));
       findMissing = total === 0;
       if (total > 0) {
         autosave.schedule();
@@ -554,35 +592,294 @@
 
   function captureEditor() {
     const editor = textEditor;
-    const id = activeId;
-    if (!editor || editor.isDestroyed || !id || !project) return;
-    const contentJson = editor.getJSON() as DocumentJson;
-    const plainText = editor.getText();
-    const updatedAt = new Date().toISOString();
-    project = {
-      ...project,
-      chapters: project.chapters.map((chapter) =>
-        chapter.id === id ? { ...chapter, contentJson, plainText, updatedAt } : chapter,
-      ),
-    };
+    const id = editorChapter;
+    if (!editor || editor.isDestroyed || !id || !writing || writing.id !== editorWriting) return;
+    // A heading lower down becomes its own chapter first, so its text is saved there, once.
+    splitPage(false);
+    if (editor.isDestroyed || !writing) return;
+    const result = applyPage(writing, id, editor.getJSON() as DocumentJson, new Date().toISOString(), t("untitled"), {
+      began: editorBegan,
+      split: editorSplit,
+    });
+    writing = withArticleTitle(result.writing);
+    editorBegan = result.began;
   }
 
-  function updateChapter(id: string, contentJson: DocumentJson, plainText: string) {
-    if (!project) return;
-    const updatedAt = new Date().toISOString();
-    project = {
-      ...project,
-      chapters: project.chapters.map((chapter) =>
-        chapter.id === id ? { ...chapter, contentJson, plainText, updatedAt } : chapter,
-      ),
-    };
-    autosave.schedule();
+  /**
+   * The page an editor handed back on closing: its chapter's title, part and text. An editor closes
+   * while Svelte tears it down, and then the book still reads as it was before the change that closed
+   * the editor, such as a new chapter. So the page, taken now, goes into the book a moment later, into
+   * the book as it is by then.
+   */
+  function updateChapter(id: string, page: DocumentJson) {
+    // What the page showed when it opened is read now: by the time the microtask runs, the next one may be open.
+    const options = { began: id === editorChapter ? editorBegan : undefined, split: editorSplit };
+    const owner = editorWriting;
+    queueMicrotask(() => {
+      if (!writing) return;
+      if (owner && writing.id !== owner) {
+        // Another writing is open already: the page goes into its own writing, saved there, never lost.
+        void savePageInto(owner, id, page, options);
+        return;
+      }
+      writing = withArticleTitle(applyPage(writing, id, page, new Date().toISOString(), t("untitled"), options).writing);
+      autosave.schedule();
+    });
+  }
+
+  /** Saves a closed page into a writing that isn't the open one. */
+  async function savePageInto(owner: string, id: string, page: DocumentJson, options: { began?: boolean; split?: boolean }) {
+    try {
+      const target = await loadWriting(owner);
+      await sqliteStorage.save(withArticleTitle(applyPage(target, id, page, new Date().toISOString(), t("untitled"), options).writing));
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+    }
   }
 
   function updateChapterText(id: string, plainText: string) {
-    if (!project) return;
-    project = setChapterText(project, id, plainText);
+    if (!writing) return;
+    writing = setChapterText(writing, id, plainText);
+    syncTitle(id);
     refreshFootnotes();
+  }
+
+  // The page and the cursor's block last looked at for headings, so the same ones aren't looked at again.
+  let checkedPage: unknown = null;
+  let checkedBlock = -1;
+
+  /**
+   * Where the keyboard goes on a page opened by a split: the part line (1), the title line (2), or a block
+   * of text, and how far into that line or block, counted from its start.
+   */
+  type Spot = { line: 0 | 1 | 2; block: number; offset: number };
+  // A heading last told about that stays a heading, as it holds a comment or footnote.
+  let heldTold = -1;
+
+  /** The last split, which a notice offers to take back for a few seconds. */
+  type SplitBack = {
+    sourceId: string;
+    page: DocumentJson;
+    began: boolean;
+    /** What the chapters it touched held right after it, to see that nothing was written in them since. */
+    sourceState: string;
+    created: { id: string; state: string }[];
+    title: string;
+    /** Chapters after it that a Heading 1 took into its part: the part each had, and the one it was given. */
+    parts: { id: string; part: string; split: string }[];
+  };
+
+  /** What taking a split back would put back or take away in a chapter: its title, part, synopsis and page. */
+  function writtenIn(book: Writing, chapterId: string): string {
+    const chapter = book.chapters.find((item) => item.id === chapterId);
+    return chapter ? JSON.stringify([chapter.title, chapter.part, chapter.synopsis, chapter.contentJson]) : "";
+  }
+  let splitBack = $state<SplitBack | null>(null);
+  let splitBackTimer = 0;
+  // A chapter just made from a heading, and where the keyboard goes when its page opens.
+  let pageSpot: { id: string; spot: Spot } | null = null;
+
+  /**
+   * After an edit, a Heading 1 or 2 with words, below the title line, starts a part or chapter of its
+   * own, once the cursor has left it, so its name is typed first. An article is one page.
+   */
+  function watchHeadings() {
+    const editor = textEditor;
+    if (!editor || editor.isDestroyed || !editorSplit) return;
+    const page = editor.state.doc;
+    const block = editor.state.selection.$from.index(0);
+    if (page === checkedPage && block === checkedBlock) return;
+    checkedPage = page;
+    checkedBlock = block;
+    if (chapterBreak(page, block) >= 0) {
+      queueMicrotask(() => splitPage(true));
+      return;
+    }
+    // A heading with a comment or footnote stays a heading: say so once, when the cursor leaves it.
+    const held = heldHeading(page, block);
+    if (held >= 0 && held !== heldTold) notice(t("headingKeepsNotes"));
+    heldTold = held;
+  }
+
+  /** Where the cursor, in block `cursor` at `offset`, is in the piece of a split page that starts at block `start`. */
+  function spotIn(json: DocumentJson, start: number, cursor: number, offset: number, title: string): Spot {
+    const nodes = (json.content ?? []) as { type: string; attrs?: Record<string, unknown> }[];
+    const levelAt = (index: number) => (nodes[index]?.type === "heading" ? Number(nodes[index].attrs?.level) : 0);
+    let index = start;
+    if (levelAt(index) === 1) {
+      if (cursor === index) return { line: 1, block: 0, offset };
+      index += 1;
+    }
+    if (levelAt(index) === 2) {
+      if (cursor === index) return { line: 2, block: 0, offset };
+      index += 1;
+    }
+    // A chapter that begins without a title gets the keyboard in its title line, to name it.
+    if (!title) return { line: 2, block: 0, offset: 1 };
+    return { line: 0, block: cursor - index, offset };
+  }
+
+  /** Puts the keyboard where `spot` says on a page that has just opened. */
+  function placeSpot(editor: TiptapEditor, spot: Spot) {
+    const page = editor.state.doc;
+    const lines = leadLines(page);
+    const index =
+      spot.line === 0 ? Math.min(lines + spot.block, page.childCount - 1) : spot.line === 1 && lines === 2 ? 0 : Math.max(0, lines - 1);
+    let start = 0;
+    for (let at = 0; at < index; at += 1) start += page.child(at).nodeSize;
+    const node = page.child(index);
+    // The same place in the line or block, which opens with the same words; failing that, its first line.
+    const target = start + Math.min(Math.max(1, spot.offset), node.nodeSize - 1);
+    let place = page.resolve(target).parent.isTextblock ? target : -1;
+    if (place < 0) {
+      node.descendants((child, pos) => {
+        if (place < 0 && child.isTextblock) place = start + pos + 2;
+        return place < 0;
+      });
+    }
+    if (place < 0) return;
+    // At once, in the task that opened the page: keys typed while it opened are waiting, and land here.
+    editor.commands.setTextSelection(place);
+    editor.view.focus();
+    editor.commands.scrollIntoView();
+  }
+
+  /**
+   * Moves the text from a Heading 1 or 2 lower down into new chapters after this one (chapters/page.ts)
+   * and takes it off this page, then follows the cursor into the chapter it was in, to the same place.
+   * `whileTyping` leaves a heading the cursor is still in for later; saving splits there too.
+   */
+  function splitPage(whileTyping: boolean) {
+    const editor = textEditor;
+    const id = editorChapter;
+    if (!editor || editor.isDestroyed || !id || !writing || !editorSplit || writing.id !== editorWriting) return;
+    const page = editor.state.doc;
+    const head = editor.state.selection.$from;
+    const cursor = head.index(0);
+    const at = chapterBreak(page, whileTyping ? cursor : -1);
+    if (at < 0) return;
+    const json = editor.getJSON() as DocumentJson;
+    const result = applyPage(writing, id, json, new Date().toISOString(), t("untitled"), { began: editorBegan });
+    if (result.created.length === 0) return;
+    const { starts, more } = readPage(json);
+    // The parts the chapters after this one would have with the page read as Undo reads it, headings as lines.
+    const plain = applyPage(writing, id, withoutBreaks(json), new Date().toISOString(), t("untitled"), { began: editorBegan, split: false });
+    const parts = result.writing.chapters.flatMap((chapter) => {
+      const part = plain.writing.chapters.find((item) => item.id === chapter.id)?.part;
+      return part !== undefined && part !== chapter.part ? [{ id: chapter.id, part, split: chapter.part }] : [];
+    });
+    offerSplitBack({
+      sourceId: id,
+      page: json,
+      began: editorBegan,
+      sourceState: writtenIn(result.writing, id),
+      created: result.created.map((createdId) => ({ id: createdId, state: writtenIn(result.writing, createdId) })),
+      title: more[0]?.title || more[0]?.part || t("untitled"),
+      parts,
+    });
+    let cut = 0;
+    for (let index = 0; index < at; index += 1) cut += page.child(index).nodeSize;
+    // Where the cursor's block starts, so it can be put back at the same place in it.
+    let cursorStart = 0;
+    for (let index = 0; index < cursor; index += 1) cursorStart += page.child(index).nodeSize;
+    editor.view.dispatch(editor.state.tr.delete(cut, page.content.size).setMeta("addToHistory", false));
+    writing = result.writing;
+    editorBegan = result.began;
+    const piece = starts.filter((start) => start <= cursor).length - 1;
+    // The page goes along to the new chapter only when she is writing on it. A save while she types in
+    // the find box or a chapter's name leaves the new chapter in the list and the keyboard where it is.
+    if (piece >= 0 && (whileTyping || editor.view.hasFocus())) {
+      pageSpot = { id: result.created[piece], spot: spotIn(json, starts[piece], cursor, head.pos - cursorStart, more[piece].title) };
+      activeId = result.created[piece];
+    }
+    autosave.schedule();
+  }
+
+  /** Offers to take the split back, for ten seconds or until the next one. */
+  function offerSplitBack(back: SplitBack) {
+    splitBack = back;
+    window.clearTimeout(splitBackTimer);
+    splitBackTimer = window.setTimeout(() => (splitBack = null), 10000);
+  }
+
+  /**
+   * Takes the last split back: the new chapters go, and the headings that made them are lines of text
+   * in the chapter again, as before. Only while nothing has been written since in the chapters it touched.
+   */
+  async function takeBackSplit() {
+    const back = splitBack;
+    splitBack = null;
+    window.clearTimeout(splitBackTimer);
+    if (!back || !writing) return;
+    try {
+      await withEditorClosed(async () => {
+        if (!writing) return;
+        const book = writing;
+        const same = (chapterId: string, state: string) => writtenIn(book, chapterId) === state;
+        if (!same(back.sourceId, back.sourceState) || !back.created.every((made) => same(made.id, made.state))) {
+          notice(t("splitKept"));
+          return;
+        }
+        const before = writingWords;
+        const left = { ...book, chapters: book.chapters.filter((chapter) => !back.created.some((made) => made.id === chapter.id)) };
+        const restored = applyPage(left, back.sourceId, withoutBreaks(back.page), new Date().toISOString(), t("untitled"), {
+          began: back.began,
+          split: false,
+        }).writing;
+        // The chapters a Heading 1 took into its part go back to theirs, unless their part was changed since.
+        writing = {
+          ...restored,
+          chapters: restored.chapters.map((chapter) => {
+            const moved = back.parts.find((item) => item.id === chapter.id);
+            return moved && chapter.part === moved.split ? { ...chapter, part: moved.part } : chapter;
+          }),
+        };
+        keepToday(before);
+        activeId = back.sourceId;
+        autosave.schedule();
+        await autosave.flush();
+      });
+    } catch (error) {
+      saveStatus = { state: "error", message: errorMessage(error) };
+    }
+  }
+
+  /**
+   * A one-page writing's title line is the writing's title: its name follows it, so the library, the
+   * window bar and Word show what the page shows. An emptied line leaves the name as it was.
+   */
+  function withArticleTitle(book: Writing): Writing {
+    if (book.split || book.chapters.length !== 1) return book;
+    const title = book.chapters[0].title.trim();
+    return title && !isUntitled(title) && title !== book.title ? { ...book, title } : book;
+  }
+
+  /** The title line's text, as the chapter list shows it, once typing pauses. */
+  function syncTitle(id: string) {
+    const editor = textEditor;
+    if (!editor || editor.isDestroyed || id !== editorChapter || !writing) return;
+    const lines = leadLines(editor.state.doc);
+    const line = lines > 0 ? editor.state.doc.child(lines - 1) : null;
+    if (!line || line.attrs.level !== 2) return;
+    // An empty title line keeps a title that already says "no title", in either language.
+    const current = writing.chapters.find((chapter) => chapter.id === id)?.title ?? "";
+    const title = line.textContent.trim() || (isUntitled(current) ? current : t("untitled"));
+    if (current !== title) writing = withArticleTitle(patchChapter(writing, id, { title }));
+  }
+
+  /** A new title from the chapter list, written into the open page's title line. */
+  function setPageTitle(title: string) {
+    const editor = textEditor;
+    if (!editor || editor.isDestroyed) return;
+    const page = editor.state.doc;
+    const lines = leadLines(page);
+    const line = lines > 0 ? page.child(lines - 1) : null;
+    if (!line || line.attrs.level !== 2) return;
+    const from = lines === 2 ? page.child(0).nodeSize : 0;
+    const text = isUntitled(title) ? "" : title.trim();
+    const change = editor.state.tr.delete(from + 1, from + line.nodeSize - 1);
+    if (text) change.insertText(text, from + 1);
+    editor.view.dispatch(change);
   }
 
   /** Reads the footnotes back from the page, after typing pauses rather than on every key. */
@@ -647,16 +944,17 @@
   }
 
   async function addChapter() {
-    if (!project) return;
+    // A one-page writing has no chapters to add; "Split into chapters" turns them on.
+    if (!writing || !writing.split) return;
     try {
       await autosave.flush();
     } catch {
       // The new chapter still exists in memory if the write failed.
     }
     const position =
-      project.chapters.reduce((max, chapter) => Math.max(max, chapter.position), -1) + 1;
-    const chapter = createChapter(project.id, chapterTitle(project.kind, project.language, position + 1), position);
-    project = { ...project, chapters: [...project.chapters, chapter] };
+      writing.chapters.reduce((max, chapter) => Math.max(max, chapter.position), -1) + 1;
+    const chapter = createChapter(writing.id, chapterTitle(writing.language, position + 1), position);
+    writing = { ...writing, chapters: [...writing.chapters, chapter] };
     activeId = chapter.id;
     autosave.schedule();
     try {
@@ -667,8 +965,9 @@
   }
 
   async function renameChapter(id: string, title: string) {
-    if (!project) return;
-    project = renameChapterProject(project, id, title);
+    if (!writing) return;
+    writing = renameChapterIn(writing, id, title);
+    if (id === editorChapter) setPageTitle(title);
     autosave.schedule();
     try {
       await autosave.flush();
@@ -678,15 +977,17 @@
   }
 
   async function duplicateChapter(id: string) {
-    if (!project) return;
+    if (!writing) return;
     try {
       await autosave.flush();
     } catch {
       // Keep going with the text that is already in memory.
     }
-    const copied = duplicateChapterProject(project, id);
+    const copied = duplicateChapterIn(writing, id);
     if (!copied) return;
-    project = copied.project;
+    const before = writingWords;
+    writing = copied.writing;
+    keepToday(before);
     activeId = copied.activeId;
     autosave.schedule();
     try {
@@ -697,16 +998,18 @@
   }
 
   async function deleteChapter(id: string) {
-    if (!project || project.chapters.length < 2) return;
+    if (!writing || writing.chapters.length < 2) return;
     try {
-      await keepSnapshot(project);
+      await keepSnapshot(writing);
     } catch (error) {
       saveStatus = { state: "error", message: errorMessage(error) };
       return;
     }
-    const removed = removeChapter(project, id);
+    const removed = removeChapter(writing, id);
     if (!removed) return;
-    project = removed.project;
+    const before = writingWords;
+    writing = removed.writing;
+    keepToday(before);
     if (activeId === id) activeId = removed.activeId;
     autosave.schedule();
     try {
@@ -716,9 +1019,17 @@
     }
   }
 
+  /**
+   * After a change to the book that isn't writing (a copy, a deletion, an import, a restore), today's
+   * words stay as they were: the day's start moves by the words the change added or took away.
+   */
+  function keepToday(before: number) {
+    if (writingWords !== before) prefs = { ...prefs, dayStartWords: prefs.dayStartWords + (writingWords - before) };
+  }
+
   function updateChapterMeta(id: string, patch: Partial<Chapter>) {
-    if (!project) return;
-    project = patchChapter(project, id, patch);
+    if (!writing) return;
+    writing = patchChapter(writing, id, patch);
     autosave.schedule();
     void autosave.flush().catch(() => undefined);
   }
@@ -729,12 +1040,12 @@
   }
 
   /** Saves pending edits, asks where to save, then writes the export there. */
-  async function saveExport(kind: ExportKind, contents: (book: Project) => Promise<Uint8Array>) {
-    if (!project) return;
+  async function saveExport(kind: ExportKind, contents: (book: Writing) => Promise<Uint8Array>) {
+    if (!writing) return;
     try {
       await flushNoteSave();
       await autosave.flush();
-      const book = project;
+      const book = writing;
       const path = await chooseSavePath(`${safeName(book.title)}.${kind}`, kind);
       if (!path) return;
       const written = await writeFileTo(path, await contents(book));
@@ -756,26 +1067,39 @@
     });
   }
 
-  let wordCopyRun: Promise<void> | null = null;
+  // Word copies are written one after another: a request is never lost to one for another writing.
+  let wordCopyQueue: Promise<void> = Promise.resolve();
+
+  /** The Word copy's name: the writing's title, after its project's when they differ, as writings of different projects may share a title. */
+  function wordCopyName(book: Pick<Writing, "title">): string {
+    const projectTitle = shelf?.title.trim() ?? "";
+    return projectTitle && projectTitle !== book.title.trim() ? `${projectTitle} - ${book.title}` : book.title;
+  }
 
   /**
    * Keeps "<book title>.docx" in the chosen folder up to date. It only writes when the book or its
    * look changed, and never replaces a copy that was changed in Word or a file Pensieve didn't make.
    */
-  function updateWordCopy(force = false): Promise<void> {
-    if (!project || !prefs.wordCopyFolder || switchingBooks) return Promise.resolve();
-    if (wordCopyRun) return wordCopyRun;
+  function updateWordCopy(force = false, of: Writing | null = null): Promise<void> {
+    if (!(of ?? writing) || !prefs.wordCopyFolder || switchingBooks) return Promise.resolve();
     const folder = prefs.wordCopyFolder;
-    wordCopyRun = (async () => {
+    // A writing just left keeps the name it had then, in the project it was in.
+    const leftName = of ? wordCopyName(of) : "";
+    const run = wordCopyQueue.then(async () => {
       let path = "";
       try {
-        await flushNoteSave();
-        await autosave.flush();
-        const book = project;
+        // Stopped, moved to another folder, or another project opening since it was asked for: nothing to write.
+        if (switchingBooks || prefs.wordCopyFolder !== folder) return;
+        // A writing just left is written as it was when it closed; the open one after its last words are saved.
+        if (!of) {
+          await flushNoteSave();
+          await autosave.flush();
+        }
+        const book = of ?? writing;
         if (!book) return;
-        path = inFolder(folder, `${safeName(book.title)}.docx`);
+        path = inFolder(folder, `${safeName(leftName || wordCopyName(book))}.docx`);
         if (!force && path === wordCopyHeld) return;
-        const signature = `${backupSignature(book, [], [])}|${JSON.stringify(wordLook(prefs))}`;
+        const signature = `${backupSignature(book.id, book)}|${JSON.stringify(wordLook(prefs))}`;
         const known = prefs.wordCopies[path];
         if (!force && known?.signature === signature && !prefs.wordCopyError) return;
         const written = await writeFileTo(path, await wordFileFor(book, prefs), force ? "" : (known?.stamp ?? MUST_BE_NEW));
@@ -797,11 +1121,10 @@
               ? t("wordCopyForeign", { name })
               : message;
         prefs = { ...prefs, wordCopyError };
-      } finally {
-        wordCopyRun = null;
       }
-    })();
-    return wordCopyRun;
+    });
+    wordCopyQueue = run.catch(() => undefined);
+    return run;
   }
 
   async function pickWordCopyFolder() {
@@ -834,21 +1157,23 @@
 
   async function confirmWordImport(mode: "replace" | "append") {
     const offer = importOffer;
-    if (!offer || !project) return;
+    if (!offer || !writing) return;
     importOffer = null;
     try {
       await withEditorClosed(async () => {
-        if (!project) return;
+        if (!writing) return;
+        const before = writingWords;
         if (mode === "replace") {
-          await keepSnapshot(project);
-          const next = replaceBookChapters(project, offer.result.chapters);
-          project = offer.result.title && isUntitled(project.title) ? { ...next, title: offer.result.title } : next;
-          activeId = project.chapters[0]?.id ?? null;
+          await keepSnapshot(writing);
+          const next = replaceBookChapters(writing, offer.result.chapters);
+          writing = offer.result.title && isUntitled(writing.title) ? { ...next, title: offer.result.title } : next;
+          activeId = writing.chapters[0]?.id ?? null;
         } else {
-          const before = new Set(project.chapters.map((chapter) => chapter.id));
-          project = appendBookChapters(project, offer.result.chapters);
-          activeId = project.chapters.find((chapter) => !before.has(chapter.id))?.id ?? activeId;
+          const known = new Set(writing.chapters.map((chapter) => chapter.id));
+          writing = appendBookChapters(writing, offer.result.chapters);
+          activeId = writing.chapters.find((chapter) => !known.has(chapter.id))?.id ?? activeId;
         }
+        keepToday(before);
         autosave.schedule();
         await autosave.flush();
       });
@@ -860,10 +1185,10 @@
   }
 
   async function copyHtml() {
-    if (!project) return;
+    if (!writing) return;
     try {
       await autosave.flush();
-      await navigator.clipboard.writeText(chaptersToHtml(project.title || "Pensieve", project.chapters));
+      await navigator.clipboard.writeText(chaptersToHtml(writing.title || "Pensieve", writing.chapters));
       backupMessage = t("copiedHtml");
     } catch (error) {
       saveStatus = { state: "error", message: errorMessage(error) };
@@ -881,14 +1206,14 @@
   }
 
   async function openHistory() {
-    if (!project) return;
+    if (!writing) return;
     historyOpen = true;
     historyPreview = "";
     historyChapterId = "";
     historySnapshotId = "";
     bookRestoreAsked = false;
     try {
-      historyList = await sqliteStorage.listSnapshots(project.id);
+      historyList = await sqliteStorage.listSnapshots(writing.id);
     } catch (error) {
       saveStatus = { state: "error", message: errorMessage(error) };
     }
@@ -914,19 +1239,35 @@
 
   /**
    * Closes the editor so it hands back its text, saves everything, then runs `work`.
-   * The editor reopens on whatever `work` leaves in `project`, so an open editor can't
+   * The editor reopens on whatever `work` leaves in `writing`, so an open editor can't
    * write its older text over a restore.
    */
-  async function withEditorClosed(work: () => Promise<void>): Promise<void> {
-    restoring = true;
-    try {
-      await tick();
-      await flushNoteSave();
-      await autosave.flush();
-      await work();
-    } finally {
-      restoring = false;
-    }
+  function withEditorClosed(work: () => Promise<void>): Promise<void> {
+    return oneAtATime(async () => {
+      closings += 1;
+      restoring = true;
+      try {
+        await tick();
+        await flushNoteSave();
+        await autosave.flush();
+        await work();
+      } finally {
+        closings -= 1;
+        if (closings === 0) restoring = false;
+      }
+    });
+  }
+
+  /**
+   * Changes to the open project or its writings run one after the other: a switch can't start in the
+   * middle of another change, which would then save into the project opened meanwhile. Never call it
+   * from inside a change that is running (that one would wait for itself).
+   */
+  let changes: Promise<unknown> = Promise.resolve();
+  function oneAtATime<T>(work: () => Promise<T>): Promise<T> {
+    const run = changes.then(work, work);
+    changes = run.catch(() => undefined);
+    return run;
   }
 
   async function restoreHistoryChapter() {
@@ -935,7 +1276,9 @@
     const chapterId = historyChapterId;
     try {
       await withEditorClosed(async () => {
-        project = await restoreChapter(snapshotId, chapterId);
+        const before = writingWords;
+        writing = await restoreChapter(snapshotId, chapterId);
+        keepToday(before);
         activeId = chapterId;
       });
       historyOpen = false;
@@ -954,7 +1297,9 @@
     try {
       await withEditorClosed(async () => {
         const restored = await sqliteStorage.restore(snapshotId);
-        project = restored;
+        const before = writingWords;
+        writing = restored;
+        keepToday(before);
         activeId = restored.chapters.find((chapter) => chapter.id === activeId)?.id ?? restored.chapters[0]?.id ?? null;
       });
       historyOpen = false;
@@ -980,10 +1325,21 @@
     pendingBackup = null;
     try {
       await withEditorClosed(async () => {
-        const restored = await restoreFromBackup(backup);
-        project = restored;
+        const before = writingWords;
+        const open = await restoreFromBackup(backup);
+        shelf = await readOpenShelf();
+        const restored = await loadWriting(backup.writings.some((item) => item.id === writingId) ? writingId : open || writingId);
+        if (restored.id === writingId) {
+          writing = restored;
+          keepToday(before);
+        } else {
+          const written = wordsToday;
+          writing = restored;
+          prefs = { ...prefs, writingDay: dayKey(new Date(clock)), dayStartWords: writingWords - written };
+        }
+        resetWritingState();
         activeId = restored.chapters[0]?.id ?? null;
-        rememberBook(projectLocation || prefs.projectPath, restored);
+        rememberProject();
       });
       settingsOpen = false;
       view = "write";
@@ -993,12 +1349,14 @@
   }
 
   function backupOffer(backup: BackupContent | null) {
-    if (!backup || !project) return null;
+    if (!backup || !writing) return null;
     const saved = new Date(backup.savedAt);
+    const ids = new Set(shelf?.writings.map((item) => item.id) ?? []);
     return {
-      title: backup.project.title || t("untitled"),
+      title: (backup.format === 2 ? backup.title : backup.writings[0]?.title) || t("untitled"),
       savedAt: Number.isNaN(saved.getTime()) ? t("unknownDate") : saved.toLocaleString(locale()),
-      otherBook: backup.project.id !== project.id,
+      // A backup of this project, or of a writing it has, puts things back; any other comes in beside them.
+      otherBook: backup.format === 2 ? backup.projectId !== projectId : !backup.writings.some((item) => ids.has(item.id)),
     };
   }
 
@@ -1009,7 +1367,6 @@
   async function refreshWritingExtras() {
     try {
       dictionary = await listPersonalWords();
-      projectLocation = loadPrefs().projectPath || (await invoke<string>("default_project_path"));
       for (const entry of dictionary) {
         try {
           await invoke("add_personal_word", { language: entry.language, word: entry.word });
@@ -1033,7 +1390,7 @@
 
   function onLanguageBadge() {
     const editor = textEditor;
-    const current = project && activeChapter ? effectiveLanguage(project, activeChapter) : "en";
+    const current = writing && activeChapter ? effectiveLanguage(writing, activeChapter) : "en";
     const next = current === "sl" ? "en" : "sl";
     if (editor && !editor.isDestroyed && !editor.state.selection.empty) {
       setSelectionLanguage(next);
@@ -1042,103 +1399,769 @@
     setChapterLanguage(next);
   }
 
-  function rememberBook(path: string, book: Project) {
-    const bookPath = path.trim();
-    if (!bookPath) return;
+  /** The open project as Home and the library show it while it's closed: its writings and their words. */
+  function projectSummary() {
+    const open = writing;
+    const writings = (shelf?.writings ?? [])
+      .filter((item) => !item.deletedAt)
+      .map((item) => (open && item.id === open.id ? summarize(open) : summarizeOutline(item)));
+    return summarizeProject(writings);
+  }
+
+  /** Puts the open project first among the remembered ones, with its writings as they are now. */
+  function rememberProject() {
+    const path = (projectLocation || prefs.projectPath).trim();
+    if (!path || !shelf) return;
+    // Every project she has opened, most recent first; the ceiling only guards against a runaway list.
     const knownProjects = [
-      { path: bookPath, title: book.title.trim() || t("untitled"), summary: summarize(book) },
-      ...prefs.knownProjects.filter((book) => book.path !== bookPath),
-    ].slice(0, 8);
+      { path, title: shelf.title.trim() || projectName(path) || t("untitled"), summary: projectSummary() },
+      ...prefs.knownProjects.filter((book) => book.path.toLowerCase() !== path.toLowerCase()),
+    ].slice(0, 50);
     prefs = { ...prefs, knownProjects };
   }
 
-  function renameProject(title: string) {
-    if (!project) return;
+  /** Renames the open writing. */
+  function renameOpenWriting(title: string) {
+    if (!writing) return;
     const nextTitle = title.trim() || t("untitled");
-    project = { ...project, title: nextTitle };
-    rememberBook(projectLocation || prefs.projectPath, project);
-    autosave.schedule();
-  }
-
-  async function useProjectFile(path: string, openWrite = true) {
-    // The book being left keeps its card on Home, with today's numbers.
-    if (project) rememberBook(projectLocation || prefs.projectPath, project);
-    await flushNoteSave();
-    await autosave.flush();
-    await updateWordCopy();
-    const previous = projectLocation || prefs.projectPath || (await invoke<string>("default_project_path"));
-    switchingBooks = true;
-    let loaded: Project;
-    try {
-      await switchProjectFile(path);
-      prefs = { ...loadPrefs(), writingDay: "" };
-      loaded = await sqliteStorage.load();
-    } catch (error) {
-      // Go back to the open book, or the next autosave would write it into the other file.
-      try {
-        await switchProjectFile(previous);
-        prefs = { ...loadPrefs() };
-      } catch {
-        // The original error below is the one worth showing.
-      }
-      throw error;
-    } finally {
-      switchingBooks = false;
+    writing = { ...writing, title: nextTitle };
+    // A one-page writing carries its title on its title line too.
+    const only = !writing.split && writing.chapters.length === 1 ? writing.chapters[0] : null;
+    if (only && only.title !== nextTitle) {
+      writing = renameChapterIn(writing, only.id, nextTitle);
+      if (only.id === editorChapter) setPageTitle(nextTitle);
     }
-    project = loaded;
-    activeId = loaded.chapters[0]?.id ?? null;
-    projectLocation = path;
-    rememberBook(path, loaded);
-    if (openWrite) view = "write";
+    autosave.schedule();
+    void autosave
+      .flush()
+      .then(refreshShelf)
+      .then(rememberProject)
+      .catch(() => undefined);
   }
-
-  type BuiltBook = { project: Project; notes: Note[]; tasks: Task[] };
 
   /**
-   * Writes sample books into their own files in the app folder and lists them on Home. A sample
-   * that already exists is put back as it was written: its notes and to-dos go, and saving drops
-   * its old chapters. Whatever was written in it is kept as a snapshot first, which Home can
-   * restore. The writer's own books are never touched.
+   * Opens a project's file, on the writing and chapter asked for, else the ones open there last. With a
+   * page open (a switch from the library), the editor closes first and hands its text to the project being
+   * left, then opens on the new one: never the old text over a chapter of the new one. A file that is new
+   * becomes a project, named `fresh`.
    */
-  async function writeSampleBooks(books: { slug: string; build: (projectId: string) => BuiltBook }[], done: string) {
-    if (!project) return;
+  async function useProjectFile(
+    path: string,
+    target: { writingId?: string; chapterId?: string } = {},
+    openWrite = true,
+    fresh: NewProject = { title: projectName(path), writingTitle: projectName(path) || t("untitled"), welcome: false },
+  ) {
+    await withEditorClosed(async () => {
+      // The project being left keeps its row on Home, with today's numbers and the page just closed.
+      rememberProject();
+      await updateWordCopy();
+      const written = wordsToday;
+      const previous = projectLocation || prefs.projectPath || (await invoke<string>("default_project_path"));
+      switchingBooks = true;
+      let opened: OpenedProject;
+      try {
+        await switchProjectFile(path);
+        prefs = { ...prefs, projectPath: path };
+        opened = await openShelf(target.writingId ?? "", fresh);
+      } catch (error) {
+        // Go back to the open project, or the next autosave would write into the other file.
+        try {
+          await switchProjectFile(previous);
+          prefs = { ...prefs, projectPath: previous };
+          await openShelf(writingId, fresh);
+        } catch {
+          // The original error below is the one worth showing.
+        }
+        throw error;
+      } finally {
+        switchingBooks = false;
+      }
+      shelf = opened.shelf;
+      writing = opened.writing;
+      resetWritingState();
+      prefs = { ...prefs, writingDay: dayKey(new Date(clock)), dayStartWords: writingWords - written };
+      activeId = chapterToOpen(opened.writing, target.chapterId);
+      projectLocation = path;
+      // She opened a project herself: what Home said at the start is done.
+      homeNotice = "";
+      rememberProject();
+      if (openWrite) view = "write";
+    });
+  }
+
+  /**
+   * At the start, what was open last: that project and writing. A project that isn't where it was any
+   * more is said so, and the library's first project opens instead. On a first start Pensieve makes the
+   * library folder, with a first project in it that opens on the welcome page.
+   */
+  async function openAtStart() {
+    libraryRoot = await libraryFolderPath();
+    const saved = loadPrefs().projectPath.trim();
+    let path = saved;
+    if (saved && !(await invoke<boolean>("project_file_exists", { path: saved }))) {
+      homeNotice = t("projectFolderMissing", { path: folderOf(saved).path });
+      path = "";
+    }
+    // Before the library, books lived in the app folder: one she wrote in there still opens.
+    if (!saved && prefs.knownProjects.length > 0) {
+      const legacy = await invoke<string>("default_project_path");
+      if (await invoke<boolean>("project_file_exists", { path: legacy })) path = legacy;
+    }
+    let fresh: NewProject = { title: projectName(path), writingTitle: t("untitled"), welcome: false };
+    if (!path) {
+      await refreshLibrary();
+      path = firstProject(libraryEntries, locale()) ?? "";
+      fresh = { title: projectName(path), writingTitle: t("untitled"), welcome: !saved };
+      if (!path) {
+        try {
+          path = await makeProjectFolder(libraryRoot, t("firstProjectName"), true);
+          fresh = { title: projectName(path), writingTitle: t("untitled"), welcome: !saved };
+        } catch (error) {
+          // The library folder can't be written to: the project goes in the app folder, and Home says why.
+          homeNotice = errorMessage(error);
+          path = await invoke<string>("default_project_path");
+          fresh = { title: t("firstProjectName"), writingTitle: t("untitled"), welcome: true };
+        }
+      }
+    }
+    await switchProjectFile(path);
+    prefs = { ...prefs, projectPath: path };
+    const last = prefs.lastOpened.path.toLowerCase() === path.toLowerCase() ? prefs.lastOpened : null;
+    const opened = await openShelf(last?.writingId ?? "", fresh);
+    shelf = opened.shelf;
+    writing = opened.writing;
+    activeId = chapterToOpen(opened.writing, last?.chapterId);
+    projectLocation = path;
+    // Today's count was kept against the writing open last; another one starts it again from here.
+    if (last?.writingId !== opened.writing.id) prefs = { ...prefs, writingDay: dayKey(new Date(clock)), dayStartWords: writingWords };
+    void refreshLibrary();
+  }
+
+  /** Something to tell her on Home at the start: a project that wasn't where it was, or a library that can't be written to. */
+  let homeNotice = $state("");
+
+  /** The library folder: the one she chose, or Documents\Pensieve (her home folder's when Documents is synced). */
+  async function libraryFolderPath(): Promise<string> {
+    const chosen = prefs.libraryFolder.trim();
+    if (chosen) return chosen;
+    return defaultLibraryFolder(await invoke<{ documents: string; home: string }>("library_places"));
+  }
+
+  /** Reads the library folder from disk again, for the tree and Home; only the latest reading is shown. */
+  let libraryReading = 0;
+  async function refreshLibrary() {
+    const root = libraryRoot;
+    if (!root) return;
+    const reading = ++libraryReading;
     try {
-      const home = projectLocation || prefs.projectPath || (await invoke<string>("default_project_path"));
-      const written: KnownProject[] = [];
+      const entries = await invoke<LibraryEntry[]>("list_library", { folder: root });
+      if (reading === libraryReading && root === libraryRoot) libraryEntries = entries;
+    } catch {
+      // The tree keeps what it showed.
+    }
+  }
+
+  /** The open project's shelf as saved now, after a writing was added, moved, renamed or deleted. */
+  async function refreshShelf() {
+    try {
+      shelf = await readOpenShelf();
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+    }
+  }
+
+  /** What library.rs says when a folder of that name is there already. */
+  const FOLDER_TAKEN = "Something with that name is already there";
+  /** An error as the Windows side reported it, before it is translated. */
+  const rawError = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+  /**
+   * Makes a project's folder in `parent` and returns its file. With `reuse`, a project already there under
+   * that name is used, and so is its folder left empty by an earlier try; any other trouble is said.
+   */
+  async function makeProjectFolder(parent: string, name: string, reuse = false): Promise<string> {
+    const problem = folderNameProblem(name);
+    if (problem) throw new Error(t(problem));
+    const target = projectFile(joinPath(parent, name.trim()));
+    if (reuse && (await invoke<boolean>("project_file_exists", { path: target }))) return target;
+    try {
+      return await invoke<string>("new_project_folder", { parent, name: name.trim() });
+    } catch (error) {
+      if (reuse && rawError(error) === FOLDER_TAKEN) return target;
+      throw error;
+    }
+  }
+
+  /**
+   * A folder in `parent` for a project named `name`: the name made fit for a folder, with " (2)", " (3)"…
+   * when one of that name is there already. Returns the folder.
+   */
+  async function freeProjectFolder(parent: string, name: string): Promise<string> {
+    const base = name.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/^[.$\s]+|[.\s]+$/g, "").trim() || t("firstProjectName");
+    const fit = folderNameProblem(base) ? t("firstProjectName") : base;
+    for (let n = 1; n < 100; n += 1) {
+      const candidate = n === 1 ? fit : `${fit} (${n})`;
+      try {
+        return await invoke<string>("create_library_folder", { parent, name: candidate });
+      } catch (error) {
+        if (rawError(error) !== FOLDER_TAKEN) throw error;
+      }
+    }
+    throw new Error(t("nameTaken"));
+  }
+
+  /** The chapter to show in a writing: the one asked for, else the one open there last, else its first. */
+  function chapterToOpen(open: Writing, chapterId?: string): string | null {
+    const ordered = [...open.chapters].sort((a, b) => a.position - b.position);
+    const outline = shelf?.writings.find((item) => item.id === open.id);
+    return (
+      ordered.find((chapter) => chapter.id === chapterId)?.id ??
+      ordered.find((chapter) => chapter.id === outline?.openedChapter)?.id ??
+      ordered[0]?.id ??
+      null
+    );
+  }
+
+  /** Earlier versions, a split to take back and the panel's note belong to the writing that was open. */
+  function resetWritingState() {
+    historyOpen = false;
+    historyList = [];
+    historySnapshotId = "";
+    historyChapterId = "";
+    historyPreview = "";
+    bookRestoreAsked = false;
+    splitBack = null;
+    pageSpot = null;
+    panelNote = "";
+    commentFocus = "";
+    findMissing = false;
+  }
+
+  /**
+   * Inside a change, with the page closed: the open project's writing `id` takes the page, at the chapter
+   * asked for or the one open there last. Returns the writing left.
+   */
+  async function showWriting(id: string, chapterId?: string): Promise<Writing | null> {
+    const left = writing;
+    const written = wordsToday;
+    const next = await loadWriting(id);
+    writing = next;
+    resetWritingState();
+    prefs = { ...prefs, writingDay: dayKey(new Date(clock)), dayStartWords: writingWords - written };
+    activeId = chapterToOpen(next, chapterId);
+    return left;
+  }
+
+  /** Opens another writing of the open project, at the chapter asked for or the one open there last. */
+  async function openWriting(id: string, chapterId?: string) {
+    if (!writing || !shelf) return;
+    if (id === writing.id) {
+      if (chapterId && chapterId !== activeId) await selectChapter(chapterId);
+      view = "write";
+      return;
+    }
+    const project = projectId;
+    try {
+      let left: Writing | null = null;
+      await withEditorClosed(async () => {
+        // Another project opened meanwhile, or the writing went to Deleted while its row was still there: it stays shut.
+        if (projectId !== project) return;
+        if ((await readOpenShelf()).writings.find((item) => item.id === id)?.deletedAt) return;
+        left = await showWriting(id, chapterId);
+      });
+      view = "write";
+      if (left) void updateWordCopy(false, left);
+      await refreshShelf();
+    } catch (error) {
+      saveStatus = { state: "error", message: errorMessage(error) };
+    }
+  }
+
+  /** Opens a project, or a writing in one, from the library or Home. A project that isn't there any more is said so. */
+  async function openFromLibrary(path: string, target: { writingId?: string; chapterId?: string } = {}) {
+    try {
+      if (path.toLowerCase() === (projectLocation || prefs.projectPath).toLowerCase()) {
+        if (target.writingId) await openWriting(target.writingId, target.chapterId);
+        else view = "write";
+        return;
+      }
+      // Opening a missing file would quietly make an empty project in its place.
+      if (!(await invoke<boolean>("project_file_exists", { path }))) {
+        throw new Error(t("projectFolderMissing", { path: folderOf(path).path }));
+      }
+      await useProjectFile(path, target);
+    } catch (error) {
+      saveStatus = { state: "error", message: errorMessage(error) };
+    }
+  }
+
+  /** Home's Continue writing: the project, writing and chapter that were open last. */
+  async function continueWriting(zenAfter = false) {
+    const last = prefs.lastOpened;
+    if (last.path && last.path.toLowerCase() !== (projectLocation || prefs.projectPath).toLowerCase()) {
+      await openFromLibrary(last.path, { writingId: last.writingId, chapterId: last.chapterId });
+    } else if (last.writingId && last.writingId !== writingId) {
+      await openWriting(last.writingId, last.chapterId);
+    } else if (last.chapterId && last.chapterId !== activeId && writing?.chapters.some((chapter) => chapter.id === last.chapterId)) {
+      activeId = last.chapterId;
+    }
+    view = "write";
+    if (zenAfter) await setZen(true);
+  }
+
+  // What Continue writing opens next time: the project, writing and chapter open now. Written when one of
+  // them changes, never while she types.
+  $effect(() => {
+    const path = projectLocation;
+    const id = writingId;
+    const chapterId = activeId ?? "";
+    if (!path || !id || !chapterId || restoring) return;
+    untrack(() => {
+      const last = prefs.lastOpened;
+      if (last.path === path && last.writingId === id && last.chapterId === chapterId) return;
+      prefs = { ...prefs, lastOpened: { path, writingId: id, chapterId } };
+      void setWritingFields(id, { openedAt: new Date().toISOString(), openedChapter: chapterId }).catch(() => undefined);
+    });
+  });
+
+  /** The name of a new writing, folder or project, checked; the message to show beside it when it won't do. */
+  function nameCheck(name: string, taken: string[]): string | null {
+    const problem = folderNameProblem(name);
+    if (problem) return t(problem);
+    const wanted = name.trim().toLowerCase();
+    return taken.some((item) => item.trim().toLowerCase() === wanted) ? t("nameTaken") : null;
+  }
+
+  /** A new project in a library folder, opened at once. */
+  async function newProject(parent: string, name: string): Promise<string | null> {
+    const problem = folderNameProblem(name);
+    if (problem) return t(problem);
+    try {
+      const path = await makeProjectFolder(parent || libraryRoot, name);
+      await useProjectFile(path, {}, true, { title: name.trim(), writingTitle: name.trim(), welcome: false });
+      await refreshLibrary();
+      return null;
+    } catch (error) {
+      return errorMessage(error);
+    }
+  }
+
+  /** A new folder in the library, on disk, to keep projects in. */
+  async function newLibraryFolder(parent: string, name: string): Promise<string | null> {
+    const problem = folderNameProblem(name);
+    if (problem) return t(problem);
+    try {
+      await invoke<string>("create_library_folder", { parent: parent || libraryRoot, name: name.trim() });
+      await refreshLibrary();
+      return null;
+    } catch (error) {
+      return errorMessage(error);
+    }
+  }
+
+  /** A new writing in the open project, in a folder or none, opened at once. */
+  async function newWriting(folder: string, name: string): Promise<string | null> {
+    if (!shelf || !writing) return null;
+    const title = name.trim();
+    if (!title) return t("nameEmpty");
+    try {
+      const made = await addWriting({ title, folder, split: true, language: writing.language });
+      await refreshShelf();
+      await openWriting(made.id);
+      rememberProject();
+      return null;
+    } catch (error) {
+      return errorMessage(error);
+    }
+  }
+
+  /** A new writing folder in the open project; it stays while empty. */
+  async function newWritingFolder(name: string): Promise<string | null> {
+    if (!shelf) return null;
+    const problem = nameCheck(name, shelf.folders);
+    if (problem) return problem;
+    try {
+      await setShelf({ folders: [...shelf.folders, name.trim()] });
+      await refreshShelf();
+      return null;
+    } catch (error) {
+      return errorMessage(error);
+    }
+  }
+
+  async function renameWritingFolderTo(from: string, to: string): Promise<string | null> {
+    if (!shelf || from === to.trim()) return null;
+    const problem = nameCheck(to, shelf.folders.filter((name) => name !== from));
+    if (problem) return problem;
+    try {
+      await renameWritingFolder(from, to.trim(), shelf.folders.map((name) => (name === from ? to.trim() : name)));
+      await refreshShelf();
+      return null;
+    } catch (error) {
+      return errorMessage(error);
+    }
+  }
+
+  /** Deletes a writing folder; its writings stay, out of folders. */
+  async function deleteWritingFolder(name: string) {
+    if (!shelf) return;
+    try {
+      await renameWritingFolder(name, "", shelf.folders.filter((item) => item !== name));
+      await refreshShelf();
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+    }
+  }
+
+  /** Renames a writing, the open one through its page, any other in its file. */
+  async function renameWritingTo(id: string, title: string) {
+    const next = title.trim() || t("untitled");
+    if (id === writingId) {
+      renameOpenWriting(next);
+      return;
+    }
+    try {
+      const outline = shelf?.writings.find((item) => item.id === id);
+      if (outline && !outline.split) {
+        await oneAtATime(async () => {
+          const one = await loadWriting(id);
+          await sqliteStorage.save({ ...one, title: next, chapters: one.chapters.map((chapter, index) => (index === 0 ? { ...chapter, title: next } : chapter)) });
+        });
+      } else await setWritingFields(id, { title: next });
+      await refreshShelf();
+      rememberProject();
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+    }
+  }
+
+  async function duplicateWritingNamed(id: string) {
+    if (!shelf) return;
+    try {
+      if (id === writingId) await autosave.flush();
+      const source = shelf.writings.find((item) => item.id === id);
+      await duplicateWriting(id, t("copyOf", { title: source?.title ?? t("untitled") }));
+      await refreshShelf();
+      rememberProject();
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+    }
+  }
+
+  /**
+   * Puts a writing in the Deleted folder at the end of the project; the open one gives way to another first.
+   * It runs after the changes before it, deciding then whether the writing is the open one, so a writing
+   * being opened, or one deleted just before, never ends up open in Deleted.
+   */
+  async function deleteWriting(id: string) {
+    if (!shelf) return;
+    const source = shelf.writings.find((item) => item.id === id);
+    const project = projectId;
+    const putInDeleted = () => setWritingFields(id, { deletedAt: new Date().toISOString() });
+    try {
+      // One that isn't open goes as it is, the page left alone, unless it was opened meanwhile.
+      let done = false;
+      if (id !== writingId) {
+        done = await oneAtATime(async () => {
+          if (projectId !== project) return true;
+          if (id === writingId) return false;
+          await putInDeleted();
+          return true;
+        });
+      }
+      let left: Writing | null = null;
+      if (!done) {
+        await withEditorClosed(async () => {
+          if (projectId !== project) return;
+          if (id !== writingId) {
+            await putInDeleted();
+            return;
+          }
+          // The open one gives way first, to a writing that isn't in Deleted, or to a new, empty one, so there is
+          // a page to write on. If that fails it stays open, never in Deleted while she writes in it.
+          const other = (await readOpenShelf()).writings.find((item) => item.id !== id && !item.deletedAt);
+          const next = other?.id ?? (await addWriting({ title: t("untitled"), folder: "", split: true, language: writing?.language ?? "en" })).id;
+          left = await showWriting(next);
+          await putInDeleted();
+        });
+      }
+      if (projectId !== project) return;
+      if (left) void updateWordCopy(false, left);
+      await refreshShelf();
+      rememberProject();
+      notice(t("writingDeleted", { title: source?.title ?? t("untitled") }));
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+    }
+  }
+
+  async function putBackWriting(id: string) {
+    try {
+      await setWritingFields(id, { deletedAt: "" });
+      await refreshShelf();
+      rememberProject();
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+    }
+  }
+
+  async function eraseWritingForGood(id: string) {
+    if (id === writingId) return;
+    try {
+      await eraseWriting(id);
+      await refreshShelf();
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+    }
+  }
+
+  async function moveWriting(id: string, folder: string) {
+    try {
+      await setWritingFields(id, { folder });
+      await refreshShelf();
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+    }
+  }
+
+  /**
+   * Turns "Split into chapters" on (`split`) or off for a writing. Off joins its chapters into one page
+   * (each chapter's title becomes a heading) after keeping an earlier version; on splits the page at its
+   * headings. To-dos and note links on the chapters that were joined move to the one page. Asked again
+   * while the first change was still saving (the switch still showed the old state), it does nothing.
+   */
+  async function setSplit(id: string, split: boolean) {
+    if (!writing || !shelf) return;
+    const project = projectId;
+    // The writing joined or split, after an earlier version of it is kept; null when it is so already.
+    const changed = async (target: Writing): Promise<Writing | null> => {
+      if (target.split === split) return null;
+      await keepSnapshot(target);
+      const now = new Date().toISOString();
+      if (split) return splitWriting(target, now, t("untitled"));
+      const joined = joinWriting(target, now);
+      await movePageLinks(joined.removed, joined.kept);
+      return joined.writing;
+    };
+    try {
+      let done = false;
+      if (id !== writingId) {
+        done = await oneAtATime(async () => {
+          if (projectId !== project) return true;
+          // Opened meanwhile: done below, with the page closed.
+          if (id === writingId) return false;
+          await flushNoteSave();
+          const next = await changed(await loadWriting(id));
+          if (!next) return true;
+          await sqliteStorage.save(next);
+          notice(t(next.split ? "splitDone" : "joined"));
+          return true;
+        });
+      }
+      if (!done) {
+        await withEditorClosed(async () => {
+          if (projectId !== project) return;
+          const open = writing?.id === id;
+          const target = open && writing ? writing : await loadWriting(id);
+          const before = writingWords;
+          const next = await changed(target);
+          if (!next) return;
+          await sqliteStorage.save(next);
+          if (open) {
+            writing = next;
+            keepToday(before);
+            activeId = next.chapters.find((chapter) => chapter.id === activeId)?.id ?? next.chapters[0]?.id ?? null;
+          }
+          notice(t(next.split ? "splitDone" : "joined"));
+        });
+      }
+      await refreshShelf();
+      // The to-dos and notes moved onto the joined page: the panel and the tree read them again.
+      await loadOrganizer();
+      rememberProject();
+    } catch (error) {
+      saveStatus = { state: "error", message: errorMessage(error) };
+    }
+  }
+
+  /** To-dos and note links on chapters that were joined into one page now point at that page. */
+  async function movePageLinks(removed: string[], kept: string) {
+    if (removed.length === 0 || !kept) return;
+    const gone = new Set(removed);
+    const [notes, tasks] = await Promise.all([listNotes(), listTasks()]);
+    for (const task of tasks) {
+      if (gone.has(task.chapterId)) await saveTask({ ...task, chapterId: kept });
+    }
+    for (const note of notes) {
+      if (!note.chapterIds.some((id) => gone.has(id))) continue;
+      const chapterIds = [...new Set(note.chapterIds.map((id) => (gone.has(id) ? kept : id)))];
+      await saveNote({ ...note, chapterIds });
+    }
+  }
+
+  /** A new note in a group of the project's notes, opened in Notes to write it. */
+  async function newNoteIn(category: NoteCategory, title: string) {
+    if (!projectId) return;
+    const now = new Date().toISOString();
+    const note: Note = {
+      id: crypto.randomUUID(),
+      projectId,
+      title: title.trim() || t("untitled"),
+      contentJson: { type: "doc", content: [{ type: "paragraph" }] },
+      plainText: "",
+      category,
+      tags: "",
+      aliases: "",
+      fields: [],
+      todoState: null,
+      chapterIds: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    try {
+      await saveNote(note);
+      bookNotes = [note, ...bookNotes];
+      openNoteInView(note.id);
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+    }
+  }
+
+  async function changeNote(id: string, patch: Partial<Note>) {
+    const note = bookNotes.find((item) => item.id === id);
+    if (!note) return;
+    const next = { ...note, ...patch, updatedAt: new Date().toISOString() };
+    bookNotes = bookNotes.map((item) => (item.id === id ? next : item));
+    try {
+      await saveNote(next);
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+      void loadOrganizer();
+    }
+  }
+
+  async function duplicateNote(id: string) {
+    const note = bookNotes.find((item) => item.id === id);
+    if (!note) return;
+    const now = new Date().toISOString();
+    // A JSON copy: the note's text must be its own, not shared with the original.
+    const copy: Note = { ...(JSON.parse(JSON.stringify(note)) as Note), id: crypto.randomUUID(), title: t("copyOf", { title: note.title }), createdAt: now, updatedAt: now };
+    try {
+      await saveNote(copy);
+      bookNotes = [copy, ...bookNotes];
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+    }
+  }
+
+  /** Deletes a note after keeping an earlier version of the open writing, which holds every note as it was. */
+  async function deleteNoteFromTree(id: string) {
+    try {
+      await flushNoteSave();
+      if (writingId) await snapshotSavedWriting(writingId);
+      await deleteNote(id);
+      bookNotes = bookNotes.filter((item) => item.id !== id);
+      bookTasks = bookTasks.filter((task) => task.noteId !== id);
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+    }
+  }
+
+  /** What the library's tree can do, in one place. */
+  const libraryActions: LibraryActions = {
+    openProject: (path) => void openFromLibrary(path),
+    openWriting: (path, id, chapterId) => void openFromLibrary(path, { writingId: id, chapterId }),
+    openNote: (id) => openNoteInView(id),
+    openTodos: () => (view = "todos"),
+    newProject,
+    newLibraryFolder,
+    newWriting,
+    newWritingFolder,
+    renameWritingFolder: renameWritingFolderTo,
+    deleteWritingFolder: (name) => void deleteWritingFolder(name),
+    renameWriting: (id, title) => void renameWritingTo(id, title),
+    duplicateWriting: (id) => void duplicateWritingNamed(id),
+    deleteWriting: (id) => void deleteWriting(id),
+    putBack: (id) => void putBackWriting(id),
+    eraseWriting: (id) => void eraseWritingForGood(id),
+    moveWriting: (id, folder) => void moveWriting(id, folder),
+    setSplit: (id, split) => void setSplit(id, split),
+    newNote: (category, title) => void newNoteIn(category, title),
+    renameNote: (id, title) => void changeNote(id, { title: title.trim() || t("untitled") }),
+    duplicateNote: (id) => void duplicateNote(id),
+    deleteNote: (id) => void deleteNoteFromTree(id),
+    moveNote: (id, category) => void changeNote(id, { category }),
+    moveIntoLibrary: () => void moveIntoLibrary(),
+    openAnother: () => void openAnotherProject(),
+  };
+
+  type SampleProject = {
+    slug: string;
+    /** Where it goes in the library: "" for the library itself, or a folder in it. */
+    folder: string;
+    title: string;
+    build: (projectId: string) => { writings: { writing: Writing; folder: string }[]; notes: Note[]; tasks: Task[] };
+  };
+
+  /**
+   * Writes sample projects into folders of their own in the library and lists them in it. A sample that
+   * is there already is put back as it was written: its writings go to Deleted, where whatever was written
+   * in them can still be put back, and its notes and to-dos go. The writer's own projects are never touched.
+   */
+  async function writeSampleProjects(samples: SampleProject[], done: string) {
+    if (!writing) return;
+    try {
+      const written: Record<string, string> = {};
+      const remembered: KnownProject[] = [];
       let homeRewritten = false;
       await withEditorClosed(async () => {
+        // The project open when this change runs, which may not be the one open when it was asked for.
+        const home = projectLocation || prefs.projectPath || (await invoke<string>("default_project_path"));
+        const homeWriting = writingId;
         await updateWordCopy();
+        rememberProject();
         switchingBooks = true;
         try {
-          for (const book of books) {
-            const target = await invoke<{ path: string; exists: boolean }>("example_book_path", { name: book.slug });
-            await switchProjectFile(target.path);
-            const current = await sqliteStorage.load();
-            if (target.exists) {
-              await keepSnapshot(current);
-              for (const note of await listNotes(current.id)) await deleteNote(note.id);
-              for (const task of await listTasks(current.id)) await deleteTask(task.id);
-            }
-            const built = book.build(current.id);
-            await sqliteStorage.save(built.project);
-            for (const note of built.notes) await saveNote(note);
-            for (const task of built.tasks) await saveTask(task);
-            written.push({ path: target.path, title: built.project.title, summary: summarize(built.project) });
-            if (target.path.toLowerCase() === home.toLowerCase()) homeRewritten = true;
+          for (const sample of samples) {
+            const parent = sample.folder ? joinPath(libraryRoot, sample.folder) : libraryRoot;
+            const existing = prefs.samples[sample.slug] && (await invoke<boolean>("project_file_exists", { path: prefs.samples[sample.slug] }));
+            const path = existing ? prefs.samples[sample.slug] : await makeProjectFolder(parent, sample.title, true);
+            const fresh = !(await invoke<boolean>("project_file_exists", { path }));
+            await switchProjectFile(path, false);
+            const opened = await openShelf("", { title: sample.title, writingTitle: sample.title, welcome: false });
+            const built = sample.build(opened.shelf.projectId);
+            // A file made just now starts with one empty writing, which simply goes.
+            await writeSampleProject({ path, title: sample.title, placeholder: fresh ? opened.writing.id : "", ...built });
+            written[sample.slug] = path;
+            // Home and the library show it, with its writings, before it is ever opened.
+            remembered.push({ path, title: sample.title, summary: summarizeProject(built.writings.map((item) => summarize(item.writing))) });
+            if (path.toLowerCase() === home.toLowerCase()) homeRewritten = true;
           }
         } finally {
-          await switchProjectFile(home);
-          switchingBooks = false;
-        }
-        // The open book was one of them: show it as it is now, or the next save would write the old text back.
-        if (homeRewritten) {
-          const reopened = await sqliteStorage.load();
-          project = reopened;
-          activeId = reopened.chapters[0]?.id ?? null;
+          // Whatever happened, the open project is open again, and storage knows it, for note and to-do saves.
+          try {
+            await switchProjectFile(home);
+          } finally {
+            switchingBooks = false;
+          }
+          const reopened = await openShelf(homeRewritten ? "" : homeWriting, { title: projectName(home), writingTitle: t("untitled"), welcome: false });
+          shelf = reopened.shelf;
+          // The open project was one of them, or a reset that failed half-way already put its writing in Deleted:
+          // show what is there now, never a deleted writing (or the next save would write the old text back).
+          if (homeRewritten || reopened.writing.id !== homeWriting) {
+            writing = reopened.writing;
+            resetWritingState();
+            activeId = chapterToOpen(reopened.writing);
+          }
         }
       });
-      const paths = new Set(written.map((book) => book.path));
-      prefs = { ...prefs, knownProjects: [...prefs.knownProjects.filter((book) => !paths.has(book.path)), ...written] };
+      const paths = new Set(remembered.map((item) => item.path.toLowerCase()));
+      prefs = {
+        ...prefs,
+        samples: { ...prefs.samples, ...written },
+        knownProjects: [...remembered, ...prefs.knownProjects.filter((item) => !paths.has(item.path.toLowerCase()))].slice(0, 50),
+      };
+      await refreshLibrary();
       backupMessage = done;
     } catch (error) {
       backupMessage = errorMessage(error);
@@ -1146,9 +2169,14 @@
   }
 
   async function addExampleBooks() {
-    const { EXAMPLE_BOOKS, buildExample } = await import("$lib/samples/examples");
-    await writeSampleBooks(
-      EXAMPLE_BOOKS.map((example) => ({ slug: example.slug, build: (projectId: string) => buildExample(example, projectId) })),
+    const { EXAMPLE_PROJECTS, buildExample } = await import("$lib/samples/examples");
+    await writeSampleProjects(
+      EXAMPLE_PROJECTS.map((example) => ({
+        slug: example.slug,
+        folder: t("examplesFolder"),
+        title: example.title,
+        build: (projectId: string) => buildExample(example, projectId),
+      })),
       t("examplesAdded"),
     );
   }
@@ -1157,24 +2185,23 @@
   async function addLongBook() {
     const { LONG_BOOK_SLUG, buildLongBook } = await import("$lib/samples/longBook");
     const language = ui.language;
-    await writeSampleBooks(
-      [{ slug: LONG_BOOK_SLUG, build: (projectId: string) => buildLongBook(projectId, t("longBookTitle"), (n) => chapterTitle("novel", language, n)) }],
+    await writeSampleProjects(
+      [
+        {
+          slug: LONG_BOOK_SLUG,
+          folder: "",
+          title: t("longBookTitle"),
+          build: (projectId: string) => {
+            const built = buildLongBook(projectId, t("longBookTitle"), (n) => chapterTitle(language, n));
+            return { writings: [{ writing: built.writing, folder: "" }], notes: built.notes, tasks: built.tasks };
+          },
+        },
+      ],
       t("longBookAdded"),
     );
   }
 
-  async function openKnownBook(path: string) {
-    try {
-      // Opening a missing file would quietly create an empty book in its place.
-      if (!(await invoke<boolean>("project_file_exists", { path }))) {
-        throw new Error(t("bookFileMissing", { path }));
-      }
-      await useProjectFile(path);
-    } catch (error) {
-      saveStatus = { state: "error", message: errorMessage(error) };
-    }
-  }
-
+  /** Opens a project file from anywhere on the computer; one outside the library is listed under Elsewhere. */
   async function openAnotherProject() {
     try {
       const path = await chooseProjectFile();
@@ -1185,43 +2212,52 @@
     }
   }
 
-  async function startNewProject(kind: ProjectKind = "novel") {
+  /** Home's "+ New": the library, in Write, with a name to give the new project. */
+  function startNewProject() {
+    prefs = { ...prefs, sidebarView: "library" };
+    collapsed = false;
+    view = "write";
+    libraryCreate = { kind: "project", parent: libraryRoot, at: Date.now() };
+  }
+
+  /** Lets the tree start naming something new, as Home's "+ New" asks. */
+  let libraryCreate = $state<{ kind: "project"; parent: string; at: number } | null>(null);
+
+  /** The library folder from Settings: never in a synced folder, never with the backups. */
+  async function pickLibraryFolder() {
     try {
-      const folder = await chooseBackupFolder(t("dialogNewBookFolder"));
+      const folder = await chooseBackupFolder(t("dialogLibraryFolder"));
       if (!folder) return;
-      const backup = prefs.backupFolder.replace(/[\\/]+$/, "").toLowerCase();
-      const chosen = folder.replace(/[\\/]+$/, "").toLowerCase();
-      if (backup && (chosen === backup || chosen.startsWith(`${backup}\\`) || chosen.startsWith(`${backup}/`))) {
-        saveStatus = { state: "error", message: t("keepOutsideBackup") };
+      if (looksSynced(folder)) {
+        backupMessage = t("librarySynced");
         return;
       }
-      const path = await invoke<string>("reserve_project_path", { folder });
-      // Stay on Home until the welcome page is in place, or the editor would open on the
-      // blank first chapter and save that blank text over the welcome page.
-      await useProjectFile(path, false);
-      const folderName = folder.split(/[/\\]/).filter(Boolean).pop() || t("newBookName");
-      if (!project) return;
-      const chapters = firstChapters(project.id, kind, folderName, ui.language);
-      project = { ...project, title: folderName, kind, chapters };
-      activeId = chapters[0].id;
-      rememberBook(path, project);
-      autosave.schedule();
-      await autosave.flush();
-      view = "write";
+      if (prefs.backupFolder && (isInside(folder, prefs.backupFolder) || isInside(prefs.backupFolder, folder))) {
+        backupMessage = t("libraryBackupApart");
+        return;
+      }
+      if (await invoke<boolean>("project_file_exists", { path: projectFile(folder) })) {
+        backupMessage = t("libraryIsProject");
+        return;
+      }
+      prefs = { ...prefs, libraryFolder: folder };
+      libraryRoot = folder;
+      await refreshLibrary();
+      backupMessage = t("libraryMoved", { path: folder });
     } catch (error) {
-      saveStatus = { state: "error", message: errorMessage(error) };
+      backupMessage = errorMessage(error);
     }
   }
 
   function setBookGoal(words: number) {
-    if (!project) return;
-    project = { ...project, wordGoal: words };
+    if (!writing) return;
+    writing = { ...writing, wordGoal: words };
     autosave.schedule();
   }
 
   function setProjectLanguage(language: WritingLanguage) {
-    if (!project) return;
-    project = { ...project, language };
+    if (!writing) return;
+    writing = { ...writing, language };
     autosave.schedule();
     void autosave.flush().catch(() => undefined);
   }
@@ -1230,9 +2266,12 @@
     const cleaned = word.trim();
     if (!cleaned) return;
     try {
-      await invoke("add_personal_word", { language, word: cleaned });
-      await rememberPersonalWord(language, cleaned);
-      dictionary = await listPersonalWords();
+      // After any change under way, so the word goes into the open project's file.
+      await oneAtATime(async () => {
+        await invoke("add_personal_word", { language, word: cleaned });
+        await rememberPersonalWord(language, cleaned);
+        dictionary = await listPersonalWords();
+      });
     } catch (error) {
       backupMessage = errorMessage(error);
     }
@@ -1240,8 +2279,10 @@
 
   async function removeDictionaryWord(language: WritingLanguage, word: string) {
     try {
-      await forgetPersonalWord(language, word);
-      dictionary = await listPersonalWords();
+      await oneAtATime(async () => {
+        await forgetPersonalWord(language, word);
+        dictionary = await listPersonalWords();
+      });
       try {
         await invoke("remove_personal_word", { language, word });
       } catch {
@@ -1252,30 +2293,52 @@
     }
   }
 
-  async function moveProject() {
-    if (!project) return;
+  /**
+   * Copies the open project, kept outside the library, into a folder of its own in it, and opens the
+   * copy. The old file stays where it was, off the lists, so nobody edits the stale one.
+   */
+  async function moveIntoLibrary() {
+    if (!writing || !shelf) return;
     try {
-      const folder = await chooseBackupFolder(t("dialogMoveProject"));
-      if (!folder) return;
-      await flushNoteSave();
-      await autosave.flush();
-      await checkpointDatabase();
-      const source = loadPrefs().projectPath || (await invoke<string>("default_project_path"));
-      const destination = await invoke<string>("relocate_project", { source, folder });
-      await switchProjectFile(destination);
-      projectLocation = destination;
-      // The old file stays behind as a copy; keep it off Home so nobody edits the stale one.
-      prefs = { ...prefs, knownProjects: prefs.knownProjects.filter((book) => book.path !== source) };
-      rememberBook(destination, project);
-      backupMessage = t("projectMoved", { path: destination });
+      await withEditorClosed(async () => {
+        // The project open when this change runs.
+        const source = (projectLocation || prefs.projectPath || (await invoke<string>("default_project_path"))).trim();
+        if (isInside(source, libraryRoot)) return;
+        const name = shelf?.title.trim() || projectName(source) || t("untitled");
+        // Saves wait from the copy until the copy is the open file: one made in between would stay in the old one.
+        switchingBooks = true;
+        let destination: string;
+        try {
+          await checkpointDatabase();
+          const folder = await freeProjectFolder(libraryRoot, name);
+          destination = await invoke<string>("relocate_project", { source, folder });
+          await switchProjectFile(destination);
+        } finally {
+          switchingBooks = false;
+        }
+        prefs = { ...prefs, projectPath: destination, knownProjects: prefs.knownProjects.filter((book) => book.path.toLowerCase() !== source.toLowerCase()) };
+        const opened = await openShelf(writingId, { title: name, writingTitle: name, welcome: false });
+        shelf = opened.shelf;
+        projectLocation = destination;
+        rememberProject();
+        backupMessage = t("projectMoved", { path: destination });
+        notice(t("projectMoved", { path: destination }));
+      });
+      await refreshLibrary();
     } catch (error) {
       backupMessage = errorMessage(error);
+      reportSaveError(errorMessage(error));
     }
   }
   async function pickBackupFolder() {
     try {
       const folder = await chooseBackupFolder(t("dialogBackupFolder"));
-      if (folder) prefs = { ...prefs, backupFolder: folder };
+      if (!folder) return;
+      if (libraryRoot && (isInside(folder, libraryRoot) || isInside(libraryRoot, folder))) {
+        backupMessage = t("libraryBackupApart");
+        return;
+      }
+      prefs = { ...prefs, backupFolder: folder };
     } catch (error) {
       backupMessage = errorMessage(error);
     }
@@ -1284,17 +2347,16 @@
   let driveBackup: Promise<void> | null = null;
 
   function runDriveBackup(announce: boolean): Promise<void> {
-    if (!project || !prefs.backupFolder || switchingBooks) return Promise.resolve();
+    if (!writing || !prefs.backupFolder || switchingBooks) return Promise.resolve();
     if (driveBackup) return driveBackup;
     const folder = prefs.backupFolder;
     driveBackup = (async () => {
       try {
         await flushNoteSave();
         await autosave.flush();
-        const book = project;
-        if (!book) return;
+        if (!writing) return;
         // Automatic backups skip identical copies, so idle hours don't push older versions out of the folder.
-        const result = await writeBackup(folder, book, announce ? "" : prefs.lastBackupSignature);
+        const result = await writeBackup(folder, announce ? "" : prefs.lastBackupSignature);
         prefs = {
           ...prefs,
           lastBackupAt: new Date().toISOString(),
@@ -1337,7 +2399,7 @@
   <HomeHeader
     {prefs}
     now={clock}
-    error={saveStatus.state === "error" ? saveStatus.message : ""}
+    error={saveStatus.state === "error" ? saveStatus.message : homeNotice}
     appearance={resolvedTheme(prefs.theme, new Date(clock))}
     {settingsOpen}
     onLanguage={() => (prefs = { ...prefs, uiLanguage: prefs.uiLanguage === "sl" ? "en" : "sl" })}
@@ -1353,11 +2415,11 @@
 <div class="app" class:zen>
   {#if view !== "home"}
   <TitleBar
-    project={project?.title ?? t("untitled")}
+    project={writing?.title ?? t("untitled")}
     {view}
     saveLabel={statusText(saveStatus)}
     saveState={saveStatus.state}
-    language={project && activeChapter ? (effectiveLanguage(project, activeChapter) === "sl" ? "SL" : "EN") : "EN"}
+    language={writing && activeChapter ? (effectiveLanguage(writing, activeChapter) === "sl" ? "SL" : "EN") : "EN"}
     error={saveStatus.state === "error" ? saveStatus.message : ""}
     onView={(next) => {
       if (zen) void setZen(false);
@@ -1383,13 +2445,16 @@
     editor={textEditor}
     revision={editorRevision}
     chaptersOpen={!collapsed}
-    notesOpen={prefs.panelNotes}
-    todosOpen={prefs.panelTodos}
+    notesOpen={prefs.panel === "notes"}
+    todosOpen={prefs.panel === "todos"}
+    goalsOpen={prefs.panel === "goals"}
     notesCount={chapterNotes.length}
     todosCount={chapterTodos.filter((task) => task.todoState !== "done").length}
+    {wordsToday}
     onToggleChapters={() => (collapsed = !collapsed)}
-    onToggleNotes={() => (prefs = { ...prefs, panelNotes: !prefs.panelNotes })}
-    onToggleTodos={() => (prefs = { ...prefs, panelTodos: !prefs.panelTodos })}
+    onToggleNotes={() => (prefs = { ...prefs, panel: prefs.panel === "notes" ? "" : "notes" })}
+    onToggleTodos={() => (prefs = { ...prefs, panel: prefs.panel === "todos" ? "" : "todos" })}
+    onToggleGoals={() => (prefs = { ...prefs, panel: prefs.panel === "goals" ? "" : "goals" })}
     onFind={() => {
       replaceMode = false;
       findOpen = true;
@@ -1397,17 +2462,17 @@
       view = "write";
     }}
     manuscriptFont={prefs.manuscriptFont}
-    manuscriptSize={prefs.manuscriptSize}
+    manuscriptPt={prefs.manuscriptPt}
     onFont={(font) => (prefs.manuscriptFont = font)}
-    onSize={(size) => (prefs.manuscriptSize = size)}
+    onSize={(size) => (prefs.manuscriptPt = size)}
     onNewNote={() => {
       // Notes are written in the Notes view; one made from here belongs to this chapter.
       noteCreate = { at: Date.now(), chapterId: activeId ?? "" };
       view = "notes";
     }}
     onAddTodo={() => {
-      prefs = { ...prefs, panelTodos: true };
-      panelAddFocus += 1;
+      prefs = { ...prefs, panel: "todos" };
+      panelAddFocus = 1;
     }}
     onReplace={() => {
       replaceMode = true;
@@ -1415,29 +2480,53 @@
       findMissing = false;
       view = "write";
     }}
-    loadNotes={() => (project ? listNotes(project.id) : Promise.resolve([]))}
+    loadNotes={() => (projectId ? listNotes() : Promise.resolve([]))}
     onComment={newComment}
+    onNotice={notice}
   />
   {/if}
   {#if view === "write"}
-<div class="shell" class:collapsed class:zen class:paneled={panelOpen} class:article={project?.kind === "article"}>
+<div class="shell" class:collapsed class:zen class:paneled={panelOpen}>
   <Sidebar
     {chapters}
     {activeId}
     {collapsed}
-    hidden={project?.kind === "article"}
+    article={!!writing && !writing.split}
     onSelect={selectChapter}
     onCreate={addChapter}
     onRename={renameChapter}
     onDuplicate={duplicateChapter}
     onDelete={deleteChapter}
     onReorder={reorderChapters}
-    onPatch={updateChapterMeta}
     onHistory={() => void openHistory()}
+    onHide={() => (collapsed = true)}
+    view={prefs.sidebarView}
+    onView={(next) => (prefs = { ...prefs, sidebarView: next })}
+    library={{
+      root: libraryRoot,
+      entries: libraryEntries,
+      known: prefs.knownProjects,
+      currentPath: projectLocation || prefs.projectPath,
+      shelf,
+      notes: bookNotes,
+      openTodos: bookTasks.filter((task) => task.todoState !== "done").length,
+      create: libraryCreate,
+    }}
+    {writingId}
+    writingTitle={writing?.title ?? ""}
+    writingSplit={writing?.split ?? true}
+    {writingWords}
+    actions={libraryActions}
   />
   <section class="writing">
     <!-- Candlelit sparks drift over the desk, behind the page and everything else here. -->
-    <Particles active={resolvedTheme(prefs.theme, new Date(clock)) === "candlelit" && !prefs.gentle} />
+    <Particles active={resolvedTheme(prefs.theme, new Date(clock)) === "candlelit" && !prefs.gentle && !zen} />
+    {#if collapsed && !zen}
+      <!-- The folded chapter list leaves a tab at the desk's edge to bring it back. -->
+      <button type="button" class="show-chapters" title={t(libraryShown ? "showLibrary" : "showChapters")} aria-label={t(libraryShown ? "showLibrary" : "showChapters")} onclick={() => (collapsed = false)}>
+        <Icon name="panelLeftOpen" />
+      </button>
+    {/if}
     {#if findOpen}
       <form
         class="find"
@@ -1480,7 +2569,13 @@
         </ul>
       {/if}
     {/if}
-    {#if writeNotice}
+    {#if splitBack}
+      <!-- A heading just made a new chapter: a few seconds to take it back, as Ctrl+Z can't reach it. -->
+      <p class="write-notice" role="status">
+        {t("splitNotice", { title: splitBack.title })}
+        <button type="button" class="notice-undo" onclick={() => void takeBackSplit()}>{t("undo")}</button>
+      </p>
+    {:else if writeNotice}
       <p class="write-notice" role="status">{writeNotice}</p>
     {/if}
     {#if selectedFootnote}
@@ -1544,35 +2639,45 @@
           <div class="sheet">
             <div class="sheet-under" aria-hidden="true"></div>
             <article class="paper">
-              <div class="running">
-                <span>{project?.title}</span>
-                <span>{roman(chapters.findIndex((item) => item.id === chapter.id) + 1)}</span>
-              </div>
-              <p class="chapter-label">
-                {chapterName(chapters.findIndex((item) => item.id === chapter.id), project?.language, project?.kind)}
-              </p>
-              <h2 class="chapter-title">{chapter.title}</h2>
               {#if EditorPart.current}
                 {@const Editor = EditorPart.current}
                 <Editor
+                  page
                   docId={chapter.id}
-                  initialContent={chapter.contentJson}
-                  language={project ? effectiveLanguage(project, chapter) : "en"}
+                  initialContent={composePage(chapters, chapters.findIndex((item) => item.id === chapter.id), writing?.split ?? true)}
+                  focusOnOpen={!libraryCreate || Date.now() - libraryCreate.at > 3000}
+                  language={writing ? effectiveLanguage(writing, chapter) : "en"}
                   typewriter={prefs.typewriter}
                   live={false}
-                  onChange={(json, text, id) => updateChapter(id ?? chapter.id, json, text)}
+                  onChange={(json, _text, id) => updateChapter(id ?? chapter.id, json)}
                   onEdit={() => autosave.schedule()}
                   onText={(text, id) => updateChapterText(id ?? chapter.id, text)}
                   onEditor={(next) => {
                     textEditor = next;
+                    editorChapter = next ? chapter.id : "";
+                    if (next) {
+                      editorBegan = startsPart(chapters, chapters.findIndex((item) => item.id === chapter.id));
+                      editorWriting = writing?.id ?? "";
+                      editorSplit = writing?.split ?? true;
+                    }
                     refreshFootnotes();
+                    const opened = pageSpot;
+                    if (next && opened?.id === chapter.id) {
+                      pageSpot = null;
+                      // The editor's own first focus comes a moment later and would put the keyboard at the end.
+                      next.setOptions({ autofocus: false });
+                      placeSpot(next, opened.spot);
+                    }
                   }}
-                  onActivity={() => (editorRevision += 1)}
+                  onActivity={() => {
+                    editorRevision += 1;
+                    watchHeadings();
+                  }}
                   onOpenNote={(target) => {
                     // A linked name opens its note in the panel beside the page.
                     const title = target.title.trim().toLowerCase();
                     panelNote = target.id || (bookNotes.find((note) => note.title.trim().toLowerCase() === title)?.id ?? "");
-                    prefs = { ...prefs, panelNotes: true };
+                    prefs = { ...prefs, panel: "notes" };
                   }}
                 />
               {/if}
@@ -1606,8 +2711,8 @@
     <div class="float-wrap">
       <StatusBar
         words={chapterWords}
-        {projectWords}
-        language={project && activeChapter && effectiveLanguage(project, activeChapter) === "sl" ? t("slovenian") : t("english")}
+        projectWords={writingWords}
+        language={writing && activeChapter && effectiveLanguage(writing, activeChapter) === "sl" ? t("slovenian") : t("english")}
         saveLabel={statusText(saveStatus)}
         error={saveStatus.state === "error" ? saveStatus.message : ""}
         {zen}
@@ -1620,60 +2725,58 @@
       />
     </div>
     {#if zen}
-      <div class="zen-hover">
-        <div class="zen-bar">
-          <button type="button" onclick={() => void setZen(false)}>{t("leaveZen")}</button>
-          <label>
-            {t("width")}
-            <input
-              type="range"
-              min="32"
-              max="60"
-              bind:value={prefs.columnRem}
-              aria-label={t("columnWidth")}
-            />
-          </label>
-        </div>
-      </div>
+      <ZenBar editor={textEditor} revision={editorRevision} words={chapterWords} bind:column={prefs.columnRem} onLeave={() => void setZen(false)} onRefused={notice} />
     {/if}
   </section>
-  {#if panelOpen && project && activeChapter}
+  {#if panelOpen && writing && activeChapter}
     <ChapterPanel
-      chapterLabel={chapterTitle(project.kind, ui.language, chapters.findIndex((chapter) => chapter.id === activeChapter.id) + 1)}
-      title={activeChapter.title}
+      list={prefs.panel || "notes"}
       todos={chapterTodos}
       notes={chapterNotes}
       book={bookNotes}
-      showTodos={prefs.panelTodos}
-      showNotes={prefs.panelNotes}
       openNoteId={panelNote}
       addFocus={panelAddFocus}
+      onAddFocused={() => (panelAddFocus = 0)}
       onToggleTodo={(task) => void toggleChapterTodo(task)}
       onAddTodo={(title) => void addChapterTodo(title)}
       onShowNote={(id) => (panelNote = id)}
       onOpenInNotes={openNoteInView}
-      onClose={() => (prefs = { ...prefs, panelTodos: false, panelNotes: false })}
+      {wordsToday}
+      dailyGoal={prefs.dailyGoal}
+      {chapterWords}
+      chapterGoal={activeChapter.wordGoal}
+      onDailyGoal={(goal) => (prefs = { ...prefs, dailyGoal: goal })}
+      onChapterGoal={(goal) => activeId && updateChapterMeta(activeId, { wordGoal: goal })}
+      onClose={() => (prefs = { ...prefs, panel: "" })}
     />
   {/if}
 </div>
-  {:else if project}
+  {:else if writing}
     <div class="alt" class:home={view === "home"} class:settings={view === "settings"}>
       {#if view === "home"}
         {@render homeHeader()}
         <span class="decor-low" aria-hidden="true"></span>
         <Dashboard
-          {project}
+          {writing}
+          projectTitle={shelf?.title ?? ""}
+          openSummary={projectSummary()}
+          lastChapterId={prefs.lastOpened.writingId === writingId ? prefs.lastOpened.chapterId : ""}
           {prefs}
           now={clock}
           {wordsToday}
           onContinue={(chapterId) => {
-            if (chapterId) activeId = chapterId;
-            view = "write";
+            // A chapter from the strip opens in the writing on Home; Continue opens what was open last.
+            if (chapterId) {
+              activeId = chapterId;
+              view = "write";
+            } else void continueWriting();
           }}
           onZen={(chapterId) => {
-            if (chapterId) activeId = chapterId;
-            view = "write";
-            void setZen(true);
+            if (chapterId) {
+              activeId = chapterId;
+              view = "write";
+              void setZen(true);
+            } else void continueWriting(true);
           }}
           onOpenTodos={() => (view = "todos")}
           onOpenNotes={() => (view = "notes")}
@@ -1687,34 +2790,40 @@
             settingsOpen = true;
           }}
           onSaveError={reportSaveError}
-          onRename={renameProject}
+          onRename={renameOpenWriting}
           onOpenProject={() => void openAnotherProject()}
-          onStartProject={(kind) => void startNewProject(kind)}
-          books={prefs.knownProjects}
+          onStartProject={startNewProject}
+          books={homeProjects}
           currentPath={projectLocation}
-          onOpenBook={(path) => void openKnownBook(path)}
+          onOpenBook={(path) => void openFromLibrary(path)}
         />
       {:else if view === "notes" && NotesPart.current}
         {@const Notes = NotesPart.current}
+        {#key projectId}
         <Notes
-          projectId={project.id}
+          {projectId}
+          {writingId}
           {chapters}
-          language={project.language}
+          language={writing.language}
           focusChapterId={activeId ?? ""}
           createRequest={noteCreate}
           onCreateHandled={() => (noteCreate = null)}
           openRequest={noteOpenRequest}
+          onOpenHandled={() => (noteOpenRequest = null)}
           onSaveError={reportSaveError}
           onShowTodos={() => (view = "todos")}
         />
+        {/key}
       {:else if view === "todos" && TodosPart.current}
         {@const Todos = TodosPart.current}
+        {#key projectId}
         <Todos
-          projectId={project.id}
+          {projectId}
           {chapters}
           onSaveError={reportSaveError}
           onShowNotes={() => (view = "notes")}
         />
+        {/key}
       {:else if view === "outline" && OutlinePart.current}
         {@const Outline = OutlinePart.current}
         <Outline {chapters} onUpdate={updateChapterMeta} />
@@ -1729,7 +2838,7 @@
       <p class="opening">{t("opening")}</p>
     </div>
   {/if}
-  {#if settingsOpen && project && SettingsPart.current}
+  {#if settingsOpen && writing && SettingsPart.current}
     {@const Settings = SettingsPart.current}
     <Settings
       {prefs}
@@ -1738,11 +2847,17 @@
       onChooseFolder={() => void pickBackupFolder()}
       onBackup={() => void backupNow()}
       {projectLocation}
-      projectLanguage={project.language}
-      bookGoal={project.wordGoal}
+      projectLanguage={writing.language}
+      bookGoal={writing.wordGoal}
       onBookGoal={setBookGoal}
       {dictionary}
-      onMoveProject={() => void moveProject()}
+      onMoveProject={() => void moveIntoLibrary()}
+      libraryFolder={libraryRoot}
+      onChooseLibraryFolder={() => void pickLibraryFolder()}
+      insideLibrary={!!libraryRoot && isInside(projectLocation || prefs.projectPath, libraryRoot)}
+      split={writing.split}
+      {writingWords}
+      onSplit={(split) => void setSplit(writing?.id ?? "", split)}
       onProjectLanguage={setProjectLanguage}
       onAddWord={(language, word) => void addDictionaryWord(language, word)}
       onRemoveWord={(language, word) => void removeDictionaryWord(language, word)}
@@ -1761,9 +2876,11 @@
       }}
       onConfirmImport={(mode) => void confirmWordImport(mode)}
       onCancelImport={() => (importOffer = null)}
-      bookTitle={project.title}
+      bookTitle={writing.title}
       onAddExamples={() => void addExampleBooks()}
       examplesAdded={sampleNames.some((name) => name !== "long-test-book")}
+      projectTitle={shelf?.title ?? ""}
+      wordCopyName={safeName(wordCopyName(writing))}
       onAddLongBook={() => void addLongBook()}
       longBookAdded={sampleNames.includes("long-test-book")}
       onChooseWordFolder={() => void pickWordCopyFolder()}
@@ -1923,10 +3040,6 @@
     grid-template-columns: 0 minmax(0, 1fr);
   }
 
-  .shell.article {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .shell.zen :global(.sidebar) {
     opacity: 0;
     pointer-events: none;
@@ -1989,8 +3102,7 @@
 
   .find button,
   .hits button,
-  .history button,
-  .zen-bar button {
+  .history button {
     border: 0;
     border-radius: var(--pv-radius-xs);
     padding: 0.25rem 0.4rem;
@@ -2000,15 +3112,13 @@
 
   .find button:hover,
   .hits button:hover,
-  .history button:hover,
-  .zen-bar button:hover {
+  .history button:hover {
     background: var(--pv-selected);
   }
 
   .find button:active,
   .hits button:active,
-  .history button:active,
-  .zen-bar button:active {
+  .history button:active {
     background: var(--pv-pressed);
   }
 
@@ -2085,6 +3195,7 @@
 
   .stage {
     position: relative;
+    container-type: inline-size;
     overflow: auto;
     flex: 1;
     min-height: 0;
@@ -2130,49 +3241,32 @@
   .paper {
     position: relative;
     flex: 1;
-    padding: var(--pv-sheet-pad-y) var(--pv-sheet-pad-x);
+    /* Narrower margins on a smaller page leave more of it for the text. */
+    padding: var(--pv-sheet-pad-y) clamp(36px, 5cqi, var(--pv-sheet-pad-x));
     background-color: var(--pv-paper);
     background-image: var(--pv-vignette);
     box-shadow: var(--pv-shadow-sheet);
     color: var(--pv-ink);
   }
 
-  :global(:root[data-grain="true"]) .paper {
-    background-image: var(--pv-grain), var(--pv-vignette);
+  /* Zen is one plain page, as in Grammarly: the paper's colour from edge to edge and only the text on it. */
+  .app.zen .writing {
+    background: var(--pv-paper);
   }
 
-  :global(:root[data-running="false"]) .running {
+  .app.zen .writing::before,
+  .app.zen .sheet-under {
     display: none;
   }
 
-  .running {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 64px;
-    font-family: var(--pv-font-ui);
-    font-size: var(--pv-text-xs);
-    letter-spacing: var(--pv-track-running);
-    text-transform: uppercase;
-    color: var(--pv-ink-meta);
+  .app.zen .sheet .paper {
+    padding: 64px 0 160px;
+    background-image: none;
+    box-shadow: none;
   }
 
-  .chapter-label {
-    margin: 0 0 12px;
-    text-align: center;
-    font-family: var(--pv-font-ui);
-    font-size: 12px;
-    letter-spacing: var(--pv-track-chapter);
-    text-transform: uppercase;
-    color: var(--pv-ink-accent);
-  }
-
-  .chapter-title {
-    margin: 0 0 44px;
-    text-align: center;
-    font-family: var(--pv-font-manuscript);
-    font-size: var(--pv-chapter-title);
-    font-weight: 400;
-    color: var(--pv-ink);
+  :global(:root[data-grain="true"]) .paper {
+    background-image: var(--pv-grain), var(--pv-vignette);
   }
 
   .float-wrap {
@@ -2183,45 +3277,39 @@
     transform: translateX(-50%);
   }
 
-  .zen-bar input {
-    font: inherit;
-    color: inherit;
-  }
-
-  .zen-hover {
-    position: fixed;
-    top: 0;
+  /* A tab on the desk's left edge, halfway down, while the chapter list is folded away. */
+  .show-chapters {
+    position: absolute;
+    top: 50%;
     left: 0;
-    right: 0;
-    height: 1.1rem;
-    z-index: 5;
-  }
-
-  .zen-bar {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 0.45rem 0.9rem;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 44px;
+    border: 1px solid var(--pv-line);
+    border-left: 0;
+    border-radius: 0 var(--pv-radius-sm) var(--pv-radius-sm) 0;
+    padding: 0;
     background: var(--pv-chrome);
-    border-bottom: 1px solid var(--pv-line);
-    color: var(--pv-text-muted);
-    opacity: 0;
-    transform: translateY(-8px);
-    transition:
-      opacity var(--pv-dur) var(--pv-ease),
-      transform var(--pv-dur) var(--pv-ease);
+    color: var(--pv-text-subtle);
+    transform: translateY(-50%);
   }
 
-  .zen-hover:hover,
-  .zen-hover:focus-within {
-    height: auto;
+  .show-chapters :global(svg) {
+    width: 15px;
+    height: 15px;
   }
 
-  .zen-hover:hover .zen-bar,
-  .zen-hover:focus-within .zen-bar {
-    opacity: 1;
-    transform: none;
+  .show-chapters:hover {
+    background: var(--pv-selected);
+    color: var(--pv-text);
   }
+
+  .show-chapters:active {
+    background: var(--pv-pressed);
+  }
+
 
   @keyframes rise {
     from {
@@ -2248,6 +3336,20 @@
     color: var(--pv-text-muted);
     font-size: var(--pv-text-md);
     box-shadow: var(--pv-shadow-slip);
+  }
+
+  .notice-undo {
+    margin-left: 8px;
+    border: 0;
+    padding: 0;
+    background: none;
+    color: var(--pv-accent);
+    font: inherit;
+    font-weight: 600;
+  }
+
+  .notice-undo:hover {
+    text-decoration: underline;
   }
 
   .footnote-edit {

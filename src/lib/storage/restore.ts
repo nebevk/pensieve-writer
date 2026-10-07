@@ -1,27 +1,35 @@
-import type { Chapter, ChapterStatus, Project, WritingLanguage } from "$lib/model";
+import type { Chapter, ChapterStatus, Writing, WritingLanguage } from "$lib/model";
 import { emptyDocument } from "$lib/model";
 import type { Note, Task } from "./organize";
 
-/** What a local snapshot holds. Snapshots taken before notes were included have no `notes` or `tasks`. */
+/**
+ * What a local snapshot of a writing holds, with the project's notes and to-dos. Snapshots taken before
+ * notes were included have no `notes` or `tasks`, and ones from before writings had a "Split into
+ * chapters" switch have no `split` or `wordGoal`.
+ */
 export type SnapshotPayload = {
   title: string;
   language?: WritingLanguage;
+  split?: boolean;
+  wordGoal?: number;
   chapters: Chapter[];
   notes?: Note[];
   tasks?: Task[];
 };
 
-export function snapshotPayload(project: Project, notes: Note[], tasks: Task[]): SnapshotPayload {
+export function snapshotPayload(writing: Writing, notes: Note[], tasks: Task[]): SnapshotPayload {
   return {
-    title: project.title,
-    language: project.language,
-    chapters: project.chapters,
+    title: writing.title,
+    language: writing.language,
+    split: writing.split,
+    wordGoal: writing.wordGoal,
+    chapters: writing.chapters,
     notes,
     tasks,
   };
 }
 
-/** The notes or to-dos from a snapshot or backup that the book no longer has. */
+/** The notes or to-dos from a snapshot or backup that the project no longer has. */
 export function missingItems<T extends { id: string }>(items: T[] | undefined, existingIds: Iterable<string>): T[] {
   if (!Array.isArray(items)) return [];
   const have = new Set(existingIds);
@@ -80,48 +88,57 @@ export function normalizeChapter(chapter: Chapter): Chapter {
   };
 }
 
-export function projectFromSnapshot(
-  current: Project,
-  payload: { title?: string; language?: string; chapters: Chapter[] },
+/**
+ * A writing put back as it was in a snapshot. One that was split into chapters then comes back split,
+ * even if it is one page now; an old snapshot without the switch keeps the writing's own, unless it
+ * holds several chapters, which a one-page writing can't show.
+ */
+export function writingFromSnapshot(
+  current: Writing,
+  payload: { title?: string; language?: string; split?: boolean; wordGoal?: number; chapters: Chapter[] },
   now = new Date().toISOString(),
-): Project {
+): Writing {
+  const split = (typeof payload.split === "boolean" ? payload.split : current.split) || payload.chapters.length > 1;
   return {
     ...current,
     title: payload.title || current.title,
-    language: payload.language === "sl" ? "sl" : current.language,
+    language: payload.language === "sl" ? "sl" : payload.language === "en" ? "en" : current.language,
+    split,
+    wordGoal: Number.isFinite(payload.wordGoal) ? Number(payload.wordGoal) : current.wordGoal,
     updatedAt: now,
-    chapters: payload.chapters.map(normalizeChapter),
+    chapters: payload.chapters.map((chapter) => ({ ...normalizeChapter(chapter), writingId: current.id })),
   };
 }
 
 /**
- * The open book after restoring a Drive backup into it. The book keeps its own id, so the
- * backup's chapters move into the open file even when the backup came from another computer.
+ * A writing after restoring a Drive backup of it. It keeps its own id, so the backup's chapters come
+ * into the open file even when the backup came from another computer. A backup from before writings
+ * had the "Split into chapters" switch says what kind of book it was: an article was one page.
  */
-export function projectFromBackup(
-  current: Project,
-  saved: Pick<Project, "title" | "chapters"> & Partial<Pick<Project, "language" | "kind" | "wordGoal">>,
+export function writingFromBackup(
+  current: Writing,
+  saved: Pick<Writing, "title" | "chapters"> & Partial<Pick<Writing, "language" | "wordGoal" | "split">> & { kind?: unknown },
   now = new Date().toISOString(),
-): Project {
-  const kind = saved.kind === "novel" || saved.kind === "stories" || saved.kind === "article" ? saved.kind : current.kind;
+): Writing {
   const language = saved.language === "sl" || saved.language === "en" ? saved.language : current.language;
+  const said = typeof saved.split === "boolean" ? saved.split : typeof saved.kind === "string" ? saved.kind !== "article" : current.split;
   return {
     ...current,
     title: saved.title || current.title,
     language,
-    kind,
+    split: said || saved.chapters.length > 1,
     wordGoal: Number.isFinite(saved.wordGoal) ? Number(saved.wordGoal) : current.wordGoal,
     updatedAt: now,
     chapters: saved.chapters.map((chapter, index) => ({
       ...normalizeChapter(chapter),
-      projectId: current.id,
+      writingId: current.id,
       position: Number.isFinite(chapter.position) ? chapter.position : index,
     })),
   };
 }
 
-export function withRestoredChapter(current: Project, older: Chapter, now = new Date().toISOString()): Project {
-  const chapter = normalizeChapter(older);
+export function withRestoredChapter(current: Writing, older: Chapter, now = new Date().toISOString()): Writing {
+  const chapter = { ...normalizeChapter(older), writingId: current.id };
   const exists = current.chapters.some((item) => item.id === chapter.id);
   const chapters = exists
     ? current.chapters.map((item) => (item.id === chapter.id ? { ...chapter, position: item.position } : item))

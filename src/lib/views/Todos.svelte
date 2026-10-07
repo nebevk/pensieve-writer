@@ -71,7 +71,7 @@
   const noteCount = $derived(notes.length);
 
   function chapterLabel(id: string): string {
-    if (!id) return t("wholeBook");
+    if (!id) return t("wholeProject");
     const index = ordered.findIndex((chapter) => chapter.id === id);
     const chapter = ordered[index];
     return chapter ? `${index + 1} · ${chapter.title}` : t("chapter");
@@ -90,7 +90,7 @@
 
   async function refresh() {
     try {
-      [notes, tasks] = await Promise.all([listNotes(projectId), listTasks(projectId)]);
+      [notes, tasks] = await Promise.all([listNotes(), listTasks()]);
     } catch (error) {
       message = error instanceof Error ? error.message : t("todosLoadFailed");
     }
@@ -225,7 +225,7 @@
         {/if}
       {/each}
       <button type="button" class="row muted" class:active={filter === "book"} onclick={() => (filter = "book")}>
-        <span>{t("wholeBook")}</span>
+        <span>{t("wholeProject")}</span>
         <span>{cards.filter((card) => card.state !== "done" && card.chapterId === "" && card.kind === "task").length}</span>
       </button>
     </aside>
@@ -272,7 +272,7 @@
                   <input bind:value={editTitle} aria-label={t("todoTitle")} />
                   {#if card.kind === "task"}
                     <select bind:value={editChapter} aria-label={t("chapter")}>
-                      <option value="">{t("wholeBook")}</option>
+                      <option value="">{t("wholeProject")}</option>
                       {#each ordered as chapter, index (chapter.id)}
                         <option value={chapter.id}>{index + 1} · {chapter.title}</option>
                       {/each}

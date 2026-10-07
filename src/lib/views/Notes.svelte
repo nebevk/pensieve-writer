@@ -20,13 +20,14 @@
     type Task,
     type TodoState,
   } from "$lib/storage/organize";
-  import { snapshotSavedProject } from "$lib/storage/sqlite";
+  import { snapshotSavedWriting } from "$lib/storage/sqlite";
   import type { UiKey } from "$lib/i18n";
   import { ago, t } from "$lib/ui.svelte";
   import type { NoteTarget } from "$lib/editor/noteLinks";
 
   let {
     projectId,
+    writingId = "",
     chapters,
     language = "en",
     focusChapterId = "",
@@ -35,8 +36,12 @@
     createRequest = null,
     onCreateHandled,
     openRequest = null,
+    onOpenHandled,
   }: {
+    /** The project the notes belong to. */
     projectId: string;
+    /** The writing open in Write, whose earlier version keeps a note before it's deleted. */
+    writingId?: string;
     chapters: Chapter[];
     language?: "en" | "sl";
     focusChapterId?: string;
@@ -46,8 +51,10 @@
     createRequest?: { at: number; chapterId: string } | null;
     /** Called once the request is done, so the note isn't made again when the view opens next. */
     onCreateHandled?: () => void;
-    /** A note to open, from a link clicked in the manuscript. */
+    /** A note to open, from a link clicked in the manuscript or a note picked in the library. */
     openRequest?: (NoteTarget & { at: number }) | null;
+    /** Called once the note asked for is open, so it isn't opened again when the view opens next. */
+    onOpenHandled?: () => void;
   } = $props();
 
   let notes = $state<Note[]>([]);
@@ -148,6 +155,7 @@
     // A note made outside this panel, such as from a comment, is newer than the list.
     if (target.id && !notes.some((note) => note.id === target.id)) void refresh().then(() => openLinked(target, false));
     else openLinked(target, false);
+    onOpenHandled?.();
   });
 
   /**
@@ -165,8 +173,10 @@
 
   async function refresh() {
     try {
-      [notes, tasks] = await Promise.all([listNotes(projectId), listTasks(projectId)]);
-      if (!activeId) activeId = notes[0]?.id ?? null;
+      [notes, tasks] = await Promise.all([listNotes(), listTasks()]);
+      // The note asked for opens first, so the editor doesn't open on another one on its way there.
+      const asked = openRequest?.id && openRequest.at !== seenOpen ? notes.find((note) => note.id === openRequest?.id) : undefined;
+      if (!activeId) activeId = asked?.id ?? notes[0]?.id ?? null;
       loaded = true;
     } catch (error) {
       message = error instanceof Error ? error.message : t("notesLoadFailed");
@@ -224,9 +234,9 @@
   async function remove(id: string) {
     confirmDelete = null;
     try {
-      // Keep a snapshot with the note in it, so a mistaken delete can be undone from Home.
+      // Keep an earlier version with the note in it, so a mistaken delete can be undone from Write.
       await flushNoteSave();
-      await snapshotSavedProject(projectId);
+      if (writingId) await snapshotSavedWriting(writingId);
       await deleteNote(id);
       notes = notes.filter((note) => note.id !== id);
       tasks = tasks.filter((task) => task.noteId !== id);
@@ -393,7 +403,6 @@
             onEditor={() => {}}
             onActivity={() => {}}
             noteLinkBrackets
-            plain
             onOpenNote={(target) => openLinked(target, true)}
           />
         {/key}
@@ -431,7 +440,7 @@
             <input name="todo" placeholder={t("addTodoHint")} aria-label={t("addTodo")} />
             <!-- A to-do written on a character can belong to one chapter, as on the design's card. -->
             <select name="chapter" aria-label={t("chapter")} value={focusChapterId}>
-              <option value="">{t("wholeBook")}</option>
+              <option value="">{t("wholeProject")}</option>
               {#each orderedChapters as chapter, index (chapter.id)}
                 <option value={chapter.id}>{index + 1} · {chapter.title}</option>
               {/each}

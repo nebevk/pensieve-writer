@@ -10,6 +10,7 @@
   import { NoteLinkMark, NoteLinks, type NoteTarget } from "./noteLinks";
   import { Footnote } from "./footnote";
   import { CommentMark } from "./comments";
+  import { ChapterPage, bodyText } from "./chapterPage";
 
   let {
     docId,
@@ -24,7 +25,8 @@
     typewriter = false,
     noteLinkBrackets = false,
     onOpenNote,
-    plain = false,
+    page = false,
+    focusOnOpen = true,
   }: {
     /** The chapter or note this editor opened. Every change is handed back with it. */
     docId?: string;
@@ -42,8 +44,10 @@
     noteLinkBrackets?: boolean;
     /** Opens the note a clicked link points to. */
     onOpenNote?: (target: NoteTarget) => void;
-    /** Plain text for notes: no drop cap or first-line indents, which belong to the manuscript page. */
-    plain?: boolean;
+    /** A chapter's page: its first lines are the chapter's title and, where a part begins, the part's name. */
+    page?: boolean;
+    /** Whether the page takes the keyboard when it opens; not while a name is being typed elsewhere. */
+    focusOnOpen?: boolean;
   } = $props();
 
   let typewriterOn = false;
@@ -94,10 +98,11 @@
         NoteLinkMark,
         Footnote,
         CommentMark,
+        ...(page ? [ChapterPage.configure({ titleHint: t("chapterTitleHint"), partHint: t("partTitleHint") })] : []),
         NoteLinks.configure({ brackets: noteLinkBrackets, onOpen: (target) => openNote?.(target) }),
       ],
       content: initialContent as JSONContent,
-      autofocus: "end",
+      autofocus: focusOnOpen ? "end" : false,
       editorProps: {
         attributes: {
           spellcheck: "true",
@@ -113,7 +118,8 @@
         else markEdited?.();
         if (countTimer) clearTimeout(countTimer);
         countTimer = setTimeout(() => {
-          reportText?.(current.getText(), ownerId);
+          // A chapter's title and part lines are not counted as its words.
+          reportText?.(page ? bodyText(current) : current.getText(), ownerId);
         }, 400);
         if (!typewriterOn || !host) return;
         const scroller = host.closest(".stage");
@@ -131,14 +137,17 @@
 
   onDestroy(() => {
     if (countTimer) clearTimeout(countTimer);
-    if (editor && !editor.isDestroyed) publish(editor.getJSON() as DocumentJson, editor.getText(), ownerId);
+    // A live editor has handed back every change already. Handing it back again here would be read
+    // during Svelte's teardown, against the list as it was before the change that closed the editor,
+    // and bring back a note that was just deleted, or hide one just made.
+    if (!liveOn && editor && !editor.isDestroyed) publish(editor.getJSON() as DocumentJson, editor.getText(), ownerId);
     onEditor(null);
     editor?.destroy();
     editor = null;
   });
 </script>
 
-<div class="editor-host" class:plain bind:this={host}></div>
+<div class="editor-host" bind:this={host}></div>
 
 <style>
   .editor-host {
@@ -160,29 +169,10 @@
     margin: 0;
   }
 
-  .editor-host :global(.ProseMirror > p:first-child::first-letter) {
-    float: left;
-    font-size: var(--pv-dropcap);
-    line-height: 0.8;
-    padding: 0.08em 0.08em 0 0;
-    color: var(--pv-ink-accent);
-  }
-
-  .editor-host.plain :global(.ProseMirror > p:first-child::first-letter) {
-    float: none;
-    font-size: inherit;
-    line-height: inherit;
-    padding: 0;
-    color: inherit;
-  }
-
-  .editor-host.plain :global(.ProseMirror p + p) {
-    text-indent: 0;
-    margin-top: 0.6em;
-  }
-
+  /* Paragraphs flush left and a little apart, as in Word and Grammarly; a book's first-line indents
+     looked odd while writing. The Word file spaces them the same (PARAGRAPH_GAP in export/word.ts). */
   .editor-host :global(.ProseMirror p + p) {
-    text-indent: var(--pv-manuscript-indent);
+    margin-top: 0.6em;
   }
 
   .editor-host :global(.ProseMirror h1),
@@ -192,7 +182,30 @@
     font-weight: 400;
     line-height: 1.25;
     margin: 1.2em 0 0.4em;
-    text-indent: 0;
+  }
+
+  .editor-host :global(.ProseMirror h1) {
+    font-size: 1.9em;
+  }
+
+  .editor-host :global(.ProseMirror h2) {
+    font-size: 1.55em;
+  }
+
+  .editor-host :global(.ProseMirror h3) {
+    font-size: 1.2em;
+  }
+
+  .editor-host :global(.ProseMirror > :first-child) {
+    margin-top: 0;
+  }
+
+  .editor-host :global(.ProseMirror .empty-line::before) {
+    content: attr(data-hint);
+    float: left;
+    height: 0;
+    color: var(--pv-ink-meta);
+    pointer-events: none;
   }
 
   .editor-host :global(.ProseMirror blockquote) {
@@ -204,8 +217,14 @@
 
   .editor-host :global(.ProseMirror ul),
   .editor-host :global(.ProseMirror ol) {
-    margin: 0 0 0.85em;
+    margin: 0.6em 0;
     padding-left: 1.4rem;
+  }
+
+  /* A list inside a list item sits close to it, as in Word. */
+  .editor-host :global(.ProseMirror li > ul),
+  .editor-host :global(.ProseMirror li > ol) {
+    margin: 0;
   }
 
   .editor-host :global(.ProseMirror u) {

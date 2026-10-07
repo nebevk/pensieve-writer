@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { Project } from "$lib/model";
 import {
   backupBookKey,
   backupFile,
@@ -9,7 +8,7 @@ import {
   parseBackup,
   type BackupContent,
 } from "./backupFile";
-import { listNotes, listTasks } from "./organize";
+import { readWholeProject } from "./sqlite";
 import { t } from "$lib/ui.svelte";
 
 export async function chooseProjectFile(): Promise<string | null> {
@@ -63,15 +62,16 @@ export type BackupResult = {
 };
 
 /**
- * Writes a backup of the book, its notes and its to-dos. Pass the previous backup's signature
- * to skip writing an identical copy.
+ * Writes a backup of the open project as it is saved: every writing, its notes and its to-dos. Pass the
+ * previous backup's signature to skip writing an identical copy.
  */
-export async function writeBackup(folder: string, project: Project, skipIfSignature = ""): Promise<BackupResult> {
-  const [notes, tasks] = await Promise.all([listNotes(project.id), listTasks(project.id)]);
-  const signature = backupSignature(project, notes, tasks);
+export async function writeBackup(folder: string, skipIfSignature = ""): Promise<BackupResult> {
+  const { shelf, writings, notes, tasks } = await readWholeProject();
+  const project = { id: shelf.projectId, title: shelf.title, folders: shelf.folders };
+  const signature = backupSignature(project.id, { project, writings, notes, tasks });
   if (skipIfSignature && signature === skipIfSignature) return { path: null, signature };
   const savedAt = new Date().toISOString();
-  const contents = JSON.stringify(backupFile(project, notes, tasks, savedAt));
+  const contents = JSON.stringify(backupFile(project, writings, notes, tasks, savedAt));
   const path = await invoke<string>("write_backup", {
     folder,
     filename: backupFileName(project.id, savedAt),

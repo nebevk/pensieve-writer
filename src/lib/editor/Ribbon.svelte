@@ -2,10 +2,11 @@
   import { invoke } from "@tauri-apps/api/core";
   import type { Editor } from "@tiptap/core";
   import type { ManuscriptFont } from "$lib/prefs";
+  import { isLeadLine } from "$lib/chapters/page";
   import { chooseImageFile } from "$lib/storage/backup";
   import { imageType, shrinkImage } from "./imageSize";
   import Icon from "./Icon.svelte";
-  import { t } from "$lib/ui.svelte";
+  import { num, t } from "$lib/ui.svelte";
 
   let {
     editor,
@@ -13,14 +14,17 @@
     chaptersOpen,
     notesOpen,
     todosOpen,
+    goalsOpen,
     notesCount = 0,
     todosCount = 0,
+    wordsToday = 0,
     onToggleChapters,
     onToggleNotes,
     onToggleTodos,
+    onToggleGoals,
     onFind,
     manuscriptFont,
-    manuscriptSize,
+    manuscriptPt,
     onFont,
     onSize,
     onNewNote,
@@ -28,21 +32,26 @@
     loadNotes,
     onReplace,
     onComment,
+    onNotice,
   }: {
     editor: Editor | null;
     revision: number;
     chaptersOpen: boolean;
     notesOpen: boolean;
     todosOpen: boolean;
-    /** Notes the open chapter mentions, and its open to-dos, shown on the panel toggles. */
+    goalsOpen: boolean;
+    /** Notes the open chapter mentions, its open to-dos and the words written today, shown on the panel toggles. */
     notesCount?: number;
     todosCount?: number;
+    wordsToday?: number;
     onToggleChapters: () => void;
     onToggleNotes: () => void;
     onToggleTodos: () => void;
+    onToggleGoals: () => void;
     onFind: () => void;
     manuscriptFont: ManuscriptFont;
-    manuscriptSize: number;
+    /** The writing's text size in points. */
+    manuscriptPt: number;
     onFont: (font: ManuscriptFont) => void;
     onSize: (size: number) => void;
     onNewNote: () => void;
@@ -52,7 +61,12 @@
     loadNotes: () => Promise<{ id: string; title: string; aliases: string }[]>;
     /** Comments the selection, or the word at the cursor. */
     onComment: () => void;
+    /** Says something on the page for a few seconds, such as why the title line turned a change away. */
+    onNotice?: (message: string) => void;
   } = $props();
+
+  // Word's usual sizes for running text, in points, and the one set in Settings if it is between them.
+  const textSizes = $derived([...new Set([10, 11, 12, 13, 14, 16, 18, manuscriptPt])].sort((a, b) => a - b));
 
   let expanded = $state(false);
   // The quiet row's one Alignment button opens the four alignments (design TOOL-8).
@@ -62,7 +76,8 @@
   let notePicker = $state(false);
   let noteChoices = $state<{ id: string; title: string; aliases: string }[]>([]);
   let noteQuery = $state("");
-  let imageProblem = $state("");
+  // A problem with the last insert (a picture that wouldn't load, a footnote on the title line), for a few seconds.
+  let problem = $state("");
   let problemTimer: ReturnType<typeof setTimeout> | null = null;
   let linkDraft = $state("https://");
 
@@ -125,17 +140,17 @@
   ]);
 
   const blocks = $derived([
-    format(t("bulletedList"), (current) => current.isActive("bulletList"), (current) => current.chain().focus().toggleBulletList().run(), undefined, "list"),
-    format(t("numberedList"), (current) => current.isActive("orderedList"), (current) => current.chain().focus().toggleOrderedList().run(), undefined, "listOrdered"),
-    format(t("alignLeft"), (current) => current.isActive({ textAlign: "left" }), (current) => current.chain().focus().setTextAlign("left").run(), undefined, "alignLeft"),
-    format(t("alignCenter"), (current) => current.isActive({ textAlign: "center" }), (current) => current.chain().focus().setTextAlign("center").run(), undefined, "alignCenter"),
-    format(t("alignRight"), (current) => current.isActive({ textAlign: "right" }), (current) => current.chain().focus().setTextAlign("right").run(), undefined, "alignRight"),
-    format(t("justify"), (current) => current.isActive({ textAlign: "justify" }), (current) => current.chain().focus().setTextAlign("justify").run(), undefined, "alignJustify"),
+    format(t("bulletedList"), (current) => current.isActive("bulletList"), restyle((current) => current.chain().focus().toggleBulletList().run()), undefined, "list"),
+    format(t("numberedList"), (current) => current.isActive("orderedList"), restyle((current) => current.chain().focus().toggleOrderedList().run()), undefined, "listOrdered"),
+    format(t("alignLeft"), (current) => current.isActive({ textAlign: "left" }), restyle((current) => current.chain().focus().setTextAlign("left").run()), undefined, "alignLeft"),
+    format(t("alignCenter"), (current) => current.isActive({ textAlign: "center" }), restyle((current) => current.chain().focus().setTextAlign("center").run()), undefined, "alignCenter"),
+    format(t("alignRight"), (current) => current.isActive({ textAlign: "right" }), restyle((current) => current.chain().focus().setTextAlign("right").run()), undefined, "alignRight"),
+    format(t("justify"), (current) => current.isActive({ textAlign: "justify" }), restyle((current) => current.chain().focus().setTextAlign("justify").run()), undefined, "alignJustify"),
   ]);
 
   function applyStyle(value: string) {
     const current = ready();
-    if (!current) return;
+    if (!current || onTitleLine(current, t("leadLineStyle"))) return;
     const chain = current.chain().focus();
     if (value === "h1") chain.toggleHeading({ level: 1 }).run();
     else if (value === "h2") chain.toggleHeading({ level: 2 }).run();
@@ -144,8 +159,10 @@
   }
 
   function sceneBreak() {
-    ready()
-      ?.chain()
+    const current = ready();
+    if (!current || onTitleLine(current, t("leadLineStyle"))) return;
+    current
+      .chain()
       .focus()
       .insertContent({
         type: "paragraph",
@@ -155,9 +172,15 @@
       .run();
   }
 
+  function quote() {
+    const current = ready();
+    if (!current || onTitleLine(current, t("leadLineStyle"))) return;
+    current.chain().focus().toggleBlockquote().run();
+  }
+
   function shiftIndent(delta: number) {
     const current = ready();
-    if (!current) return;
+    if (!current || onTitleLine(current, t("leadLineStyle"))) return;
     const type = current.isActive("heading") ? "heading" : "paragraph";
     const indent = Number(current.getAttributes(type).indent ?? 0);
     current.chain().focus().updateAttributes(type, { indent: Math.max(0, Math.min(6, indent + delta)) }).run();
@@ -175,6 +198,8 @@
       notePicker = false;
       return;
     }
+    const current = ready();
+    if (current && onTitleLine(current)) return;
     noteQuery = "";
     notePicker = true;
     try {
@@ -184,11 +209,32 @@
     }
   }
 
+  function say(message: string) {
+    problem = message;
+    if (problemTimer) clearTimeout(problemTimer);
+    problemTimer = setTimeout(() => (problem = ""), 8000);
+  }
+
+  /** Whether the cursor is in the page's title or part line, which hold plain text only; says so if it is. */
+  function onTitleLine(current: Editor, message = t("plainLeadLines")): boolean {
+    if (!isLeadLine(current.state.doc, current.state.selection.$from.index(0))) return false;
+    if (onNotice) onNotice(message);
+    else say(message);
+    return true;
+  }
+
+  /** A change of a line's style, which the title and part lines keep. */
+  function restyle(command: (current: Editor) => void): (current: Editor) => void {
+    return (current) => {
+      if (!onTitleLine(current, t("leadLineStyle"))) command(current);
+    };
+  }
+
   /** Links the selected words to a note, or writes the note's name at the cursor as a link. */
   function linkNote(note: { id: string; title: string }) {
     const current = ready();
     notePicker = false;
-    if (!current) return;
+    if (!current || onTitleLine(current)) return;
     const attrs = { noteId: note.id, title: note.title };
     if (current.state.selection.empty) {
       current.chain().focus().insertContent({ type: "text", text: note.title, marks: [{ type: "noteLink", attrs }] }).run();
@@ -200,7 +246,7 @@
   /** Adds a footnote after the cursor and selects it, so its note can be written straight away. */
   function insertFootnote() {
     const current = ready();
-    if (!current) return;
+    if (!current || onTitleLine(current)) return;
     const at = current.state.selection.to;
     current.chain().focus().insertContentAt(at, { type: "footnote", attrs: { text: "" } }).setNodeSelection(at).run();
   }
@@ -223,7 +269,9 @@
   }
 
   async function askImage() {
-    imageProblem = "";
+    problem = "";
+    const current = ready();
+    if (current && onTitleLine(current, t("leadLineStyle"))) return;
     try {
       const path = await chooseImageFile();
       if (!path) return;
@@ -238,14 +286,16 @@
       const src = await shrinkImage(original);
       ready()?.chain().focus().insertContent({ type: "image", attrs: { src, alt: "" } }).run();
     } catch (error) {
-      imageProblem = t("pictureFailed", { error: error instanceof Error ? error.message : String(error) });
-      if (problemTimer) clearTimeout(problemTimer);
-      problemTimer = setTimeout(() => (imageProblem = ""), 8000);
+      say(t("pictureFailed", { error: error instanceof Error ? error.message : String(error) }));
     }
   }
 
   function clearFormatting() {
-    ready()?.chain().focus().unsetAllMarks().clearNodes().run();
+    const current = ready();
+    if (!current) return;
+    // The title and part lines stay what they are; only their words lose any formatting.
+    if (isLeadLine(current.state.doc, current.state.selection.$from.index(0))) current.chain().focus().unsetAllMarks().run();
+    else current.chain().focus().unsetAllMarks().clearNodes().run();
   }
 </script>
 
@@ -300,7 +350,7 @@
         </div>
       {/if}
     </div>
-    <button type="button" class="tool serif" title={t("blockQuote")} aria-label={t("blockQuote")} onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleBlockquote().run()}>“</button>
+    <button type="button" class="tool serif" title={t("blockQuote")} aria-label={t("blockQuote")} onmousedown={(event) => event.preventDefault()} onclick={quote}>“</button>
     <button type="button" class="tool scene" title={t("sceneBreak")} aria-label={t("sceneBreak")} onmousedown={(event) => event.preventDefault()} onclick={sceneBreak}>* *</button>
     <span class="rule"></span>
     <button type="button" class="more" onclick={() => (expanded = true)}>
@@ -317,6 +367,9 @@
     </button>
     <button type="button" class="panel-toggle" class:on={notesOpen} aria-pressed={notesOpen} title={t("notesPanel")} onclick={onToggleNotes}>
       <Icon name="newNote" />{t("notes")}<span class="count">{notesCount}</span>
+    </button>
+    <button type="button" class="panel-toggle" class:on={goalsOpen} aria-pressed={goalsOpen} title={t("goalsPanel")} onclick={onToggleGoals}>
+      <Icon name="target" />{t("wordGoals")}<span class="count">{num(wordsToday)}</span>
     </button>
     <span class="rule"></span>
     <button type="button" class="tool" title={`${t("find")} (Ctrl+F)`} aria-label={t("find")} onmousedown={(event) => event.preventDefault()} onclick={onFind}>
@@ -337,9 +390,9 @@
           <option value="garamond">Garamond</option>
           <option value="typewriter">{t("fontTypewriter")}</option>
         </select>
-        <select aria-label={t("textSize")} value={manuscriptSize} onchange={(event) => onSize(Number(event.currentTarget.value))}>
-          {#each [13, 15, 17, 19, 21, 24] as size (size)}
-            <option value={size}>{size}</option>
+        <select aria-label={t("textSize")} value={manuscriptPt} onchange={(event) => onSize(Number(event.currentTarget.value))}>
+          {#each textSizes as size (size)}
+            <option value={size}>{num(size)}</option>
           {/each}
         </select>
       </div>
@@ -373,7 +426,7 @@
     </section>
     <section class="group">
       <div class="tools">
-        <button type="button" class="tool serif" title={t("blockQuote")} aria-label={t("blockQuote")} onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleBlockquote().run()}>“</button>
+        <button type="button" class="tool serif" title={t("blockQuote")} aria-label={t("blockQuote")} onmousedown={(event) => event.preventDefault()} onclick={quote}>“</button>
         <button type="button" class="tool scene" title={t("sceneBreak")} aria-label={t("sceneBreak")} onmousedown={(event) => event.preventDefault()} onclick={sceneBreak}>* *</button>
         <button type="button" class="tool" title={t("image")} aria-label={t("image")} onmousedown={(event) => event.preventDefault()} onclick={() => void askImage()}><Icon name="image" /></button>
         <button type="button" class="tool" class:active={linkOpen} title={t("link")} aria-label={t("link")} aria-pressed={linkOpen} onmousedown={(event) => event.preventDefault()} onclick={() => (linkOpen = !linkOpen)}><Icon name="link" /></button>
@@ -393,8 +446,8 @@
         <button type="button" class="tool" title={`${t("comment")} (Ctrl+Alt+M)`} aria-label={t("comment")} onmousedown={(event) => event.preventDefault()} onclick={onComment}>
           <Icon name="comment" />
         </button>
-        {#if imageProblem}
-          <span class="problem" role="alert">{imageProblem}</span>
+        {#if problem}
+          <span class="problem" role="alert">{problem}</span>
         {/if}
       </div>
       <p>{t("groupInsert")}</p>
@@ -424,6 +477,7 @@
         </span>
         <button type="button" class="tool" class:active={notesOpen} title={t("notesPanel")} aria-label={t("notesPanel")} aria-pressed={notesOpen} onclick={onToggleNotes}><Icon name="notes" /></button>
         <button type="button" class="tool" class:active={todosOpen} title={t("todosPanel")} aria-label={t("todosPanel")} aria-pressed={todosOpen} onclick={onToggleTodos}><Icon name="todos" /></button>
+        <button type="button" class="tool" class:active={goalsOpen} title={t("goalsPanel")} aria-label={t("goalsPanel")} aria-pressed={goalsOpen} onclick={onToggleGoals}><Icon name="target" /></button>
       </div>
       <p>Pensieve</p>
     </section>

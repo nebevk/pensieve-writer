@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { wordFile } from "$lib/export/word";
 import { readWordFile } from "$lib/export/wordImport";
-import { EXAMPLE_BOOKS, buildExample, prose } from "./examples";
+import { EXAMPLE_BOOKS, EXAMPLE_PROJECTS, buildExample, prose } from "./examples";
 
-describe("example books", () => {
+const writingsOf = (slug: string) => buildExample(EXAMPLE_PROJECTS.find((example) => example.slug === slug)!, "project");
+
+describe("example projects", () => {
   it("turns readable lines into a document", () => {
     const doc = prose(["One *quiet* and **loud** line.", "* *", "> Quoted.", "> Still quoted.", "## A heading"]);
     expect(doc.content).toHaveLength(4);
@@ -15,18 +17,30 @@ describe("example books", () => {
     expect(doc.content?.[3]).toMatchObject({ type: "heading" });
   });
 
-  it("has one book of each kind", () => {
-    expect(EXAMPLE_BOOKS.map((book) => book.kind).sort()).toEqual(["article", "novel", "stories"]);
+  it("keeps a novel in chapters and an article on one page, in a folder, in one project", () => {
+    const lantern = EXAMPLE_PROJECTS.find((example) => example.slug === "the-lantern-series")!;
+    expect(lantern.books.map((book) => [book.title, book.split, book.folder ?? ""])).toEqual([
+      ["The Lantern House", true, ""],
+      ["Why I write by hand first", false, "Published"],
+    ]);
     expect(EXAMPLE_BOOKS.some((book) => book.language === "sl")).toBe(true);
+    const { writings } = writingsOf("the-lantern-series");
+    expect(writings.map((item) => item.folder)).toEqual(["", "Published"]);
+    expect(new Set(writings.map((item) => item.writing.id)).size).toBe(2);
   });
 
-  for (const example of EXAMPLE_BOOKS) {
+  for (const example of EXAMPLE_PROJECTS) {
     it(`builds "${example.title}" with every link pointing somewhere real`, () => {
-      const { project, notes, tasks } = buildExample(example, "book");
-      const chapterIds = new Set(project.chapters.map((chapter) => chapter.id));
+      const { writings, notes, tasks } = buildExample(example, "project");
+      const chapters = writings.flatMap((item) => item.writing.chapters);
+      const chapterIds = new Set(chapters.map((chapter) => chapter.id));
       const noteIds = new Set(notes.map((note) => note.id));
       const titles = new Set(notes.map((note) => note.title.toLowerCase()));
-      expect(project.chapters.map((chapter) => chapter.position)).toEqual(project.chapters.map((_, index) => index));
+      for (const { writing } of writings) {
+        expect(writing.chapters.map((chapter) => chapter.position)).toEqual(writing.chapters.map((_, index) => index));
+        expect(writing.chapters.every((chapter) => chapter.writingId === writing.id)).toBe(true);
+      }
+      expect(notes.every((note) => note.projectId === "project")).toBe(true);
       for (const task of tasks) {
         if (task.chapterId) expect(chapterIds.has(task.chapterId)).toBe(true);
         if (task.noteId) expect(noteIds.has(task.noteId)).toBe(true);
@@ -39,7 +53,8 @@ describe("example books", () => {
   }
 
   it("fills the novel with every status, note kind and to-do state", () => {
-    const { project, notes, tasks } = buildExample(EXAMPLE_BOOKS.find((book) => book.kind === "novel")!, "book");
+    const { writings, notes, tasks } = writingsOf("the-lantern-series");
+    const project = writings[0].writing;
     expect(new Set(project.chapters.map((chapter) => chapter.status))).toEqual(new Set(["final", "revised", "draft"]));
     expect(project.chapters.some((chapter) => !chapter.plainText.trim())).toBe(true);
     expect(new Set(project.chapters.map((chapter) => chapter.part).filter(Boolean)).size).toBe(2);
@@ -58,7 +73,7 @@ describe("example books", () => {
   });
 
   it("keeps Slovenian letters in the story collection", () => {
-    const { project } = buildExample(EXAMPLE_BOOKS.find((book) => book.language === "sl")!, "book");
+    const project = writingsOf("zgodbe-ob-reki").writings[0].writing;
     const text = project.chapters.map((chapter) => chapter.plainText).join(" ");
     expect(text).toMatch(/č/);
     expect(text).toMatch(/š/);
@@ -66,8 +81,8 @@ describe("example books", () => {
   });
 
   it("survives a trip through Word", async () => {
-    const { project } = buildExample(EXAMPLE_BOOKS[0], "book");
-    const bytes = await wordFile(project, { font: "Literata", sizePx: 17, pageWidth: "book", runningHead: true });
+    const project = writingsOf("the-lantern-series").writings[0].writing;
+    const bytes = await wordFile(project, { font: "Literata", sizePt: 13, pageWidth: "book", runningHead: true });
     const back = await readWordFile(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
     expect(back.title).toBe(project.title);
     expect(back.chapters.map((chapter) => chapter.title)).toEqual(project.chapters.map((chapter) => chapter.title));

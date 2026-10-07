@@ -1,10 +1,16 @@
 import type { MammothDocument, MammothElement } from "mammoth";
-import { createChapter, emptyDocument, type Chapter, type DocumentJson, type Project } from "$lib/model";
+import { createChapter, emptyDocument, type Chapter, type DocumentJson, type Writing } from "$lib/model";
 import { WORD_STYLES } from "./wordStyles";
 import { t } from "$lib/ui.svelte";
 
 /** A chapter read from a Word file, ready to become part of a book. */
-export type ImportedChapter = { title: string; contentJson: DocumentJson; plainText: string };
+export type ImportedChapter = {
+  title: string;
+  contentJson: DocumentJson;
+  plainText: string;
+  /** The part it is in, when the file says: Pensieve's own files, where a Heading 1 begins a part. */
+  part?: string;
+};
 
 export type WordImport = {
   /** The document's Title paragraph, or "" when it has none. */
@@ -69,7 +75,10 @@ function headingLevel(paragraph: MammothElement): number | null {
   return match ? Number(match[1]) : null;
 }
 
-const isPensieveTitle = (p: MammothElement) => p.styleId === WORD_STYLES.title || p.styleName === "Pensieve Title";
+const isBookTitle = (p: MammothElement) => p.styleId === WORD_STYLES.title || p.styleName === "Pensieve Book Title";
+const isOldTitle = (p: MammothElement) => p.styleId === WORD_STYLES.oldTitle || p.styleName === "Pensieve Title";
+const isArticleTitle = (p: MammothElement) => p.styleId === WORD_STYLES.articleTitle || p.styleName === "Pensieve Article Title";
+const isPensieveTitle = (p: MammothElement) => isBookTitle(p) || isOldTitle(p) || isArticleTitle(p);
 const isTitle = (p: MammothElement) => isPensieveTitle(p) || /^title$/i.test(p.styleName ?? "") || p.styleId === "Title";
 const isLabel = (p: MammothElement) => p.styleId === WORD_STYLES.chapterLabel || p.styleName === "Chapter Label";
 const isDropCap = (p: MammothElement) => p.styleId === WORD_STYLES.dropCap || p.styleName === "Drop Cap";
@@ -203,7 +212,7 @@ export function documentText(nodes: JsonNode[]): string {
 }
 
 /** `implicit` marks the bucket for text that comes before the first chapter title. */
-type Building = { title: string; nodes: JsonNode[]; implicit: boolean };
+type Building = { title: string; nodes: JsonNode[]; implicit: boolean; part?: string };
 
 /** Turns mammoth's document model into chapters. Exported for tests. */
 export function wordToChapters(
@@ -214,9 +223,20 @@ export function wordToChapters(
   const items = document.children ?? [];
   const paragraphs = items.filter((item) => item.type === "paragraph");
   const fromPensieve = paragraphs.some((p) => isLabel(p) || isPensieveTitle(p));
+  // Until 6 October Pensieve made every chapter's title a Heading 1, under a "Pensieve Title" (with a
+  // chapter label in a novel or stories, never in an article). Its files since then have a "Pensieve
+  // Book Title" and follow the page: a Heading 1 begins a part and a Heading 2 is a chapter's title.
+  const withParts = paragraphs.some(isBookTitle) && !paragraphs.some(isLabel);
+  // A one-page article stays one page: its part line is a Heading 1, and its own headings are one level
+  // below where they are on the page.
+  const article = paragraphs.some(isArticleTitle);
   const levels = paragraphs.map(headingLevel).filter((level): level is number => level !== null);
-  const chapterLevel = fromPensieve ? 1 : levels.length > 0 ? Math.min(...levels) : null;
-  const byLines = chapterLevel === null && paragraphs.some((p) => looksLikeChapterTitle(plainOf(p)));
+  const chapterLevel = article ? null : withParts ? 2 : fromPensieve ? 1 : levels.length > 0 ? Math.min(...levels) : null;
+  const titled = chapterLevel !== null && paragraphs.some((p) => headingLevel(p) === chapterLevel);
+  let part = "";
+  // A part line with no chapter under it yet. As on the page, it still gets one, an untitled chapter.
+  let partOpen = false;
+  const byLines = !article && chapterLevel === null && paragraphs.some((p) => looksLikeChapterTitle(plainOf(p)));
 
   let title = "";
   const chapters: Building[] = [];
@@ -226,13 +246,16 @@ export function wordToChapters(
   let pendingCap = "";
 
   const start = (name: string, implicit = false) => {
-    current = { title: name.trim() || t("untitled"), nodes: [], implicit };
+    current = { title: name.trim() || t("untitled"), nodes: [], implicit, ...(withParts || article ? { part } : {}) };
     chapters.push(current);
+    partOpen = false;
     lists = [];
     quote = null;
   };
   const chapter = (): Building => {
-    if (!current) start(title || fallbackTitle, true);
+    // Text before the first chapter title is a chapter named after the book; right under a part line
+    // in a book of chapters, an untitled one, as on the page.
+    if (!current) start(partOpen && titled ? t("untitled") : title || fallbackTitle, true);
     return current as unknown as Building;
   };
   const comments = new Map((document.comments ?? []).map((comment) => [comment.commentId, comment]));
@@ -289,6 +312,20 @@ export function wordToChapters(
     }
     if (fromPensieve && isLabel(item)) continue;
     const level = headingLevel(item);
+    // An article's part line is a Heading 1 before anything else; any other Heading 1 is one of its own
+    // headings, and its words stay in the text.
+    if (article && level === 1 && !current && !part) {
+      part = text;
+      continue;
+    }
+    if (withParts && level === 1) {
+      if (partOpen) start(t("untitled"));
+      // The chapters from here on are in this part, until the next one begins.
+      part = text;
+      partOpen = true;
+      current = null;
+      continue;
+    }
     if ((chapterLevel !== null && level === chapterLevel) || (byLines && looksLikeChapterTitle(text))) {
       start(text);
       continue;
@@ -307,13 +344,17 @@ export function wordToChapters(
       else content.unshift(textNode(pendingCap, []));
       pendingCap = "";
     }
+    // An empty line (Word's Enter after a heading) neither opens a chapter nor closes a part line.
+    if (!hasText(content) && images.length === 0) continue;
     const target = chapter();
 
     if (hasText(content)) {
-      if (level !== null && chapterLevel !== null && level > chapterLevel) {
+      if (level !== null && (article || (chapterLevel !== null && level > chapterLevel))) {
         lists = [];
         quote = null;
-        const headingAttrs = { ...paragraphAttrs(item), level: Math.min(3, level - chapterLevel) };
+        // Inside a chapter every heading is a subheading, as Heading 1 and 2 begin parts and chapters;
+        // an article's own headings go back up the level they went down.
+        const headingAttrs = { ...paragraphAttrs(item), level: article ? Math.max(1, Math.min(3, level - 1)) : 3 };
         target.nodes.push({ type: "heading", attrs: headingAttrs, content });
       } else if (item.numbering) {
         quote = null;
@@ -339,6 +380,8 @@ export function wordToChapters(
     }
   }
 
+  if (partOpen) start(t("untitled"));
+
   const built = chapters
     .filter((entry) => !entry.implicit || entry.nodes.length > 0)
     .map((entry) => {
@@ -347,6 +390,7 @@ export function wordToChapters(
         title: entry.title,
         contentJson: nodes.length > 0 ? ({ type: "doc", content: nodes } as DocumentJson) : emptyDocument(),
         plainText: documentText(nodes),
+        ...(entry.part !== undefined ? { part: entry.part } : {}),
       };
     });
 
@@ -359,9 +403,9 @@ const normalTitle = (value: string) => value.trim().toLowerCase();
 /**
  * Replaces the book's chapters with the imported ones. A chapter with the same title (or, failing
  * that, in the same place) keeps its id, status, synopsis, goal, part and language, so notes and
- * to-dos stay linked to it.
+ * to-dos stay linked to it. A file that has parts (Pensieve's own) sets the parts.
  */
-export function replaceBookChapters(project: Project, imported: ImportedChapter[], now = new Date().toISOString()): Project {
+export function replaceBookChapters(project: Writing, imported: ImportedChapter[], now = new Date().toISOString()): Writing {
   const existing = [...project.chapters].sort((a, b) => a.position - b.position);
   const used = new Set<string>();
   const byTitle = new Map<string, Chapter>();
@@ -378,17 +422,19 @@ export function replaceBookChapters(project: Project, imported: ImportedChapter[
       if (match) used.add(match.id);
     }
     const base = match ?? createChapter(project.id, item.title, index, now);
-    return { ...base, title: item.title, position: index, contentJson: item.contentJson, plainText: item.plainText, updatedAt: now };
+    const part = item.part !== undefined ? { part: item.part } : {};
+    return { ...base, title: item.title, position: index, contentJson: item.contentJson, plainText: item.plainText, ...part, updatedAt: now };
   });
   return { ...project, chapters, updatedAt: now };
 }
 
 /** Adds the imported chapters after the book's last chapter. */
-export function appendBookChapters(project: Project, imported: ImportedChapter[], now = new Date().toISOString()): Project {
+export function appendBookChapters(project: Writing, imported: ImportedChapter[], now = new Date().toISOString()): Writing {
   let position = project.chapters.reduce((max, chapter) => Math.max(max, chapter.position), -1);
   const added = imported.map((item) => {
     position += 1;
-    return { ...createChapter(project.id, item.title, position, now), contentJson: item.contentJson, plainText: item.plainText };
+    const part = item.part !== undefined ? { part: item.part } : {};
+    return { ...createChapter(project.id, item.title, position, now), contentJson: item.contentJson, plainText: item.plainText, ...part };
   });
   return { ...project, chapters: [...project.chapters, ...added], updatedAt: now };
 }
