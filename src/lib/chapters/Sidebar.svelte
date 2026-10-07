@@ -62,7 +62,25 @@
   // A one-page writing has no chapter list: the library shows beside it whichever tab was chosen.
   const shown = $derived(article ? "library" : view);
   // What the header asked the tree to name: a new writing in the open project, or a new project.
-  let createRequest = $state<{ kind: "writing" | "project"; at: number } | null>(null);
+  let createRequest = $state<{ kind: "writing" | "project" | "folder"; at: number } | null>(null);
+
+  /** The library's "+": what to make, said in words, as icons alone can't tell a writing, a project and a folder apart. */
+  function openNewMenu(button: HTMLElement) {
+    const box = button.getBoundingClientRect();
+    const ask = (kind: "writing" | "project" | "folder") => () => (createRequest = { kind, at: Date.now() });
+    chapterMenu = {
+      x: box.left,
+      y: box.bottom + 2,
+      back: button,
+      items: [
+        { label: t("newWritingTitle"), run: ask("writing") },
+        { label: t("newProjectTitle"), run: ask("project") },
+        { label: t("newFolderTitle"), run: ask("folder") },
+        "rule",
+        { label: t("open"), run: actions.openAnother },
+      ],
+    };
+  }
   // A chapter's menu in the tree, from a right-click or the menu key.
   let chapterMenu = $state<{ x: number; y: number; items: MenuItem[]; back: HTMLElement | null } | null>(null);
 
@@ -185,9 +203,7 @@
         <button type="button" role="tab" aria-selected={shown === "library"} class:on={shown === "library"} onclick={() => onView("library")}>{t("library")}</button>
       </div>
       {#if shown === "library"}
-        <button type="button" class="new-writing" title={t("newWritingTitle")} aria-label={t("newWritingTitle")} onclick={() => (createRequest = { kind: "writing", at: Date.now() })}><Icon name="newNote" /></button>
-        <button type="button" class="new-project" title={t("newProjectTitle")} aria-label={t("newProjectTitle")} onclick={() => (createRequest = { kind: "project", at: Date.now() })}><Icon name="folderPlus" /></button>
-        <button type="button" class="open-book" title={t("open")} aria-label={t("open")} onclick={actions.openAnother}><Icon name="folderOpen" /></button>
+        <button type="button" class="add" title={t("newInLibrary")} aria-label={t("newInLibrary")} aria-haspopup="menu" onclick={(event) => openNewMenu(event.currentTarget)}><Icon name="plus" /></button>
       {:else if !article}
         <button type="button" class="add" title={t("newChapterTitle")} aria-label={t("newChapterTitle")} onclick={onCreate}><Icon name="plus" /></button>
       {/if}
@@ -407,11 +423,6 @@
   .sidebar-head .hide :global(svg) {
     width: 15px;
     height: 15px;
-  }
-
-  .sidebar-head .open-book,
-  .sidebar-head .new-project {
-    color: var(--pv-text-subtle);
   }
 
   /* Colours only, so a row of the library's tree keeps its guides. */

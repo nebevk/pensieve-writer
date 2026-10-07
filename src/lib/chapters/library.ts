@@ -110,8 +110,21 @@ export function folderNameProblem(name: string): "nameEmpty" | "nameTooLong" | "
   return null;
 }
 
-/** A folder in the library, or a project (a folder holding a pensieve.db), as the Rust side lists them. */
-export type LibraryEntry = { name: string; path: string; project: boolean; children: LibraryEntry[] };
+/**
+ * A folder in the library, a project (a folder holding a pensieve.db), or one of her files in either, as the
+ * Rust side lists them. A project's children are its own files and folders.
+ */
+export type LibraryEntry = { name: string; path: string; project: boolean; file?: boolean; children: LibraryEntry[] };
+
+/** A file's icon in the tree: a picture, or a page. */
+export function fileIcon(name: string): string {
+  return /\.(png|jpe?g|gif|webp|bmp|svg|heic|tiff?)$/i.test(name) ? "image" : "file";
+}
+
+/** A Word file, which can come into a project as a writing. */
+export function isWordFile(name: string): boolean {
+  return /\.docx$/i.test(name);
+}
 
 /** The file a project folder keeps its project in. */
 export function projectFile(folder: string): string {
@@ -174,6 +187,11 @@ export type LibraryActions = {
   deleteLibraryFolder(path: string): void;
   /** Puts a writing just before another one, in that one's writing folder. */
   placeWriting(id: string, beforeId: string): void;
+  /** Opens one of her files in its own program, as Explorer does. */
+  openFile(path: string): void;
+  showInExplorer(path: string): void;
+  /** Brings a Word file into the open project as a new writing. */
+  importWord(path: string): void;
   newWriting(folder: string, name: string): Promise<string | null>;
   newWritingFolder(name: string): Promise<string | null>;
   renameWritingFolder(from: string, to: string): Promise<string | null>;

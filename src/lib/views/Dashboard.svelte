@@ -320,8 +320,11 @@
           </div>
           <div class="foot">
             <span class="edited">{latest ? t("editedAgo", { ago: ago(latest.updatedAt) }) : ""}</span>
-            <button type="button" class="zen" onclick={() => onZen(latest?.id ?? null)}><Icon name="moon" />{t("zen")}</button>
-            <button type="button" class="go" onclick={() => onContinue(latest?.id ?? null)}>{t("continue")} <Icon name="arrowRight" /></button>
+            <!-- The two buttons stay together: short of room, they go under the time, not into it. -->
+            <span class="buttons">
+              <button type="button" class="zen" onclick={() => onZen(latest?.id ?? null)}><Icon name="moon" />{t("zen")}</button>
+              <button type="button" class="go" onclick={() => onContinue(latest?.id ?? null)}>{t("continue")} <Icon name="arrowRight" /></button>
+            </span>
           </div>
         </div>
       </div>
@@ -635,26 +638,24 @@
     gap: 12px;
   }
 
+  /* The design's 250px card, taller when a long paragraph or Slovenian's longer words need it, never spilling. */
   .continue {
     position: relative;
-    height: 250px;
-  }
-
-  .under,
-  .sheet {
-    position: absolute;
-    inset: 0;
   }
 
   .under {
+    position: absolute;
+    inset: 0;
     transform: translate(6px, 7px) rotate(1deg);
     background: var(--pv-paper-under);
     box-shadow: var(--pv-shadow-under);
   }
 
   .sheet {
+    position: relative;
     display: flex;
     flex-direction: column;
+    min-height: 250px;
     padding: 30px 36px;
     background-color: var(--pv-paper);
     box-shadow: var(--pv-shadow-sheet);
@@ -707,15 +708,23 @@
 
   .foot {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: 10px 8px;
   }
 
+  /* One line: the buttons wrap below it rather than squeeze it onto two. */
   .edited {
-    flex: 1;
-    min-width: 0;
+    flex: 1 0 auto;
+    white-space: nowrap;
     font-size: var(--pv-text-md);
     color: var(--pv-ink-muted);
+  }
+
+  .buttons {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
   }
 
   .zen,

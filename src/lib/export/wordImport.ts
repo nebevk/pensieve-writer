@@ -33,19 +33,23 @@ const PICTURE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/we
 
 /** Reads a .docx file into chapters. */
 export async function readWordFile(data: ArrayBuffer, fallbackTitle = "Imported"): Promise<WordImport> {
+  // Explorer's New > Microsoft Word Document makes an empty file: nothing to read, and no zip to open.
+  if (data.byteLength === 0) throw new Error(t("errWordEmpty"));
   const mammoth = await import("mammoth");
   const captured: { document: MammothDocument | null } = { document: null };
   // The app runs mammoth's browser build, which reads an ArrayBuffer; under Node (tests) it needs a Buffer.
   const input = typeof window === "undefined" ? { buffer: Buffer.from(data) } : { arrayBuffer: data };
-  await mammoth.convertToHtml(
-    input,
-    {
+  try {
+    await mammoth.convertToHtml(input, {
       transformDocument: (document) => {
         captured.document = document;
         return document;
       },
-    },
-  );
+    });
+  } catch {
+    // A password-protected, damaged or renamed file: the reader says so in technical English.
+    throw new Error(t("errWordUnreadable"));
+  }
   if (!captured.document) throw new Error(t("errWordUnreadable"));
   return wordToChapters(captured.document, await readPictures(captured.document), fallbackTitle);
 }

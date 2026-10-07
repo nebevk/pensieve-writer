@@ -67,6 +67,74 @@
   --pv-danger: #e08a80;
 }
 
+/*
+ * Sunset: golden hour between Daylight and Candlelit, asked for by the owner on 7 October (the design has
+ * only "Follow sunset", which switches Daylight to Candlelit). A light theme: peach chrome, an apricot desk,
+ * paper with the warmth of late sun, a coral accent, plum-brown text, a peach and lavender sky for decor.
+ * Not on :root, so a theme's preview card can wear it too.
+ */
+[data-theme="dusk"] {
+  --pv-chrome: #f6e6d8;
+  --pv-chrome-raised: #f9ece0;
+  --pv-desk: #ecc9b4;
+  --pv-field: #fcf3ea;
+  --pv-selected: #f0d6c4;
+  --pv-pressed: #ecd0bd;
+  --pv-line: #ead3c2;
+  --pv-line-strong: #dbb9a3;
+  --pv-divider: #e4c8b5;
+  --pv-empty: #c4a291;
+  --pv-text: #3a2523;
+  --pv-text-2: #4b302c;
+  --pv-text-muted: #6c4a42;
+  --pv-text-subtle: #7d5a50;
+  --pv-text-faint: #9a7768;
+  --pv-accent: #a8392d;
+  --pv-accent-solid: #a8392d;
+  --pv-on-accent: #ffffff;
+  --pv-success: #5f7a5c;
+  --pv-success-bright: #8fae89;
+  --pv-success-solid: #5f7a5c;
+  --pv-status-final: #5f7a5c;
+  --pv-mark-bg: #3a2523;
+  --pv-mark-fg: #fdf4e6;
+  --pv-paper: #fdf4e6;
+  --pv-paper-under: #f3e2cd;
+  --pv-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .28 0 0 0 0 .2 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)'/%3E%3C/svg%3E");
+  --pv-vignette: radial-gradient(ellipse at 50% 15%, transparent 45%, rgba(214, 110, 70, 0.1));
+  --pv-ink: #3a2523;
+  --pv-ink-2: #4b302c;
+  --pv-ink-muted: #94705f;
+  --pv-ink-meta: #a88473;
+  --pv-ink-accent: #a63f33;
+  --pv-ink-rule: #efd9c4;
+  --pv-ink-rule-accent: #d38f72;
+  --pv-ink-link-underline: #e0a88d;
+  --pv-ink-success: #5f7a5c;
+  --pv-ink-chip: #f5e1cf;
+  --pv-ink-chip-text: #6c4a42;
+  --pv-ink-tint: #f8d9c8;
+  --pv-ink-tint-text: #8e3226;
+  --pv-bar-bg: #3a2523;
+  --pv-bar-border: transparent;
+  --pv-bar-text: #f7e6d6;
+  --pv-bar-muted: #d9bba8;
+  --pv-bar-line: #5a3b35;
+  --pv-bar-ambient: #f0a46e;
+  --pv-progress: #8fae89;
+  --pv-glow: rgba(240, 150, 90, 0.2);
+  --pv-decor-1: #ffcfb4;
+  --pv-decor-2: #e9d4ef;
+  --pv-shadow-sheet: 0 1px 1px rgba(110, 55, 35, 0.1), 0 6px 18px rgba(110, 55, 35, 0.12), 0 24px 48px rgba(110, 55, 35, 0.1);
+  --pv-shadow-under: 0 1px 2px rgba(110, 55, 35, 0.14);
+  --pv-shadow-slip: 0 1px 1px rgba(110, 55, 35, 0.1), 0 3px 10px rgba(110, 55, 35, 0.1);
+  --pv-shadow-card: 0 1px 1px rgba(110, 55, 35, 0.1), 0 4px 12px rgba(110, 55, 35, 0.1);
+  --pv-shadow-field: 0 1px 2px rgba(110, 55, 35, 0.12);
+  --pv-shadow-bar: 0 6px 18px rgba(80, 35, 20, 0.24);
+  --pv-shadow-window: 0 2px 6px rgba(80, 40, 30, 0.12), 0 20px 50px rgba(80, 40, 30, 0.14);
+  --pv-scrim: rgba(58, 37, 35, 0.32);
+}
+
 :root[data-gentle="true"],
 :root[data-gentle="true"] *,
 :root[data-gentle="true"] *::before,

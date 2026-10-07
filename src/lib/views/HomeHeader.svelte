@@ -20,7 +20,7 @@
     now?: number;
     /** A save problem, shown before the backup line. */
     error?: string;
-    appearance?: "daylight" | "candlelit" | "moonlit";
+    appearance?: Exclude<ThemeName, "sunset">;
     settingsOpen?: boolean;
     onLanguage: () => void;
     onSettings: () => void;
@@ -28,8 +28,9 @@
     onTheme: (theme: ThemeName) => void;
   } = $props();
 
-  const THEMES: { name: "daylight" | "candlelit" | "moonlit"; icon: string; key: UiKey }[] = [
+  const THEMES: { name: Exclude<ThemeName, "sunset">; icon: string; key: UiKey }[] = [
     { name: "daylight", icon: "sun", key: "themeDaylight" },
+    { name: "dusk", icon: "sunset", key: "themeDusk" },
     { name: "candlelit", icon: "flame", key: "themeCandlelit" },
     { name: "moonlit", icon: "moon", key: "themeMoonlit" },
   ];
@@ -46,7 +47,8 @@
 <!-- Home's own window bar (HOME-6). Home sits above all books, so it has no view tabs. -->
 <header class="home-header" data-tauri-drag-region="deep">
   <span class="brand">
-    <img src="/brand/{appearance}.png" alt="" width="26" height="26" />
+    <!-- Sunset wears the daylight mark, as its page is light. -->
+    <img src="/brand/{appearance === "dusk" ? "daylight" : appearance}.png" alt="" width="26" height="26" />
     <span class="name">Pensieve</span>
   </span>
   <span class="spacer"></span>

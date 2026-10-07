@@ -226,6 +226,12 @@ describe("Word export", () => {
 });
 
 describe("Word import", () => {
+  it("says plainly when a Word file is empty or can't be read, not in the reader's English", async () => {
+    // Explorer's New > Microsoft Word Document makes an empty file; a protected one isn't a zip at all.
+    await expect(readWordFile(new ArrayBuffer(0))).rejects.toThrow("That Word file has no text to import.");
+    await expect(readWordFile(new TextEncoder().encode("not a zip").buffer as ArrayBuffer)).rejects.toThrow("Pensieve couldn't read that Word file.");
+  });
+
   it("brings a Pensieve Word file back unchanged in structure", async () => {
     const assets = { images: new Map([[pictureSrc, { type: "png" as const, data: Buffer.from(png, "base64"), width: 1, height: 1 }]]) };
     const result = await readWordFile(arrayBufferOf(await wordFile(book(), look, assets)));

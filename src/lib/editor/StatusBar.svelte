@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { UiKey } from "$lib/i18n";
+  import type { ThemeName } from "$lib/prefs";
   import { num, plural, t } from "$lib/ui.svelte";
   import Icon from "./Icon.svelte";
 
@@ -27,14 +28,15 @@
     ambience?: "off" | "rain" | "fire" | "cafe" | "piano";
     today?: number;
     onAmbience: () => void;
-    theme?: "daylight" | "candlelit" | "moonlit" | "sunset";
-    onTheme: (theme: "daylight" | "candlelit" | "moonlit" | "sunset") => void;
+    theme?: ThemeName;
+    onTheme: (theme: ThemeName) => void;
   } = $props();
 
   let themesOpen = $state(false);
 
   const themes = [
     { id: "daylight", key: "themeDaylight" },
+    { id: "dusk", key: "themeDusk" },
     { id: "candlelit", key: "themeCandlelit" },
     { id: "moonlit", key: "themeMoonlit" },
     { id: "sunset", key: "themeSunset" },

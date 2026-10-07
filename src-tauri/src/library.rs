@@ -2,17 +2,37 @@ use std::fs;
 use std::path::Path;
 use tauri::{AppHandle, Manager};
 
-/// How deep the library is read, and how many entries at most, so a folder chosen by mistake
-/// (a whole disk) can't stall the window.
+/// How deep the library is read, and how many folders and files at most, so a folder chosen by mistake
+/// (Documents, a whole disk) can't stall the window or fill the tree.
 const DEPTH: usize = 6;
 const MOST: usize = 2000;
+const MOST_FILES: usize = 1000;
 
-/// A folder in the library, or a project: a folder holding a `pensieve.db`.
+/// How many files of one folder are listed at most, after its folders and projects.
+const FILES_PER_FOLDER: usize = 300;
+
+/// The open project's own folders and files are read on a budget of their own, so a project full of
+/// folders (years of photos) never pushes the library's other projects out of the listing.
+const IN_PROJECT: usize = 300;
+
+/// What one listing may still read, and how.
+struct Walk {
+    folders: usize,
+    files: usize,
+    /// The open project's folder, as path_key gives it: the only project whose own contents are read.
+    open: String,
+    /// Links to folders (junctions) are followed in the library, never inside a project.
+    links: bool,
+}
+
+/// A folder in the library, a project (a folder holding a `pensieve.db`), or a file of hers in either.
 #[derive(serde::Serialize)]
 pub struct LibraryEntry {
     name: String,
     path: String,
     project: bool,
+    /// A file, opened in its own program.
+    file: bool,
     children: Vec<LibraryEntry>,
 }
 
@@ -33,47 +53,131 @@ pub async fn library_places(app: AppHandle) -> Result<LibraryPlaces, String> {
     })
 }
 
-/// The folders and projects in the library folder, a few levels deep. A missing folder lists as empty.
+/// The folders, projects and files in the library folder, a few levels deep, and the open project's
+/// (`open`, its folder) own folders and files. A missing folder lists as empty.
 #[tauri::command]
-pub async fn list_library(folder: String) -> Result<Vec<LibraryEntry>, String> {
+pub async fn list_library(folder: String, open: Option<String>) -> Result<Vec<LibraryEntry>, String> {
     let root = Path::new(&folder);
     if !root.is_dir() {
         return Ok(Vec::new());
     }
-    let mut seen = 0;
-    Ok(read_folder(root, 1, &mut seen))
+    let open = open.map(|path| path_key(Path::new(&path))).unwrap_or_default();
+    Ok(read_folder(root, 1, &mut Walk { folders: MOST, files: MOST_FILES, open, links: true }))
 }
 
-fn read_folder(dir: &Path, depth: usize, seen: &mut usize) -> Vec<LibraryEntry> {
+fn read_folder(dir: &Path, depth: usize, walk: &mut Walk) -> Vec<LibraryEntry> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();
     };
     let mut found = Vec::new();
+    let mut files = Vec::new();
     for entry in entries.filter_map(Result::ok) {
-        if *seen >= MOST {
+        if walk.folders == 0 {
             break;
         }
-        let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
-        // Hidden and system folders are not the writer's.
-        if name.starts_with('.') || name.starts_with('$') || hidden(&entry) || !path.is_dir() {
+        // Hidden and system files and folders are not the writer's, and neither are Word's lock files ("~$...").
+        if name.starts_with('.') || name.starts_with('$') || name.starts_with("~$") || hidden(&entry) {
             continue;
         }
-        *seen += 1;
-        let project = path.join("pensieve.db").is_file();
-        let children = if project || depth >= DEPTH {
-            Vec::new()
-        } else {
-            read_folder(&path, depth + 1, seen)
+        // What it is comes with the folder's listing: no extra trip to the disk for each of its files.
+        let Ok(kind) = entry.file_type() else {
+            continue;
         };
-        found.push(LibraryEntry {
-            name,
-            path: path.display().to_string(),
-            project,
-            children,
-        });
+        let path = entry.path();
+        if kind.is_symlink() && !walk.links {
+            continue;
+        }
+        if kind.is_dir() || (kind.is_symlink() && path.is_dir()) {
+            walk.folders -= 1;
+            let project = path.join("pensieve.db").is_file();
+            let children = if depth >= DEPTH {
+                Vec::new()
+            } else if project {
+                // Only the open project's own folders and files are shown (its Files), on their own budget.
+                if path_key(&path) == walk.open {
+                    read_folder(&path, depth + 1, &mut Walk { folders: IN_PROJECT, files: MOST_FILES, open: String::new(), links: false })
+                } else {
+                    Vec::new()
+                }
+            } else {
+                read_folder(&path, depth + 1, walk)
+            };
+            found.push(LibraryEntry {
+                project,
+                name,
+                path: path.display().to_string(),
+                file: false,
+                children,
+            });
+        } else if kind.is_file() && files.len() < FILES_PER_FOLDER && walk.files > 0 && !pensieve_own(&name) {
+            walk.files -= 1;
+            files.push(LibraryEntry {
+                name,
+                path: path.display().to_string(),
+                project: false,
+                file: true,
+                children: Vec::new(),
+            });
+        }
     }
+    found.extend(files);
     found
+}
+
+/// A project's file, and the ones SQLite and Pensieve keep beside it: never shown as one of her files.
+fn pensieve_own(name: &str) -> bool {
+    name.to_lowercase().starts_with("pensieve.db")
+}
+
+/// Kinds of file that run as programs or scripts: nothing in the library starts one.
+const PROGRAMS: &[&str] = &[
+    "appref-ms", "application", "bat", "chm", "cmd", "com", "cpl", "exe", "gadget", "hta", "inf", "jar", "js", "jse", "lnk",
+    "msc", "msi", "msp", "pif", "ps1", "psm1", "reg", "scf", "scr", "sct", "url", "vb", "vbe", "vbs", "ws", "wsc", "wsf",
+    "wsh",
+];
+
+fn starts_program(file: &Path) -> bool {
+    let kind = file.extension().map(|kind| kind.to_string_lossy().to_lowercase()).unwrap_or_default();
+    PROGRAMS.contains(&kind.as_str())
+}
+
+/// Opens a file of the library in its own program, as a double click in Explorer does. Programs and
+/// scripts are refused.
+#[tauri::command]
+pub async fn open_library_file(path: String) -> Result<(), String> {
+    let file = Path::new(&path);
+    if !file.is_file() {
+        return Err("That file isn't there any more".into());
+    }
+    if starts_program(file) {
+        return Err("Pensieve doesn't start programs; open it from Explorer if you trust it".into());
+    }
+    tauri_plugin_opener::open_path(file, None::<&str>).map_err(|error| error.to_string())
+}
+
+/// Shows a file or folder of the library in Explorer, selected.
+#[tauri::command]
+pub async fn show_in_explorer(path: String) -> Result<(), String> {
+    let item = Path::new(&path);
+    if !item.exists() {
+        return Err("That isn't there any more".into());
+    }
+    tauri_plugin_opener::reveal_item_in_dir(item).map_err(|error| error.to_string())
+}
+
+/// A Word file's bytes, to bring it into a project as a writing.
+#[tauri::command]
+pub async fn read_word_file(path: String) -> Result<tauri::ipc::Response, String> {
+    let file = Path::new(&path);
+    if !file.extension().is_some_and(|kind| kind.eq_ignore_ascii_case("docx")) {
+        return Err("Only a Word file (.docx) can come in as a writing".into());
+    }
+    let size = fs::metadata(file).map_err(|_| "That file isn't there any more".to_string())?.len();
+    if size > 200 * 1024 * 1024 {
+        return Err("That file is too big to bring in".into());
+    }
+    Ok(tauri::ipc::Response::new(fs::read(file).map_err(|error| error.to_string())?))
 }
 
 /// Whether Windows marks a folder hidden or as the system's ("System Volume Information", say).
@@ -243,6 +347,49 @@ fn remove_folder(dir: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn listing_files() {
+        let root = std::env::temp_dir().join(format!("pensieve-files-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("Gradivo")).unwrap();
+        fs::create_dir_all(root.join("Brod").join("Slike")).unwrap();
+        for file in ["Gradivo/zemljevid.pdf", "Gradivo/~$rokopis.docx", "Brod/pensieve.db", "Brod/pensieve.db-wal", "Brod/naslovnica.jpg", "Brod/Slike/reka.png"] {
+            fs::write(root.join(file), b"x").unwrap();
+        }
+        fs::create_dir_all(root.join("Reka").join("Gradivo")).unwrap();
+        fs::write(root.join("Reka").join("pensieve.db"), b"x").unwrap();
+        let walk = |open: &str| Walk { folders: MOST, files: MOST_FILES, open: path_key(&root.join(open)), links: true };
+        let listed = read_folder(&root, 1, &mut walk("Brod"));
+        // A project that isn't open keeps its own contents to itself.
+        let reka = listed.iter().find(|entry| entry.name == "Reka").unwrap();
+        assert!(reka.project && reka.children.is_empty());
+        // However many files, the listing stops at its cap.
+        let few = read_folder(&root, 1, &mut Walk { folders: MOST, files: 1, open: String::new(), links: true });
+        let count = |entries: &[LibraryEntry]| -> usize {
+            fn all(entries: &[LibraryEntry]) -> usize {
+                entries.iter().map(|entry| usize::from(entry.file) + all(&entry.children)).sum()
+            }
+            all(entries)
+        };
+        assert_eq!(count(&few), 1);
+        let named = |entries: &[LibraryEntry]| {
+            let mut names: Vec<String> = entries.iter().map(|entry| format!("{}{}", entry.name, if entry.file { "" } else { "/" })).collect();
+            names.sort();
+            names
+        };
+        let gradivo = listed.iter().find(|entry| entry.name == "Gradivo").unwrap();
+        // Word's lock file is left out.
+        assert_eq!(named(&gradivo.children), ["zemljevid.pdf"]);
+        let brod = listed.iter().find(|entry| entry.name == "Brod").unwrap();
+        assert!(brod.project);
+        // A project's own files and folders, without its database.
+        assert_eq!(named(&brod.children), ["Slike/", "naslovnica.jpg"]);
+        assert!(starts_program(Path::new("C:\\x\\setup.EXE")));
+        assert!(starts_program(Path::new("C:\\x\\run.ps1")));
+        assert!(!starts_program(Path::new("C:\\x\\Rokopis.docx")));
+        let _ = fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn moving_and_removing_folders() {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadPrefs } from "./prefs";
+import { loadPrefs, resolvedTheme } from "./prefs";
 
 /** Settings as a computer has them saved, read back the way the app starts. */
 function loadSaved(saved: object | null) {
@@ -27,6 +27,14 @@ describe("settings", () => {
   it("remember whether the list beside the page shows chapters or the library", () => {
     expect(loadSaved({ sidebarView: "library" }).sidebarView).toBe("library");
     expect(loadSaved({ sidebarView: "tree" }).sidebarView).toBe("chapters");
+  });
+
+  it("remember the Sunset look, and Day and night switching from Daylight to Candlelit after dark", () => {
+    expect(loadSaved({ theme: "dusk" }).theme).toBe("dusk");
+    expect(loadSaved({ theme: "sunset" }).theme).toBe("sunset");
+    expect(resolvedTheme("dusk", new Date(2026, 9, 7, 22))).toBe("dusk");
+    expect(resolvedTheme("sunset", new Date(2026, 9, 7, 12))).toBe("daylight");
+    expect(resolvedTheme("sunset", new Date(2026, 9, 7, 22))).toBe("candlelit");
   });
 
   it("keep English where it was chosen, and are Slovenian otherwise", () => {

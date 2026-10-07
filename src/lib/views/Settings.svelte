@@ -125,6 +125,7 @@
 
   const themes: { id: ThemeName; key: UiKey }[] = [
     { id: "daylight", key: "themeDaylight" },
+    { id: "dusk", key: "themeDusk" },
     { id: "candlelit", key: "themeCandlelit" },
     { id: "moonlit", key: "themeMoonlit" },
     { id: "sunset", key: "themeSunset" },
@@ -804,6 +805,22 @@
     height: 60px;
     border-radius: 50%;
     background: var(--pv-decor-1);
+  }
+
+  /* Sunset: a lavender sky going apricot, and the sun low beside the page. */
+  .mini[data-theme="dusk"] {
+    background: linear-gradient(180deg, var(--pv-decor-2), var(--pv-desk) 70%);
+  }
+
+  .mini[data-theme="dusk"]::after {
+    content: "";
+    position: absolute;
+    right: 12px;
+    bottom: 22px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, #ffd79a, #f08a5d);
   }
 
   .fonts {

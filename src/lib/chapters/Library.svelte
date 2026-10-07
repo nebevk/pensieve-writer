@@ -3,7 +3,7 @@
   import type { WritingOutline } from "$lib/model";
   import type { NoteCategory } from "$lib/storage/organize";
   import { compactWords } from "$lib/editor/counts";
-  import { collator, folderOf, isInside, parentFolder, projectFile, projectFiles, sameFolder, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "./library";
+  import { collator, fileIcon, folderOf, isInside, isWordFile, parentFolder, projectFile, projectFiles, sameFolder, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "./library";
   import { answered, isOpen, setOpen } from "./treeState.svelte";
   import { LONG_PAGE_WORDS } from "./page";
   import TreeMenu, { type MenuItem } from "./TreeMenu.svelte";
@@ -30,8 +30,8 @@
     writingWords: number;
     /** The open writing's chapters, drawn at the depth given; a one-page writing has none to draw. */
     chapterRows?: Snippet<[number | null]>;
-    /** The header's "New writing" or "New project", by the time it was asked. */
-    createRequest?: { kind: "writing" | "project"; at: number } | null;
+    /** The header's "New writing", "New project" or "New folder", by the time it was asked. */
+    createRequest?: { kind: "writing" | "project" | "folder"; at: number } | null;
   } = $props();
 
   type Kind =
@@ -48,6 +48,9 @@
     | "todos"
     | "deleted"
     | "elsewhere"
+    | "files"
+    | "pfolder"
+    | "file"
     | "input";
 
   /** One line of the tree. */
@@ -105,8 +108,11 @@
 
   /** How many folders deep the library is listed (DEPTH in library.rs). */
   const LISTED_DEPTH = 6;
+  /** Whether a library folder holds a project, at any depth. */
+  const holdsProjects = (entry: LibraryEntry): boolean => entry.children.some((child) => child.project || (!child.file && holdsProjects(child)));
   /** How many levels of folders and projects an entry holds below itself, as listed: 0 for none. */
-  const levelsIn = (entry: LibraryEntry): number => (entry.project ? 0 : Math.max(0, ...entry.children.map((child) => 1 + levelsIn(child))));
+  const levelsIn = (entry: LibraryEntry): number =>
+    entry.project || entry.file ? 0 : Math.max(0, ...entry.children.filter((child) => !child.file).map((child) => 1 + levelsIn(child)));
 
   let editing = $state<Editing | null>(null);
   let committing = false;
@@ -121,8 +127,23 @@
   const currentFile = $derived(library.currentPath);
   const openProjectRow = $derived(`project:${currentFile.toLowerCase()}`);
   // Sorted once for each new listing, not again for every change in the rows.
-  const entries = $derived(sortEntries(library.entries, locale()));
+  const listing = $derived(library.entries);
+  const entries = $derived(sortEntries(listing, locale()));
   const listed = $derived(new Set(projectFiles(library.entries).map((file) => file.toLowerCase())));
+  // The open project's folder as listed, for its own files and folders.
+  const openEntry = $derived.by(() => {
+    const find = (list: LibraryEntry[]): LibraryEntry | null => {
+      for (const entry of list) {
+        if (entry.project && same(projectFile(entry.path), currentFile)) return entry;
+        const inside = !entry.project && !entry.file ? find(entry.children) : null;
+        if (inside) return inside;
+      }
+      return null;
+    };
+    return find(entries);
+  });
+  // The file last clicked: one click picks it, a double click (or Enter) opens it.
+  let pickedFile = $state("");
   // The open project's words apart from the open writing's, which are added as she types.
   const otherWords = $derived(
     (library.shelf?.writings ?? [])
@@ -136,6 +157,7 @@
     if (!asked || asked.at <= answered.header) return;
     answered.header = asked.at;
     if (asked.kind === "project") startNew("project", "root", library.root);
+    else if (asked.kind === "folder") startNew("libraryFolder", "root", library.root);
     else startNew("writing", openProjectRow, "");
   });
   $effect(() => {
@@ -264,12 +286,35 @@
       }
       list.push({ key: "todos", depth, kind: "todos", name: t("todos"), icon: "todos", expandable: false, open: false, count: library.openTodos });
 
+      // Her own files and folders in the project's folder, as Explorer would show them.
+      const own = openEntry?.children ?? [];
+      if (openEntry && own.length > 0) {
+        const open = isOpen("files", false);
+        list.push({ key: "files", depth, kind: "files", name: t("files"), icon: open ? "folderOpen" : "folder", expandable: true, open, count: own.length, path: openEntry.path });
+        if (open) pushFiles(own, depth + 1);
+      }
+
       const deleted = shelf.writings.filter((item) => item.deletedAt);
       if (deleted.length > 0) {
         const open = isOpen("deleted", false);
         list.push({ key: "deleted", depth, kind: "deleted", name: t("deletedFolder"), icon: "trash", expandable: true, open, count: deleted.length });
         if (open) for (const item of deleted) pushWriting(item, depth + 1, true);
       }
+    };
+
+    const pushFile = (file: LibraryEntry, depth: number) => {
+      list.push({ key: `file:${file.path.toLowerCase()}`, depth, kind: "file", name: file.name, icon: fileIcon(file.name), expandable: false, open: false, path: file.path });
+    };
+
+    /** A project's own folders (folded until opened) and files. */
+    const pushFiles = (inside: LibraryEntry[], depth: number) => {
+      for (const folder of inside.filter((entry) => !entry.file)) {
+        const key = `pdir:${folder.path.toLowerCase()}`;
+        const open = folder.children.length > 0 && isOpen(key, false);
+        list.push({ key, depth, kind: "pfolder", name: folder.name, icon: open ? "folderOpen" : "folder", expandable: folder.children.length > 0, open, path: folder.path });
+        if (open) pushFiles(folder.children, depth + 1);
+      }
+      for (const file of inside.filter((entry) => entry.file)) pushFile(file, depth);
     };
 
     const pushProject = (file: string, name: string, depth: number) => {
@@ -307,9 +352,10 @@
     };
 
     const walk = (entries: LibraryEntry[], depth: number) => {
-      for (const folder of entries.filter((entry) => !entry.project)) {
+      for (const folder of entries.filter((entry) => !entry.project && !entry.file)) {
         const key = `dir:${folder.path.toLowerCase()}`;
-        const open = isOpen(key, true);
+        // A folder of projects starts unfolded; one holding only her files starts folded.
+        const open = isOpen(key, holdsProjects(folder));
         if (!renamed(key, depth, open ? "folderOpen" : "folder")) {
           list.push({ key, depth, kind: "folder", name: folder.name, icon: open ? "folderOpen" : "folder", expandable: true, open, path: folder.path, empty: folder.children.length === 0, below: levelsIn(folder) });
         }
@@ -318,6 +364,7 @@
         walk(folder.children, depth + 1);
       }
       for (const project of entries.filter((entry) => entry.project)) pushProject(projectFile(project.path), project.name, depth);
+      for (const file of entries.filter((entry) => entry.file)) pushFile(file, depth);
     };
 
     pushInput("root", 0);
@@ -343,7 +390,9 @@
   }
 
   function activate(row: Row, element: HTMLElement) {
-    if (row.kind === "folder" || row.kind === "wfolder" || row.kind === "notes" || row.kind === "group" || row.kind === "deleted" || row.kind === "elsewhere" || row.kind === "part") {
+    if (row.kind === "file") {
+      pickedFile = row.key;
+    } else if (row.kind === "folder" || row.kind === "wfolder" || row.kind === "notes" || row.kind === "group" || row.kind === "deleted" || row.kind === "elsewhere" || row.kind === "part" || row.kind === "files" || row.kind === "pfolder") {
       toggle(row);
     } else if (row.kind === "project") {
       if (row.current) toggle(row);
@@ -454,6 +503,14 @@
 
   function menuFor(row: Row, back: HTMLElement | null, at: { x: number; y: number }): MenuItem[] {
     const shelf = library.shelf;
+    const reveal = (path: string): MenuItem => ({ label: t("showInExplorer"), run: () => actions.showInExplorer(path) });
+    if (row.kind === "file" && row.path) {
+      const path = row.path;
+      const items: MenuItem[] = [{ label: t("openItem"), run: () => actions.openFile(path) }, reveal(path)];
+      if (isWordFile(row.name)) items.push("rule", { label: t("importAsWriting"), run: () => actions.importWord(path) });
+      return items;
+    }
+    if ((row.kind === "files" || row.kind === "pfolder") && row.path) return [reveal(row.path)];
     if (row.kind === "folder" && row.path) {
       const path = row.path;
       const items: MenuItem[] = [];
@@ -469,11 +526,16 @@
       items.push(
         { label: t("rename"), keys: "F2", run: () => startRename(row) },
         { label: t("deleteFolder"), keys: "Del", disabled: !row.empty, run: () => actions.deleteLibraryFolder(path) },
+        "rule",
+        reveal(path),
       );
       return items;
     }
     if (row.kind === "project") {
-      const rename: MenuItem[] = row.path && insideLibrary(row.path) ? ["rule", { label: t("rename"), keys: "F2", run: () => startRename(row) }] : [];
+      const rename: MenuItem[] = ["rule"];
+      if (row.path && insideLibrary(row.path)) rename.push({ label: t("rename"), keys: "F2", run: () => startRename(row) });
+      // Explorer opens on the project's folder, its file picked.
+      if (row.path) rename.push(reveal(row.path));
       if (!row.current || !shelf) return [{ label: t("openItem"), run: () => row.path && actions.openProject(row.path) }, ...rename];
       const items: MenuItem[] = [
         { label: t("newWritingTitle"), run: () => startNew("writing", row.key, "") },
@@ -667,6 +729,11 @@
       startRename(row);
       return;
     }
+    if (row?.kind === "file" && row.path && event.key === "Enter") {
+      event.preventDefault();
+      actions.openFile(row.path);
+      return;
+    }
     if (row && event.key === "Delete") {
       if (row.kind === "writing" && row.id && !row.deleted && same(row.path ?? "", currentFile)) {
         event.preventDefault();
@@ -760,18 +827,24 @@
         class="tree-row {row.kind}"
         class:current={row.current}
         class:gone={row.deleted}
+        class:picked={row.kind === "file" && pickedFile === row.key}
         class:drop-target={dropKey === row.key && !(dragged?.kind === "writing" && row.kind === "writing")}
         class:drop-before={dropKey === row.key && dragged?.kind === "writing" && row.kind === "writing"}
         data-key={row.key}
         style:--depth={row.depth}
         aria-expanded={row.expandable ? row.open : undefined}
-        title={row.path && (row.kind === "folder" || row.kind === "project") ? row.path : row.name}
+        title={row.kind === "file" ? `${row.name}\n${t("openFileHint")}` : row.path && (row.kind === "folder" || row.kind === "project") ? row.path : row.name}
         draggable={canDrag(row) ? "true" : undefined}
         onclick={(event) => activate(row, event.currentTarget)}
         ondblclick={() => {
+          // A file opens in its own program, as in Explorer.
+          if (row.kind === "file") {
+            if (row.path) actions.openFile(row.path);
+            return;
+          }
           // A double click on another writing is two clicks that open it; renaming is for the one open. A
           // folder or a project opens and closes with each click, as in Explorer; F2 or its menu renames it.
-          if ((row.kind === "writing" && !row.current) || row.kind === "folder" || row.kind === "project") return;
+          if ((row.kind === "writing" && !row.current) || row.kind === "folder" || row.kind === "project" || row.kind === "files" || row.kind === "pfolder") return;
           startRename(row);
         }}
         ondragstart={(event) => {
@@ -943,6 +1016,15 @@
 
   .current > .name {
     font-weight: 600;
+  }
+
+  /* One of her files, picked with a click; its icon stays quiet beside the writings'. */
+  .library :global(.tree-row.picked) {
+    background-color: var(--pv-selected);
+  }
+
+  .file .tree-icon {
+    color: var(--pv-text-faint);
   }
 
   /* A writing in the Deleted folder. */

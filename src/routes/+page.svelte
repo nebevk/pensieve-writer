@@ -16,7 +16,7 @@
   import { chaptersToHtml, chaptersToMarkdown, chaptersToPlain } from "$lib/export/document";
   import { ALREADY_EXISTS, CHANGED_ELSEWHERE, MUST_BE_NEW, chooseSavePath, inFolder, writeFileTo, type ExportKind } from "$lib/export/files";
   import { wordFileFor, wordLook } from "$lib/export/wordAssets";
-  import { appendBookChapters, readWordFile, replaceBookChapters, type WordImport } from "$lib/export/wordImport";
+  import { appendBookChapters, looksLikeChapterTitle, readWordFile, replaceBookChapters, type WordImport } from "$lib/export/wordImport";
   import { createAmbience } from "$lib/ambience";
   import { chooseBackupFile, chooseBackupFolder, chooseProjectFile, readBackupFile, writeBackup } from "$lib/storage/backup";
   import { backupSignature, type BackupContent } from "$lib/storage/backupFile";
@@ -231,8 +231,9 @@
     }
   });
 
-  // Plain values, so saving other settings (a backup time, say) doesn't restart the sound.
-  const ambienceKind = $derived(prefs.gentle ? "off" : prefs.ambience);
+  // Plain values, so saving other settings (a backup time, say) doesn't restart the sound. Gentle mode quiets
+  // motion, not the sound she chose: Silence is how she turns that off.
+  const ambienceKind = $derived(prefs.ambience);
   const ambienceVolume = $derived(prefs.ambienceVolume);
 
   $effect(() => {
@@ -1485,6 +1486,8 @@
       projectLocation = path;
       // She opened a project herself: what Home said at the start is done.
       homeNotice = "";
+      // Its own files show in the tree.
+      void refreshLibrary();
       rememberProject();
       if (openWrite) view = "write";
     });
@@ -1555,7 +1558,9 @@
     if (!root) return;
     const reading = ++libraryReading;
     try {
-      const entries = await invoke<LibraryEntry[]>("list_library", { folder: root });
+      // The open project's own folders and files come too, for its Files in the tree.
+      const open = folderOf(projectLocation || prefs.projectPath).path;
+      const entries = await invoke<LibraryEntry[]>("list_library", { folder: root, open });
       if (reading === libraryReading && root === libraryRoot) libraryEntries = entries;
     } catch {
       // The tree keeps what it showed.
@@ -2186,6 +2191,81 @@
     }
   }
 
+  /** One of her files, opened in its own program: a Word file in Word, a picture in Photos. */
+  async function openLibraryFile(path: string) {
+    try {
+      await invoke("open_library_file", { path });
+    } catch (error) {
+      notice(errorMessage(error));
+    }
+  }
+
+  async function showInExplorer(path: string) {
+    try {
+      await invoke("show_in_explorer", { path });
+    } catch (error) {
+      notice(errorMessage(error));
+    }
+  }
+
+  /**
+   * A Word file brought into the open project as a new writing, and opened: its chapters begin at its
+   * Heading 2s (a file without any is one page), its parts at its Heading 1s, as Import Word reads them.
+   */
+  let importingWord = false;
+  async function importWordAsWriting(path: string) {
+    if (!writing || !shelf || importingWord) return;
+    importingWord = true;
+    // The project it was asked for, and its language: another project may open while the file is read.
+    const project = projectId;
+    const language = writing.language;
+    try {
+      const name = lastName(path).replace(/\.docx$/i, "");
+      notice(t("importingWord", { name }));
+      const result = await readWordFile(await invoke<ArrayBuffer>("read_word_file", { path }), name);
+      for (const chapter of result.chapters) await shrinkPictures(chapter.contentJson);
+      // A file's one chapter line (a Heading 1 such as "Pod lipo") was read as that chapter's title and isn't in
+      // its text, so it mustn't be dropped: with no Title paragraph it names the writing; a chapter label, or a
+      // line under a Title that says something else, stays the title of its one chapter.
+      const only = result.chapters.length === 1 ? result.chapters[0].title.trim() : "";
+      const named = only && only !== name && !isUntitled(only) && !looksLikeChapterTitle(only) ? only : "";
+      const title = result.title.trim() || named || name || t("untitled");
+      const split = result.chapters.length > 1 || (only !== "" && only !== name && !isUntitled(only) && only !== title);
+      const now = new Date().toISOString();
+      const imported = {
+        title,
+        folder: "",
+        split,
+        language,
+        // An empty file gives a writing as a new one starts.
+        chapters:
+          result.chapters.length > 0
+            ? (id: string) =>
+                result.chapters.map((item, index) => ({
+                  // One page carries the writing's title on its title line.
+                  ...createChapter(id, split ? item.title : title, index, now),
+                  contentJson: item.contentJson,
+                  plainText: item.plainText,
+                  ...(item.part !== undefined ? { part: item.part } : {}),
+                }))
+            : undefined,
+      };
+      // After any switch under way, and only into the project it was asked for.
+      const made = await oneAtATime(async () => (projectId === project ? addWriting(imported) : null));
+      if (!made) {
+        notice(t("importOtherProject", { title }));
+        return;
+      }
+      // Outside the queued change: openWriting queues its own.
+      await openWriting(made.id);
+      if (projectId === project) notice(t("importedAsWriting", { title }));
+    } catch (error) {
+      notice(errorMessage(error));
+    } finally {
+      importingWord = false;
+    }
+  }
+
   /** What the library's tree can do, in one place. */
   const libraryActions: LibraryActions = {
     openProject: (path) => void openFromLibrary(path),
@@ -2198,6 +2278,9 @@
     moveLibraryEntry: (path, into) => void moveLibraryEntry(path, into),
     deleteLibraryFolder: (path) => void deleteLibraryFolder(path),
     placeWriting: (id, beforeId) => void placeWriting(id, beforeId),
+    openFile: (path) => void openLibraryFile(path),
+    showInExplorer: (path) => void showInExplorer(path),
+    importWord: (path) => void importWordAsWriting(path),
     newWriting,
     newWritingFolder,
     renameWritingFolder: renameWritingFolderTo,

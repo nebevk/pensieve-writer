@@ -44,6 +44,16 @@ export function createAmbience() {
   let decoded: { kind: AmbienceKind; buffer: AudioBuffer; level: number; edge: number } | null = null;
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // The window plays sound only once she has clicked or pressed a key in it (the browser's autoplay rule).
+  // A sound chosen before that, as one saved from last time is, waits ready and begins with her first one.
+  const wake = () => {
+    if (playing && context?.state === "suspended") void context.resume().catch(() => undefined);
+  };
+  if (typeof window !== "undefined") {
+    window.addEventListener("pointerdown", wake, true);
+    window.addEventListener("keydown", wake, true);
+  }
+
   async function load(audio: AudioContext, kind: AmbienceKind) {
     // Keep only the sound in use: a decoded minute of stereo is about 23 MB.
     if (decoded?.kind === kind) return decoded;
@@ -89,7 +99,9 @@ export function createAmbience() {
     // decoded loop at two thirds of the size; ambience loses nothing it needs.
     const audio = (context ??= new AudioContext({ latencyHint: "playback", sampleRate: 32000 }));
     if (idleTimer) clearTimeout(idleTimer);
-    if (audio.state === "suspended") await audio.resume();
+    // Not awaited: before her first click the window holds it back, and the sound is set up all the same,
+    // to start (fading in) the moment it may.
+    if (audio.state === "suspended") void audio.resume().catch(() => undefined);
     const sound = await load(audio, kind);
     if (token !== generation) return;
     const source = audio.createBufferSource();

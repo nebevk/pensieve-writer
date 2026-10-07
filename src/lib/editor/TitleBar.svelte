@@ -30,7 +30,7 @@
     onHome: () => void;
     onSettings: () => void;
     settingsOpen?: boolean;
-    appearance?: "daylight" | "candlelit" | "moonlit";
+    appearance?: "daylight" | "dusk" | "candlelit" | "moonlit";
   } = $props();
 
   // Four tabs, as designed (WIN-2). To-dos open from the Notes / To-dos switch, so Notes stays lit there.
@@ -46,7 +46,7 @@
 <!-- The only window bar (WIN-1): drag it to move the window, double-click it to maximise. -->
 <header class="titlebar" data-tauri-drag-region="deep">
   <button type="button" class="mark" title={t("home")} aria-label={t("home")} onclick={onHome}>
-    <img src="/brand/{appearance}.png" alt="" width="22" height="22" />
+    <img src="/brand/{appearance === "dusk" ? "daylight" : appearance}.png" alt="" width="22" height="22" />
   </button>
   <span class="project">{project || t("untitled")}</span>
   <div class="tabs" role="tablist" aria-label={t("views")}>
