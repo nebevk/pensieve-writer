@@ -18,7 +18,7 @@ What the app is still missing compared with the design system in `design-system/
 Already matching the design:
 
 - Tokens come straight from `design-system/tokens/`, and the fonts are self-hosted as the design readme asks.
-- Daylight, Candlelit and Moonlit themes, plus Follow sunset.
+- Daylight, Candlelit and Moonlit themes, plus Follow sunset (called Day and night since 7 October), and a Sunset theme of the app's own.
 - The next sheet under the manuscript page, grain, vignette and lamp glow. The owner took the page's running head, chapter label, title, drop cap and first-line indents off it (see Accepted differences).
 - The 34px title bar as the only window bar, with the design's four view tabs, the quiet toolbar and the grouped "All tools" row, including Footnote, Comment and "Link a note".
 - The design's Lucide icons.
@@ -166,6 +166,8 @@ These differ from the design on purpose and are not gaps.
 - **Closer lines, no indents (6 October):** the design sets the manuscript at 16.5px with lines 1.85 apart and indents each paragraph after the first, as a printed book does. The owner found the paragraphs odd while writing and asked for closer lines and 12-point text, so the page is 12 pt (16px), lines are 1.5 apart, and paragraphs are flush left with a little space between them, as in Word and Grammarly. Text sizes are given in points, as Word gives them, and Word files are spaced the same way.
 - **Hide buttons on both side lists (6 October):** the design opens and closes the chapter list and the panel from the toolbar only. The owner asked for a button on each: both have one in their top corner, and a hidden chapter list leaves a small tab at the desk's left edge to bring it back.
 - **Slim scrollbars (6 October):** the design doesn't draw scrollbars, so Windows' grey ones showed. They are slim and rounded now, in the theme's text colour, with no track or arrows.
+- **A Sunset theme (7 October):** the design has three looks and "Follow sunset", which only switches Daylight to Candlelit after dark. The owner asked for an actual sunset look, so the app adds Sunset (a light, golden-hour palette: peach chrome, an apricot desk, warm paper, a coral accent) between Daylight and Candlelit, and calls the switch "Day and night" ("Dan in noč"), so the two can't be taken for each other. Its colours live in `src/app.css`, not in the design system's tokens.
+- **The library's +, in words (7 October):** three icons for a new writing, a new project and opening one couldn't be told apart (the owner asked which was which), so the library's head has one + with a menu that says it: New writing, New project, New folder, Open another project.
 - **AT-4 Candlelit particles:** the design keeps decoration off the writing views; the owner wants the sparks drifting over the desk behind the page while writing (5 October). They stay off in Gentle mode and with Windows' reduced motion.
 
 ## Not designed yet

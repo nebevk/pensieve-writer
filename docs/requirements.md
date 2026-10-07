@@ -77,7 +77,7 @@ Priority key (MoSCoW): **M** = Must (v1), **S** = Should (v1 if time allows), **
 | CH-6 | Per-chapter metadata: status (draft / revising / final), synopsis, word goal (set in the Goals list beside the page since 6 October) | S |
 | CH-7 | Collapsible sidebar | M |
 | CH-8 | No project types since 7 October: each writing has a "Split into chapters" switch instead. On, a Heading 2 starts a new chapter; off, the writing is one page (an article or blog post), and its headings stay headings. Turning it off joins the chapters (an earlier version keeps them as they were), and for a writing over 20,000 words the question warns that typing in one page that long is slower; turning it on splits the page at its headings | S |
-| CH-9 | A library folder, chosen in Settings (Documents\Pensieve by default, never inside a synced folder such as OneDrive or Google Drive), holds the projects, each in its own folder with one file. The library beside the page shows it as a tree: folders, projects, a project's writing folders and writings, a writing's parts and chapters, its Notes (by group) and To-dos, and a Deleted folder for writings taken out. Projects kept elsewhere are listed under "Elsewhere" and can be moved in (owner, 7 October). As in Explorer, folders and projects are renamed and dragged into other folders on disk, and empty folders deleted; a project goes by its folder's name. Writings are dragged into writing folders or into order, notes into groups | M |
+| CH-9 | A library folder, chosen in Settings (Documents\Pensieve by default, never inside a synced folder such as OneDrive or Google Drive), holds the projects, each in its own folder with one file. The library beside the page shows it as a tree: folders, projects, a project's writing folders and writings, a writing's parts and chapters, its Notes (by group) and To-dos, and a Deleted folder for writings taken out. Projects kept elsewhere are listed under "Elsewhere" and can be moved in (owner, 7 October). As in Explorer, folders and projects are renamed and dragged into other folders on disk, and empty folders deleted; a project goes by its folder's name. Writings are dragged into writing folders or into order, notes into groups. Her other files (pictures, PDFs, Word files) show in their folders and in a project's Files, open in their own program with a double click, and a Word file can come in as a new writing (owner, 7 October) | M |
 | CH-10 | Notes and to-dos belong to the project and are shared by its writings. A note clicked in the tree opens in the full Notes view; the tree can make, rename, duplicate, move and delete notes (owner, 7 October) | M |
 
 ### 4.3 Notes and Todo System
@@ -137,11 +137,11 @@ Coziness is the top product priority. All effects must stay within the performan
 | ID | Requirement | Priority |
 |----|-------------|----------|
 | AT-1 | Smooth transitions between views, panels, and zen mode (soft fades and slides) | M |
-| AT-2 | Warm themes (paper, sepia, dark, candlelit) with bundled serif writing fonts | M |
+| AT-2 | Warm themes (paper, sepia, dark, candlelit) with bundled serif writing fonts. The app has Daylight, Sunset (owner, 7 October), Candlelit and Moonlit, and Day and night, which is Daylight by day and Candlelit after dark | M |
 | AT-3 | Ambient sound: a few looping tracks (rain, fireplace, cafe, soft piano) with volume and fade controls | S |
 | AT-4 | Subtle visual ambience: slow gradients, vignette, paper texture, optional drifting particles or candle flicker | S |
 | AT-5 | Theme bundles pairing colors, font, and ambience (e.g. "Rainy Library", "Fireside") | C |
-| AT-6 | "Gentle mode" toggle that disables particles and heavy effects; honors the Windows "reduce animations" setting | M |
+| AT-6 | "Gentle mode" toggle that disables particles and heavy effects; honors the Windows "reduce animations" setting. It leaves the chosen ambience playing (7 October): Silence is how the sound goes off | M |
 | AT-7 | Optional Harry Potter-flavored labels for features (e.g. Zen mode = "Nox", Notes = "Pensieve" panel, Todos = "Remembrall"); off by default, switchable in settings | C |
 
 ### 4.8 Settings and Polish
