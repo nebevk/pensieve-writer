@@ -172,7 +172,7 @@ These differ from the design on purpose and are not gaps.
 
 The design system doesn't cover these, so they aren't gaps. Each already works in the app and needs a design pass before it can match.
 
-- The library beside the page (7 October): a second tab of the chapter list, drawn like VS Code's file explorer at the owner's wish: the library folder's projects, the open project's writing folders, writings, parts and chapters, its Notes and To-dos, with right-click menus. A one-page writing shows only the Library tab. Home is to be redone around projects later (owner).
+- The library beside the page (7 October): a second tab of the chapter list, drawn like VS Code's file explorer at the owner's wish: the library folder's projects, the open project's writing folders, writings, parts and chapters, its Notes and To-dos, with right-click menus, and folders, projects, writings and notes renamed and dragged as in Explorer. A one-page writing shows only the Library tab. Home is to be redone around projects later (owner).
 
 - Outline view (VW-3) and Book view (VW-2).
 - Zen layout (ZN-1 to ZN-5). The UI kit only hides the chrome and keeps the floating bar; on 6 October the owner asked for Grammarly's plain page instead: the paper's colour from edge to edge, a centred column, no sparks, and a quiet bar at the bottom.
