@@ -51,7 +51,7 @@ Priority key (MoSCoW): **M** = Must (v1), **S** = Should (v1 if time allows), **
 | ID | Requirement | Priority |
 |----|-------------|----------|
 | ED-1 | Rich text editing: bold, italic, underline, strikethrough | M |
-| ED-2 | Headings (H1-H3), paragraph styles, block quotes | M |
+| ED-2 | Headings (H1-H3), paragraph styles, block quotes. Since 6 October a Heading 1 marks a part, a Heading 2 a chapter (one lower down starts a new chapter once it is named), and a Heading 3 a subheading. In a writing with "Split into chapters" off, which is one page, headings stay headings | M |
 | ED-3 | Bulleted and numbered lists | M |
 | ED-4 | Text alignment (left, center, right, justify) | M |
 | ED-5 | Font family, font size, text color, highlight | S |
@@ -69,14 +69,16 @@ Priority key (MoSCoW): **M** = Must (v1), **S** = Should (v1 if time allows), **
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| CH-1 | A project contains an ordered list of chapters | M |
+| CH-1 | A project holds writings (books, stories, articles; since 7 October), and a writing an ordered list of chapters | M |
 | CH-2 | Sidebar "binder" showing chapters; click to open | M |
 | CH-3 | Create, rename, delete, duplicate chapters | M |
 | CH-4 | Drag-and-drop reordering | M |
 | CH-5 | Optional grouping (parts/sections containing chapters, or scenes within chapters) | S |
-| CH-6 | Per-chapter metadata: status (draft / revising / final), synopsis, word goal | S |
+| CH-6 | Per-chapter metadata: status (draft / revising / final), synopsis, word goal (set in the Goals list beside the page since 6 October) | S |
 | CH-7 | Collapsible sidebar | M |
-| CH-8 | Project templates: Novel, Short story collection, Non-fiction book, Article / blog post (single document, no chapter sidebar needed) | S |
+| CH-8 | No project types since 7 October: each writing has a "Split into chapters" switch instead. On, a Heading 2 starts a new chapter; off, the writing is one page (an article or blog post), and its headings stay headings. Turning it off joins the chapters (an earlier version keeps them as they were), and for a writing over 20,000 words the question warns that typing in one page that long is slower; turning it on splits the page at its headings | S |
+| CH-9 | A library folder, chosen in Settings (Documents\Pensieve by default, never inside a synced folder such as OneDrive or Google Drive), holds the projects, each in its own folder with one file. The library beside the page shows it as a tree: folders, projects, a project's writing folders and writings, a writing's parts and chapters, its Notes (by group) and To-dos, and a Deleted folder for writings taken out. Projects kept elsewhere are listed under "Elsewhere" and can be moved in (owner, 7 October) | M |
+| CH-10 | Notes and to-dos belong to the project and are shared by its writings. A note clicked in the tree opens in the full Notes view; the tree can make, rename, duplicate, move and delete notes (owner, 7 October) | M |
 
 ### 4.3 Notes and Todo System
 
@@ -105,11 +107,11 @@ Priority key (MoSCoW): **M** = Must (v1), **S** = Should (v1 if time allows), **
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| ZN-1 | Toggle fullscreen with all UI hidden except the text | M |
+| ZN-1 | Toggle fullscreen with all UI hidden except the text. Since 6 October, at the owner's Grammarly example, a quiet bar stays at the bottom (ZN-5) | M |
 | ZN-2 | Centered text column with adjustable width | M |
 | ZN-3 | Themes: light, sepia, dark | M |
 | ZN-4 | Optional typewriter scrolling (cursor stays vertically centered) | C |
-| ZN-5 | Hover at screen edge to reveal minimal controls; Esc to exit | M |
+| ZN-5 | Hover at screen edge to reveal minimal controls; Esc to exit. The owner chose an always-visible quiet bar instead (6 October): bold, italic, underline, headings, lists, the word count, the column width and Leave zen | M |
 
 ### 4.6 Saving, Backup, and Export
 
@@ -146,9 +148,9 @@ Coziness is the top product priority. All effects must stay within the performan
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| ST-1 | Default font, size, line spacing, page margins | S |
-| ST-2 | Language selection | S |
-| ST-3 | Daily writing goal and simple streak display. Dropped by the owner: the streak on 5 October, the daily goal on 6 October. Home and the floating bar still count the words written today | C |
+| ST-1 | Default font, size, line spacing, page margins. Since 6 October the text starts at 12 pt, with sizes in points as in Word, lines 1.5 apart, and paragraphs a little apart with no first-line indent | S |
+| ST-2 | Language selection. The interface starts in Slovenian (owner, 6 October); English is in Settings | S |
+| ST-3 | Daily writing goal and simple streak display. The owner dropped the streak on 5 October. The daily goal went on 6 October and came back that evening, kept simple: the Goals list beside the page in Write shows the words written today toward it (500 to start with, 0 for none), with the chapter's words toward its own goal (CH-6) | C |
 | ST-4 | Keyboard shortcut cheat sheet | C |
 
 ## 5. Non-Functional Requirements
@@ -234,16 +236,18 @@ Design hooks for the future: all persistence sits behind a storage interface (`s
 
 **Resolved**
 - Target OS: Windows 10 or newer.
+- Interface language: switchable between English and Slovenian, starting in Slovenian (owner, 6 October).
 - Writing languages: English and Slovenian, with spell check.
-- Content types: novels, short stories, non-fiction, plus blog posts and articles.
+- Content types: novels, short stories, non-fiction, plus blog posts and articles, as writings of a project, with no types (owner, 7 October).
+- Projects and the library (owner, 7 October): a library folder of projects; a project holds as many writings as she wants, optionally in writing folders ("Drafts", "Published"); notes and to-dos belong to the project; Home's Continue writing opens the item opened last. Home itself is to be redone later, around projects.
 - Cloud: Google Drive.
 - Distribution: personal use only, so installer signing and licensing are not needed.
 
 **Still open**
 1. Windows version (10 or 11) and RAM of the laptop, to set the effects budget.
 2. Which Word features beyond the current list are must-haves (shortlist provided separately).
-3. Interface language: English, Slovenian, or switchable?
-4. Does the writer use Word's page numbers, headers, or a table of contents in her manuscripts?
+3. Does the writer use Word's page numbers, headers, or a table of contents in her manuscripts?
+4. Whether the chapter list stays as a tab beside the library, now that the library shows a writing's chapters too.
 
 ## 12. Naming
 
