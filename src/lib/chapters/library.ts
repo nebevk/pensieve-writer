@@ -67,6 +67,30 @@ export function isInside(path: string, folder: string): boolean {
   return outer.length > 0 && (inner === outer || inner.startsWith(`${outer}\\`));
 }
 
+/** The folder `path` is in. At a drive's top that is "E:\": a bare "E:" is that drive's current folder to Windows. */
+export function parentFolder(path: string): string {
+  const parent = folderOf(path.trim().replace(/[\\/]+$/, "")).path;
+  return /^[a-z]:$/i.test(parent) ? `${parent}\\` : parent;
+}
+
+/** Whether two paths are the same folder, as Windows compares paths. */
+export function sameFolder(a: string, b: string): boolean {
+  return isInside(a, b) && isInside(b, a);
+}
+
+/** A folder's own name: the last part of its path. */
+export function lastName(path: string): string {
+  const clean = path.trim().replace(/[\\/]+$/, "");
+  return clean.slice(Math.max(clean.lastIndexOf("\\"), clean.lastIndexOf("/")) + 1);
+}
+
+/** Where `path` is after the folder `from` became `to` (renamed or moved); a path outside `from` stays as it is. */
+export function rebasePath(path: string, from: string, to: string): string {
+  if (!path || !isInside(path, from)) return path;
+  const tail = path.trim().replace(/[\\/]+$/, "").slice(from.trim().replace(/[\\/]+$/, "").length);
+  return `${to.trim().replace(/[\\/]+$/, "")}${tail}`;
+}
+
 /** Where the library goes unless she chooses: Documents\Pensieve, or her home folder's when Documents is synced. */
 export function defaultLibraryFolder(places: { documents: string; home: string }): string {
   const base = places.documents && !looksSynced(places.documents) ? places.documents : places.home;
@@ -143,6 +167,13 @@ export type LibraryActions = {
   openAnother(): void;
   newProject(parent: string, name: string): Promise<string | null>;
   newLibraryFolder(parent: string, name: string): Promise<string | null>;
+  /** Renames a folder of the library or a project's folder (`path`), on disk. */
+  renameLibraryEntry(path: string, name: string): Promise<string | null>;
+  /** Moves a folder of the library or a project's folder into another folder (`into`; the library's own for its top). */
+  moveLibraryEntry(path: string, into: string): void;
+  deleteLibraryFolder(path: string): void;
+  /** Puts a writing just before another one, in that one's writing folder. */
+  placeWriting(id: string, beforeId: string): void;
   newWriting(folder: string, name: string): Promise<string | null>;
   newWritingFolder(name: string): Promise<string | null>;
   renameWritingFolder(from: string, to: string): Promise<string | null>;

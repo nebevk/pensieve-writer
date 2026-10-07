@@ -13,6 +13,18 @@ export function setOpen(key: string, value: boolean): void {
   treeState.open[key] = value;
 }
 
+/** After a folder was renamed or moved: what was unfolded in it stays unfolded where it went. */
+export function moveOpen(from: string, to: string): void {
+  const before = from.toLowerCase().replace(/[\\/]+$/, "");
+  const after = to.toLowerCase().replace(/[\\/]+$/, "");
+  for (const [key, value] of Object.entries(treeState.open)) {
+    const match = /^(dir|project):(.*)$/.exec(key);
+    if (!match || (match[2] !== before && !match[2].startsWith(`${before}\\`))) continue;
+    delete treeState.open[key];
+    treeState.open[`${match[1]}:${after}${match[2].slice(before.length)}`] = value;
+  }
+}
+
 /**
  * The requests to name something new that the tree has answered, by the time each was made. The tree is
  * made again whenever Write or the Library tab opens, and must not answer an old request a second time.

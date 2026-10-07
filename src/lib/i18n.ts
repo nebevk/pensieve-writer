@@ -498,6 +498,11 @@ const en = {
   errFolderNameReserved: "Windows keeps that name for itself; choose another",
   errFolderTaken: "Something with that name is already there",
   errFolderNameStart: "A folder name can't start with . or $",
+  errFolderGone: "That folder isn't there any more",
+  errFolderIntoItself: "A folder can't go inside itself",
+  errFolderInUse: "That folder is in use; close what has it open and try again",
+  errFolderNotEmpty: "Only an empty folder can be deleted; move what's in it out first",
+  errPathTooLong: "That would make the path too long for Windows; choose a shorter name or a folder higher up",
 };
 
 export type UiKey = keyof typeof en;
@@ -980,6 +985,11 @@ const sl: Record<UiKey, string> = {
   errFolderNameReserved: "To ime si pridržuje Windows; izberite drugo",
   errFolderTaken: "Nekaj s tem imenom že obstaja",
   errFolderNameStart: "Ime mape se ne sme začeti s . ali $",
+  errFolderGone: "Te mape ni več",
+  errFolderIntoItself: "Mapa ne more v samo sebe",
+  errFolderInUse: "Mapo nekaj uporablja; zaprite, kar jo ima odprto, in poskusite znova",
+  errFolderNotEmpty: "Izbrisati je mogoče le prazno mapo; najprej premaknite, kar je v njej",
+  errPathTooLong: "Pot bi bila predolga za Windows; izberite krajše ime ali mapo višje",
 };
 
 const STRINGS: Record<UiLanguage, Record<UiKey, string>> = { en, sl };
@@ -1082,6 +1092,11 @@ const RUST_ERRORS = new Map<string, UiKey>(
       "errFolderNameReserved",
       "errFolderTaken",
       "errFolderNameStart",
+      "errFolderGone",
+      "errFolderIntoItself",
+      "errFolderInUse",
+      "errFolderNotEmpty",
+      "errPathTooLong",
     ] as const
   ).map((key) => [en[key], key]),
 );

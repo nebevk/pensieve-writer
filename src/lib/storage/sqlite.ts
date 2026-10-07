@@ -127,22 +127,28 @@ async function openDatabase(): Promise<Database> {
     throw new Error(t("errNoWindow"));
   }
   const db = await Database.load(connectionUrl());
-  await db.select("PRAGMA journal_mode = WAL");
-  await db.select("PRAGMA busy_timeout = 5000");
-  await keepCopyBeforeUpgrade(db);
-  await ensureSchema(db);
-  const versions = await db.select<{ version: number }[]>(
-    "SELECT version FROM schema_version WHERE id = 1",
-  );
-  const version = Number(versions[0]?.version);
-  if (version !== SCHEMA_VERSION) {
-    throw new Error(
-      version == null || Number.isNaN(version)
-        ? t("errNoSchema")
-        : t("errSchemaVersion", { version: String(version), expected: String(SCHEMA_VERSION) }),
+  try {
+    await db.select("PRAGMA journal_mode = WAL");
+    await db.select("PRAGMA busy_timeout = 5000");
+    await keepCopyBeforeUpgrade(db);
+    await ensureSchema(db);
+    const versions = await db.select<{ version: number }[]>(
+      "SELECT version FROM schema_version WHERE id = 1",
     );
+    const version = Number(versions[0]?.version);
+    if (version !== SCHEMA_VERSION) {
+      throw new Error(
+        version == null || Number.isNaN(version)
+          ? t("errNoSchema")
+          : t("errSchemaVersion", { version: String(version), expected: String(SCHEMA_VERSION) }),
+      );
+    }
+    return db;
+  } catch (error) {
+    // A file that opened but couldn't be made ready is let go, so nothing holds its folder.
+    await db.close(db.path).catch(() => undefined);
+    throw error;
   }
-  return db;
 }
 
 async function columnNames(db: Database, table: string): Promise<Set<string>> {
@@ -868,6 +874,64 @@ export function switchProjectFile(absolutePath: string, remember = true): Promis
     databasePromise = null;
     openProjectId = "";
     await database();
+  });
+}
+
+/** Closes the open file's pool, if any; one that failed to open is simply dropped. */
+async function closeOpen(): Promise<void> {
+  const open = databasePromise;
+  databasePromise = null;
+  if (!open) return;
+  try {
+    await (await open).close(connectionUrl());
+  } catch {
+    // The file failed to open, or its pool is already closed.
+  }
+}
+
+/**
+ * Lets go of the open project's file while `move` renames or moves its folder (Windows won't while a file
+ * in it is open), then opens it where it went; `move` returns its new path. It is one step of the queue:
+ * saves and reads asked for meanwhile wait and run on the file in its new place, and the project stays the
+ * open one, so its notes and to-dos keep saving. When the file won't open there, `back` moves the folder
+ * back and it opens where it was. Returns where the file is.
+ */
+export function moveProjectFile(move: () => Promise<string>, back: () => Promise<void>): Promise<string> {
+  return enqueue(async () => {
+    const file = (openPath ?? loadPrefs().projectPath).trim();
+    await closeOpen();
+    let moved: string;
+    try {
+      moved = await move();
+    } catch (error) {
+      // It didn't move: it opens where it was.
+      await database();
+      throw error;
+    }
+    openPath = moved;
+    try {
+      await database();
+    } catch (error) {
+      await closeOpen();
+      try {
+        await back();
+        openPath = file;
+      } catch {
+        // It stays where it went; the error below says why it won't open.
+      }
+      await database().catch(() => undefined);
+      throw error;
+    }
+    savePrefs({ ...loadPrefs(), projectPath: moved });
+    return moved;
+  });
+}
+
+/** Puts the open project's writings in this order. */
+export function setWritingOrder(ids: string[]): Promise<void> {
+  return enqueue(async () => {
+    const db = await database();
+    for (const [index, id] of ids.entries()) await db.execute(`UPDATE projects SET position = $2 WHERE id = $1`, [id, index]);
   });
 }
 

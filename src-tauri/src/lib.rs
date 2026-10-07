@@ -45,6 +45,8 @@ pub fn run() {
             library::list_library,
             library::create_library_folder,
             library::new_project_folder,
+            library::move_library_entry,
+            library::remove_library_folder,
             project::default_project_path,
             project::project_file_exists,
             project::example_book_path,

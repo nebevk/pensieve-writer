@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultLibraryFolder, folderNameProblem, folderOf, groupBooks, isInside, joinPath, looksSynced } from "./library";
+import { defaultLibraryFolder, folderNameProblem, folderOf, groupBooks, isInside, joinPath, lastName, looksSynced, parentFolder, rebasePath, sameFolder } from "./library";
 
 describe("the library folder", () => {
   it("knows folders that a sync service keeps copying", () => {
@@ -43,6 +43,33 @@ describe("the library folder", () => {
     expect(folderNameProblem(".drafts")).toBe("nameStart");
     expect(folderNameProblem("$Recycle")).toBe("nameStart");
     expect(folderNameProblem("Draft.1")).toBe(null);
+  });
+});
+
+describe("moving folders in the library", () => {
+  const LIB = "C:\\Users\\Eva\\Documents\\Pensieve";
+  it("follows a renamed or moved folder with the paths inside it", () => {
+    const from = `${LIB}\\Zgodbe`;
+    const to = `${LIB}\\Primeri\\Kratke zgodbe`;
+    expect(rebasePath(`${LIB}\\Zgodbe\\Brod\\pensieve.db`, from, to)).toBe(`${LIB}\\Primeri\\Kratke zgodbe\\Brod\\pensieve.db`);
+    expect(rebasePath(`${LIB}\\zgodbe\\Brod\\pensieve.db`, from, to)).toBe(`${LIB}\\Primeri\\Kratke zgodbe\\Brod\\pensieve.db`);
+    expect(rebasePath(from, from, to)).toBe(to);
+    // A neighbour whose name starts the same stays where it is, and so does anything outside.
+    expect(rebasePath(`${LIB}\\Zgodbe ob reki\\pensieve.db`, from, to)).toBe(`${LIB}\\Zgodbe ob reki\\pensieve.db`);
+    expect(rebasePath("", from, to)).toBe("");
+  });
+
+  it("finds the folder a folder is in, a drive's top too", () => {
+    expect(parentFolder(`${LIB}\\Kratke zgodbe`)).toBe(LIB);
+    expect(parentFolder(`${LIB}\\Kratke zgodbe\\`)).toBe(LIB);
+    expect(parentFolder("E:\\Brod")).toBe("E:\\");
+  });
+
+  it("names folders and compares them as Windows does", () => {
+    expect(lastName(`${LIB}\\Kratke zgodbe\\`)).toBe("Kratke zgodbe");
+    expect(lastName("/home/eva/Knjige")).toBe("Knjige");
+    expect(sameFolder(`${LIB}\\Primeri`, `${LIB.toLowerCase()}\\primeri\\`)).toBe(true);
+    expect(sameFolder(`${LIB}\\Primeri`, `${LIB}\\Primeri\\Stari`)).toBe(false);
   });
 });
 

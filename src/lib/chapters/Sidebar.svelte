@@ -218,6 +218,8 @@
           <li
             class:drop-target={dropTargetId === chapter.id}
             ondragover={(event) => {
+              // Only a chapter lands here; something else dragged in the library passes over.
+              if (!draggingId) return;
               event.preventDefault();
               dropTargetId = chapter.id;
             }}

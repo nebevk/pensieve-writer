@@ -29,7 +29,8 @@
   import { chapterTitle } from "$lib/chapters/welcome";
   import { applyPage, chapterBreak, composePage, heldHeading, isLeadLine, joinWriting, leadLines, readPage, splitWriting, startsPart, textStart, withoutBreaks } from "$lib/chapters/page";
   import { summarize, summarizeOutline, summarizeProject } from "$lib/chapters/progress";
-  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, joinPath, looksSynced, projectFile, projectFiles, projectName, type LibraryActions, type LibraryEntry } from "$lib/chapters/library";
+  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, joinPath, lastName, looksSynced, parentFolder, projectFile, projectFiles, projectName, rebasePath, sameFolder, type LibraryActions, type LibraryEntry } from "$lib/chapters/library";
+  import { moveOpen } from "$lib/chapters/treeState.svelte";
   import { notesInChapter } from "$lib/chapters/mentions";
   import { isUntitled } from "$lib/i18n";
   import { locale, snapshotName, t, ui } from "$lib/ui.svelte";
@@ -37,7 +38,7 @@
   import { noteFromComment, todoFromComment } from "$lib/storage/fromComment";
   import type { NoteTarget } from "$lib/editor/noteLinks";
   import type { CommentInfo } from "$lib/editor/comments";
-  import { addWriting, checkpointDatabase, duplicateWriting, eraseWriting, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readSnapshotChapters, rememberPersonalWord, renameWritingFolder, restoreChapter, restoreFromBackup, setShelf, setWritingFields, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
+  import { addWriting, checkpointDatabase, duplicateWriting, eraseWriting, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, moveProjectFile, readSnapshotChapters, rememberPersonalWord, renameWritingFolder, restoreChapter, restoreFromBackup, setShelf, setWritingFields, setWritingOrder, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
   import type { Editor as TiptapEditor } from "@tiptap/core";
   import type { NodeSelection } from "@tiptap/pm/state";
   import { lazy } from "$lib/lazy.svelte";
@@ -1462,7 +1463,7 @@
       try {
         await switchProjectFile(path);
         prefs = { ...prefs, projectPath: path };
-        opened = await openShelf(target.writingId ?? "", fresh);
+        opened = await namedByFolder(path, await openShelf(target.writingId ?? "", fresh));
       } catch (error) {
         // Go back to the open project, or the next autosave would write into the other file.
         try {
@@ -1527,7 +1528,7 @@
     await switchProjectFile(path);
     prefs = { ...prefs, projectPath: path };
     const last = prefs.lastOpened.path.toLowerCase() === path.toLowerCase() ? prefs.lastOpened : null;
-    const opened = await openShelf(last?.writingId ?? "", fresh);
+    const opened = await namedByFolder(path, await openShelf(last?.writingId ?? "", fresh));
     shelf = opened.shelf;
     writing = opened.writing;
     activeId = chapterToOpen(opened.writing, last?.chapterId);
@@ -2067,6 +2068,124 @@
     }
   }
 
+  /**
+   * A project's shelf, called by its folder's name when it is in the library, so Explorer, the tree and
+   * Home say the same, also after its folder was renamed.
+   */
+  async function shelfNamedByFolder(path: string, current: Shelf): Promise<Shelf> {
+    const name = projectName(path);
+    if (!libraryRoot || !isInside(path, libraryRoot) || !name || current.title === name) return current;
+    await setShelf({ title: name });
+    return { ...current, title: name };
+  }
+
+  async function namedByFolder(path: string, opened: OpenedProject): Promise<OpenedProject> {
+    return { ...opened, shelf: await shelfNamedByFolder(path, opened.shelf) };
+  }
+
+  /** After a folder of the library was renamed or moved: the paths Pensieve keeps in it follow it. */
+  function followMove(from: string, to: string) {
+    const moved = (path: string) => rebasePath(path, from, to);
+    prefs = {
+      ...prefs,
+      projectPath: moved(prefs.projectPath),
+      lastOpened: { ...prefs.lastOpened, path: moved(prefs.lastOpened.path) },
+      samples: Object.fromEntries(Object.entries(prefs.samples).map(([slug, path]) => [slug, moved(path)])),
+      // A project in the library is called by its folder's name, a renamed one too. Nothing was where it went
+      // (a folder never moves over another), so a project remembered there was deleted or moved in Explorer.
+      knownProjects: prefs.knownProjects
+        .filter((item) => isInside(item.path, from) || !isInside(item.path, to))
+        .map((item) => {
+          const path = moved(item.path);
+          return path === item.path ? item : { ...item, path, title: projectName(path) || item.title };
+        }),
+      // The Word copy's folder may be in it too; its files moved as they were, so their stamps still hold.
+      wordCopyFolder: moved(prefs.wordCopyFolder),
+      wordCopies: Object.fromEntries(Object.entries(prefs.wordCopies).map(([path, copy]) => [moved(path), copy])),
+    };
+    wordCopyHeld = moved(wordCopyHeld);
+    if (projectLocation) projectLocation = moved(projectLocation);
+    moveOpen(from, to);
+  }
+
+  /**
+   * Renames a folder of the library or a project's folder, or moves it into another folder, on disk. When the
+   * open project is in it, storage lets go of its file for the move and opens it where it went, in one step:
+   * the page stays open, and saves made meanwhile wait and go into the file there. Returns what is wrong, or null.
+   */
+  async function relocateLibraryEntry(from: string, parent: string, name: string): Promise<string | null> {
+    const problem = folderNameProblem(name);
+    if (problem) return t(problem);
+    const move = () => invoke<string>("move_library_entry", { path: from, parent, name: name.trim() });
+    let to = "";
+    try {
+      // After the changes before it, so the project open then is the one it looks at.
+      await oneAtATime(async () => {
+        const file = projectLocation || prefs.projectPath;
+        if (!isInside(file, from)) {
+          to = await move();
+          return;
+        }
+        const reopened = await moveProjectFile(
+          async () => {
+            to = await move();
+            return rebasePath(file, from, to);
+          },
+          // It moved but won't open there: it goes back where it was.
+          async () => {
+            await invoke<string>("move_library_entry", { path: to, parent: parentFolder(from), name: lastName(from) });
+            to = "";
+          },
+        );
+        if (shelf) shelf = await shelfNamedByFolder(reopened, shelf);
+      });
+      return null;
+    } catch (error) {
+      return errorMessage(error);
+    } finally {
+      // Whatever failed after the move, what Pensieve remembers follows the folder to where it is now.
+      if (to) {
+        followMove(from, to);
+        rememberProject();
+      }
+      await refreshLibrary();
+    }
+  }
+
+  /** Moves a folder or a project into another folder of the library, keeping its name. */
+  async function moveLibraryEntry(path: string, into: string) {
+    if (!into || sameFolder(parentFolder(path), into) || isInside(into, path)) return;
+    const problem = await relocateLibraryEntry(path, into, lastName(path));
+    if (problem) notice(problem);
+  }
+
+  /** Deletes an empty folder of the library; one with anything in it stays, and she is told why. */
+  async function deleteLibraryFolder(path: string) {
+    try {
+      await invoke("remove_library_folder", { path });
+    } catch (error) {
+      notice(errorMessage(error));
+    }
+    await refreshLibrary();
+  }
+
+  /** Puts a writing just before another one of the open project, in that one's writing folder. */
+  async function placeWriting(id: string, beforeId: string) {
+    if (!shelf || id === beforeId) return;
+    const order = [...shelf.writings].sort((a, b) => a.position - b.position).map((item) => item.id).filter((item) => item !== id);
+    const at = order.indexOf(beforeId);
+    if (at < 0) return;
+    order.splice(at, 0, id);
+    const folder = shelf.writings.find((item) => item.id === beforeId)?.folder ?? "";
+    try {
+      await setWritingOrder(order);
+      await setWritingFields(id, { folder });
+      await refreshShelf();
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+    }
+  }
+
   /** What the library's tree can do, in one place. */
   const libraryActions: LibraryActions = {
     openProject: (path) => void openFromLibrary(path),
@@ -2075,6 +2194,10 @@
     openTodos: () => (view = "todos"),
     newProject,
     newLibraryFolder,
+    renameLibraryEntry: (path, name) => relocateLibraryEntry(path, parentFolder(path), name),
+    moveLibraryEntry: (path, into) => void moveLibraryEntry(path, into),
+    deleteLibraryFolder: (path) => void deleteLibraryFolder(path),
+    placeWriting: (id, beforeId) => void placeWriting(id, beforeId),
     newWriting,
     newWritingFolder,
     renameWritingFolder: renameWritingFolderTo,
@@ -2317,7 +2440,7 @@
           switchingBooks = false;
         }
         prefs = { ...prefs, projectPath: destination, knownProjects: prefs.knownProjects.filter((book) => book.path.toLowerCase() !== source.toLowerCase()) };
-        const opened = await openShelf(writingId, { title: name, writingTitle: name, welcome: false });
+        const opened = await namedByFolder(destination, await openShelf(writingId, { title: name, writingTitle: name, welcome: false }));
         shelf = opened.shelf;
         projectLocation = destination;
         rememberProject();
@@ -2393,7 +2516,20 @@
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window
+  onkeydown={onKeydown}
+  ondragover={(event) => {
+    // A file dragged in from Explorer, where nothing takes it, is refused, so it can't open in Pensieve's place.
+    const data = event.dataTransfer;
+    if (!event.defaultPrevented && data?.types.includes("Files")) {
+      event.preventDefault();
+      data.dropEffect = "none";
+    }
+  }}
+  ondrop={(event) => {
+    if (!event.defaultPrevented && event.dataTransfer?.types.includes("Files")) event.preventDefault();
+  }}
+/>
 
 {#snippet homeHeader()}
   <HomeHeader

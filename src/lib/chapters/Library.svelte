@@ -3,7 +3,7 @@
   import type { WritingOutline } from "$lib/model";
   import type { NoteCategory } from "$lib/storage/organize";
   import { compactWords } from "$lib/editor/counts";
-  import { collator, isInside, projectFile, projectFiles, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "./library";
+  import { collator, folderOf, isInside, parentFolder, projectFile, projectFiles, sameFolder, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "./library";
   import { answered, isOpen, setOpen } from "./treeState.svelte";
   import { LONG_PAGE_WORDS } from "./page";
   import TreeMenu, { type MenuItem } from "./TreeMenu.svelte";
@@ -75,6 +75,10 @@
     category?: NoteCategory;
     split?: boolean;
     folder?: string;
+    /** A library folder with no folders or projects in it, so it can be deleted. */
+    empty?: boolean;
+    /** How many levels of folders and projects a library folder holds below itself, as listed. */
+    below?: number;
   };
 
   /** A name being typed in the tree: for something new, or for a new name. */
@@ -85,6 +89,8 @@
     key: string;
     /** For something new: the library folder or writing folder it goes in. For a rename: what is renamed. */
     target: string;
+    /** A renamed folder's or project's name as it was, so keeping it changes nothing. */
+    name?: string;
     category?: NoteCategory;
     value: string;
     error: string;
@@ -99,13 +105,19 @@
 
   /** How many folders deep the library is listed (DEPTH in library.rs). */
   const LISTED_DEPTH = 6;
+  /** How many levels of folders and projects an entry holds below itself, as listed: 0 for none. */
+  const levelsIn = (entry: LibraryEntry): number => (entry.project ? 0 : Math.max(0, ...entry.children.map((child) => 1 + levelsIn(child))));
 
   let editing = $state<Editing | null>(null);
   let committing = false;
   let menu = $state<{ x: number; y: number; items: MenuItem[]; back: HTMLElement | null } | null>(null);
   let tree = $state<HTMLDivElement | undefined>(undefined);
+  // The row being dragged, and where it would land: a row's key, or "root" for the library's top.
+  let dragged = $state<Row | null>(null);
+  let dropKey = $state<string | null>(null);
 
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  const insideLibrary = (path: string) => !!library.root && isInside(path, library.root);
   const currentFile = $derived(library.currentPath);
   const openProjectRow = $derived(`project:${currentFile.toLowerCase()}`);
   // Sorted once for each new listing, not again for every change in the rows.
@@ -264,14 +276,18 @@
       const key = `project:${file.toLowerCase()}`;
       if (same(file, currentFile) && shelf) {
         const open = isOpen(key, true);
-        list.push({ key, depth, kind: "project", name: name || shelf.title, icon: "library", expandable: true, open, current: true, path: file, live: "project" });
+        if (!renamed(key, depth, "library")) {
+          list.push({ key, depth, kind: "project", name: name || shelf.title, icon: "library", expandable: true, open, current: true, path: file, live: "project" });
+        }
         if (open) pushShelf(depth + 1);
         return;
       }
       const summary = known.find((item) => same(item.path, file))?.summary;
       const writings = summary?.writings ?? [];
       const open = writings.length > 0 && isOpen(key, false);
-      list.push({ key, depth, kind: "project", name, icon: "library", expandable: writings.length > 0, open, path: file, words: summary?.words });
+      if (!renamed(key, depth, "library")) {
+        list.push({ key, depth, kind: "project", name, icon: "library", expandable: writings.length > 0, open, path: file, words: summary?.words });
+      }
       if (!open) return;
       for (const item of writings) {
         list.push({
@@ -294,7 +310,9 @@
       for (const folder of entries.filter((entry) => !entry.project)) {
         const key = `dir:${folder.path.toLowerCase()}`;
         const open = isOpen(key, true);
-        list.push({ key, depth, kind: "folder", name: folder.name, icon: open ? "folderOpen" : "folder", expandable: true, open, path: folder.path });
+        if (!renamed(key, depth, open ? "folderOpen" : "folder")) {
+          list.push({ key, depth, kind: "folder", name: folder.name, icon: open ? "folderOpen" : "folder", expandable: true, open, path: folder.path, empty: folder.children.length === 0, below: levelsIn(folder) });
+        }
         if (!open) continue;
         pushInput(key, depth + 1);
         walk(folder.children, depth + 1);
@@ -372,6 +390,11 @@
       editing = { mode: "rename", what: "writingFolder", key: row.key, target: row.folder, value: row.name, error: "" };
     } else if (row.kind === "note" && row.id) {
       editing = { mode: "rename", what: "note", key: row.key, target: row.id, value: row.name, error: "" };
+    } else if (row.kind === "folder" && row.path) {
+      editing = { mode: "rename", what: "libraryFolder", key: row.key, target: row.path, name: row.name, value: row.name, error: "" };
+    } else if (row.kind === "project" && row.path && insideLibrary(row.path)) {
+      // A project is renamed as its folder is: the name Explorer shows.
+      editing = { mode: "rename", what: "project", key: row.key, target: folderOf(row.path).path, name: row.name, value: row.name, error: "" };
     }
   }
 
@@ -379,7 +402,8 @@
     const edit = editing;
     if (!edit || committing) return;
     const value = edit.value.trim();
-    if (!value || (edit.mode === "rename" && value === edit.target && edit.what !== "writing")) {
+    const unchanged = edit.mode === "rename" && (edit.name !== undefined ? value === edit.name : value === edit.target && edit.what !== "writing");
+    if (!value || unchanged) {
       editing = null;
       return;
     }
@@ -395,6 +419,7 @@
       } else if (edit.what === "writing") actions.renameWriting(edit.target, value);
       else if (edit.what === "writingFolder") problem = await actions.renameWritingFolder(edit.target, value);
       else if (edit.what === "note") actions.renameNote(edit.target, value);
+      else if (edit.what === "project" || edit.what === "libraryFolder") problem = await actions.renameLibraryEntry(edit.target, value);
       editing = problem ? { ...edit, error: problem } : null;
     } finally {
       committing = false;
@@ -431,19 +456,30 @@
     const shelf = library.shelf;
     if (row.kind === "folder" && row.path) {
       const path = row.path;
+      const items: MenuItem[] = [];
       // The library is read six folders deep; something made deeper than that wouldn't show.
-      if (row.depth >= LISTED_DEPTH - 1) return [];
-      return [
-        { label: t("newProjectTitle"), run: () => startNew("project", row.key, path) },
-        { label: t("newFolderTitle"), run: () => startNew("libraryFolder", row.key, path) },
-      ];
+      if (row.depth < LISTED_DEPTH - 1) {
+        items.push(
+          { label: t("newProjectTitle"), run: () => startNew("project", row.key, path) },
+          { label: t("newFolderTitle"), run: () => startNew("libraryFolder", row.key, path) },
+          "rule",
+        );
+      }
+      // Only an empty folder goes; Windows keeps one with anything in it.
+      items.push(
+        { label: t("rename"), keys: "F2", run: () => startRename(row) },
+        { label: t("deleteFolder"), keys: "Del", disabled: !row.empty, run: () => actions.deleteLibraryFolder(path) },
+      );
+      return items;
     }
     if (row.kind === "project") {
-      if (!row.current || !shelf) return [{ label: t("openItem"), run: () => row.path && actions.openProject(row.path) }];
+      const rename: MenuItem[] = row.path && insideLibrary(row.path) ? ["rule", { label: t("rename"), keys: "F2", run: () => startRename(row) }] : [];
+      if (!row.current || !shelf) return [{ label: t("openItem"), run: () => row.path && actions.openProject(row.path) }, ...rename];
       const items: MenuItem[] = [
         { label: t("newWritingTitle"), run: () => startNew("writing", row.key, "") },
         { label: t("newFolderTitle"), run: () => startNew("writingFolder", row.key, "") },
         { label: t("newNoteTitle"), run: () => startNew("note", "group:ideas", "", "ideas") },
+        ...rename,
       ];
       if (library.root && !isInside(currentFile, library.root)) items.push("rule", { label: t("moveIntoLibrary"), run: () => actions.moveIntoLibrary() });
       return items;
@@ -532,6 +568,80 @@
     if (items.length > 0) menu = { ...at, items, back: element };
   }
 
+  /** Rows that can be dragged: library folders and projects, the open project's writings, and notes. */
+  function canDrag(row: Row): boolean {
+    if (row.kind === "folder") return !!row.path;
+    if (row.kind === "project") return !!row.path && insideLibrary(row.path);
+    if (row.kind === "writing") return !!row.id && !row.deleted && same(row.path ?? "", currentFile);
+    return row.kind === "note" && !!row.id;
+  }
+
+  /**
+   * What dropping the dragged row on `row` does, or null when it can't go there. A folder or a project goes
+   * into a library folder (`row` null: the library's top); a writing into a writing folder, out of one onto
+   * its project, or just before another writing; a note into another group.
+   */
+  function dropOn(row: Row | null): (() => void) | null {
+    const item = dragged;
+    if (!item) return null;
+    if (item.kind === "folder" || item.kind === "project") {
+      const from = item.kind === "project" ? folderOf(item.path ?? "").path : (item.path ?? "");
+      const into = row === null ? library.root : row.kind === "folder" ? (row.path ?? "") : "";
+      if (!from || !into || isInside(into, from) || sameFolder(parentFolder(from), into)) return null;
+      // The library is read six folders deep, as the folder menu knows: nothing may land deeper, or it wouldn't show.
+      if ((row === null ? 0 : row.depth + 1) + (item.below ?? 0) > LISTED_DEPTH - 1) return null;
+      return () => actions.moveLibraryEntry(from, into);
+    }
+    if (item.kind === "writing" && item.id && row) {
+      const id = item.id;
+      if (row.kind === "wfolder" && row.folder && row.folder !== item.folder) {
+        const folder = row.folder;
+        return () => actions.moveWriting(id, folder);
+      }
+      if (row.kind === "project" && row.current && item.folder) return () => actions.moveWriting(id, "");
+      if (row.kind === "writing" && row.id && row.id !== id && !row.deleted && same(row.path ?? "", currentFile)) {
+        const before = row.id;
+        return () => actions.placeWriting(id, before);
+      }
+      return null;
+    }
+    if (item.kind === "note" && item.id && row?.kind === "group" && row.category && row.category !== item.category) {
+      const id = item.id;
+      const category = row.category;
+      return () => actions.moveNote(id, category);
+    }
+    return null;
+  }
+
+  function endDrag() {
+    dragged = null;
+    dropKey = null;
+  }
+
+  /** Over a row: it shows where the dragged row would land, when it can. */
+  function dragOver(event: DragEvent, row: Row | null) {
+    if (!dropOn(row)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dropKey = row?.key ?? "root";
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  }
+
+  function drop(event: DragEvent, row: Row | null) {
+    const run = dropOn(row);
+    if (!run) return;
+    event.preventDefault();
+    event.stopPropagation();
+    endDrag();
+    run();
+  }
+
+  /** The library's own empty space: below the rows, or its "empty library" line; never anything inside a row. */
+  function onEmptySpace(event: Event): boolean {
+    const target = event.target;
+    return !!tree && (target === tree || (target instanceof HTMLElement && target.parentElement === tree && target.classList.contains("empty")));
+  }
+
   function rowOf(element: Element | null): Row | undefined {
     const key = element instanceof HTMLElement ? element.dataset.key : undefined;
     return key ? rows.find((row) => row.key === key) : undefined;
@@ -566,6 +676,10 @@
         const box = button.getBoundingClientRect();
         const id = row.id;
         confirm(button, { x: box.left + 24, y: box.bottom }, t("deleteNoteQuestion", { title: row.name }), t("delete"), () => actions.deleteNote(id));
+      } else if (row.kind === "folder" && row.path) {
+        // An empty folder goes; one with anything in it stays, and the page says why.
+        event.preventDefault();
+        actions.deleteLibraryFolder(row.path);
       }
       return;
     }
@@ -586,7 +700,41 @@
 </script>
 
 <!-- The library, drawn as a file explorer: its folders and projects, the open project's writings, notes and to-dos. -->
-<div class="library" role="presentation" bind:this={tree} onkeydown={onKeydown}>
+<!-- The empty space below the rows is the library's top: a folder or project dropped there goes to it. -->
+<div
+  class="library"
+  class:drop-root={dropKey === "root"}
+  role="presentation"
+  bind:this={tree}
+  onkeydown={onKeydown}
+  ondragover={(event) => {
+    if (onEmptySpace(event)) dragOver(event, null);
+    else if (dropKey === "root") dropKey = null;
+  }}
+  ondragleave={(event) => {
+    // Out of the tree, the library's top no longer shows as where the row would land.
+    const to = event.relatedTarget;
+    if (dropKey === "root" && !(to instanceof Node && event.currentTarget.contains(to))) dropKey = null;
+  }}
+  ondrop={(event) => {
+    if (onEmptySpace(event)) drop(event, null);
+  }}
+  oncontextmenu={(event) => {
+    // Right-click below the rows: something new at the library's top, as in Explorer.
+    if (!onEmptySpace(event) || !library.root) return;
+    event.preventDefault();
+    const root = library.root;
+    menu = {
+      x: event.clientX,
+      y: event.clientY,
+      back: null,
+      items: [
+        { label: t("newProjectTitle"), run: () => startNew("project", "root", root) },
+        { label: t("newFolderTitle"), run: () => startNew("libraryFolder", "root", root) },
+      ],
+    };
+  }}
+>
   {#each rows as row (row.key)}
     {#if row.kind === "chapters"}
       {@render chapterRows?.(row.depth)}
@@ -612,16 +760,31 @@
         class="tree-row {row.kind}"
         class:current={row.current}
         class:gone={row.deleted}
+        class:drop-target={dropKey === row.key && !(dragged?.kind === "writing" && row.kind === "writing")}
+        class:drop-before={dropKey === row.key && dragged?.kind === "writing" && row.kind === "writing"}
         data-key={row.key}
         style:--depth={row.depth}
         aria-expanded={row.expandable ? row.open : undefined}
         title={row.path && (row.kind === "folder" || row.kind === "project") ? row.path : row.name}
+        draggable={canDrag(row) ? "true" : undefined}
         onclick={(event) => activate(row, event.currentTarget)}
         ondblclick={() => {
-          // A double click on another writing is two clicks that open it; renaming is for the one open.
-          if (row.kind === "writing" && !row.current) return;
+          // A double click on another writing is two clicks that open it; renaming is for the one open. A
+          // folder or a project opens and closes with each click, as in Explorer; F2 or its menu renames it.
+          if ((row.kind === "writing" && !row.current) || row.kind === "folder" || row.kind === "project") return;
           startRename(row);
         }}
+        ondragstart={(event) => {
+          dragged = row;
+          // No text on the drag: the page, or a name field, would type it in wherever she lets go.
+          if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+        }}
+        ondragover={(event) => dragOver(event, row)}
+        ondragleave={() => {
+          if (dropKey === row.key) dropKey = null;
+        }}
+        ondrop={(event) => drop(event, row)}
+        ondragend={endDrag}
         oncontextmenu={(event) => {
           event.preventDefault();
           openMenu(row, event.currentTarget, event);
@@ -720,6 +883,20 @@
   .library :global(li.drop-target > .tree-row) {
     background-color: var(--pv-selected);
     font-weight: 600;
+  }
+
+  /* Where a dragged row would land: in a folder or group, or (a writing) just before another writing. */
+  .library :global(.tree-row.drop-target) {
+    background-color: var(--pv-selected);
+    box-shadow: inset 0 0 0 1px var(--pv-accent);
+  }
+
+  .library :global(.tree-row.drop-before) {
+    box-shadow: inset 0 2px 0 var(--pv-accent);
+  }
+
+  .library.drop-root {
+    box-shadow: inset 0 0 0 1px var(--pv-accent);
   }
 
   /* Inside the row, so it doesn't run into the rows above and below. */
