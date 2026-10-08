@@ -351,12 +351,17 @@ textarea:focus-visible {
   }
 }
 
+/*
+ * Windows with animations turned off: nothing moves. Transitions go entirely (0s, not a token 0.01ms,
+ * which gave every element a transition of every property: a page break's new height arrived a frame
+ * late, and sheets flickered as Pages measured them again and again; owner, 8 October).
+ */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0s !important;
   }
 }

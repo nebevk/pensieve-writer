@@ -470,7 +470,9 @@
       else if (edit.what === "writingFolder") problem = await actions.renameWritingFolder(edit.target, value);
       else if (edit.what === "note") actions.renameNote(edit.target, value);
       else if (edit.what === "project" || edit.what === "libraryFolder") problem = await actions.renameLibraryEntry(edit.target, value);
-      editing = problem ? { ...edit, error: problem } : null;
+      // Only the name this was for: a new writing takes a moment to open, and a name she began typing
+      // meanwhile (a new folder, say) stays open.
+      if (editing === edit) editing = problem ? { ...edit, error: problem } : null;
     } finally {
       committing = false;
     }

@@ -2,6 +2,7 @@
   import { t } from "$lib/ui.svelte";
   import { onDestroy, onMount } from "svelte";
   import { Editor, type JSONContent } from "@tiptap/core";
+  import { Selection } from "@tiptap/pm/state";
   import StarterKit from "@tiptap/starter-kit";
   import TextAlign from "@tiptap/extension-text-align";
   import type { DocumentJson, WritingLanguage } from "$lib/model";
@@ -100,6 +101,7 @@
     ownerId = docId;
     publish = onChange;
     notify = onActivity;
+    const focusAtOpen = focusOnOpen;
     editor = new Editor({
       element: host,
       extensions: [
@@ -127,7 +129,11 @@
         NoteLinks.configure({ brackets: noteLinkBrackets, onOpen: (target) => openNote?.(target) }),
       ],
       content: initialContent as JSONContent,
-      autofocus: focusOnOpen ? "end" : false,
+      // The first focus is the page's own (onCreate), not the editor's: see takeKeyboard.
+      autofocus: false,
+      onCreate: ({ editor: current }) => {
+        if (focusAtOpen) requestAnimationFrame(() => takeKeyboard(current));
+      },
       editorProps: {
         attributes: {
           spellcheck: "true",
@@ -159,6 +165,20 @@
     });
     onEditor(editor);
   });
+
+  /**
+   * The keyboard at the end of the page, a frame after it opens, decided then: not if it is in the page
+   * already (it opened at a spot), nor while she types somewhere else (a name in the library, the find
+   * box). The editor's own first focus came a frame after it decided, and took the keyboard from a
+   * name begun meanwhile: the field closed, and the name went into the page (8 October).
+   */
+  function takeKeyboard(current: Editor) {
+    if (current.isDestroyed || current.view.hasFocus()) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active !== document.body && (active.matches("input, textarea, select") || active.isContentEditable)) return;
+    current.view.dispatch(current.state.tr.setSelection(Selection.atEnd(current.state.doc)).scrollIntoView());
+    current.view.focus();
+  }
 
   onDestroy(() => {
     if (countTimer) clearTimeout(countTimer);
@@ -269,9 +289,11 @@
   }
 
   /* Where a sheet ends: the rest of its text area, its bottom margin, the desk, the next one's top margin. */
+  /* Its height is measured the moment it is set, so it never eases into it. */
   .editor-host :global(.page-gap) {
     display: block;
     height: 0;
+    transition: none !important;
   }
 
   /* Out of the way while the text is measured as it lies without breaks (see pagination.ts). */

@@ -222,6 +222,14 @@ class Paginator {
     else if (Math.abs(this.view.dom.getBoundingClientRect().height - this.height) > 2) this.soon("height");
   }
 
+  /** For the Console, should Pages misbehave again: the breaks on the page, and the ones this pass knows. */
+  private describe(): string {
+    const onPage = [...this.view.dom.querySelectorAll<HTMLElement>(".page-gap")];
+    const known = key.getState(this.view.state)?.breaks ?? [];
+    const tall = onPage.reduce((sum, gap) => sum + gap.getBoundingClientRect().height, 0);
+    return `breaks on the page ${onPage.length} (hidden ${onPage.filter((gap) => gap.classList.contains("measuring")).length}, ${Math.round(tall)} px), known ${known.length} (on the page ${known.filter((at) => at.gap.isConnected).length})`;
+  }
+
   // Every pass, so the page can line up what sits beside the text (the comment cards) again.
   private report(count: number) {
     this.sheets = count;
@@ -252,7 +260,7 @@ class Paginator {
     if (COUNTS.includes(reason)) this.restless = 0;
     else if (++this.restless > RESTLESS) {
       if (import.meta.env.DEV && this.restless === RESTLESS + 1) {
-        console.info("[Pages] The text keeps changing size by itself; the breaks stay as they are until the next edit.", { width: view.dom.clientWidth, height: view.dom.getBoundingClientRect().height, was: this.height });
+        console.info(`[Pages] The text keeps changing size by itself (${this.width}×${Math.round(this.height)} → ${view.dom.clientWidth}×${Math.round(view.dom.getBoundingClientRect().height)}); the breaks stay until the next edit. ${this.describe()}`);
       }
       this.settle();
       return;
@@ -291,9 +299,9 @@ class Paginator {
     });
     const before = { width: this.width, height: this.height };
     this.settle();
-    // While Pages is being looked into: passes that come hard on each other's heels say why they came.
+    // Should Pages misbehave again: passes that come hard on each other's heels say why they came.
     if (import.meta.env.DEV && began - this.lastPass < 1000) {
-      console.info(`[Pages] pass (${reason})`, { ms: Math.round(performance.now() - began), moved, sheets: breaks.length + 1, before, after: { width: this.width, height: this.height } });
+      console.info(`[Pages] pass (${reason}): ${Math.round(performance.now() - began)} ms, ${moved ? "breaks moved" : "same breaks"}, ${breaks.length + 1} sheets, text ${before.width}×${Math.round(before.height)} → ${this.width}×${Math.round(this.height)}, breaks add ${Math.round(pushed)} px; ${this.describe()}`);
     }
     this.lastPass = performance.now();
     this.report(breaks.length + 1);

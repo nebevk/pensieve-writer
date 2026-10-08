@@ -3002,8 +3002,7 @@
                     const opened = pageSpot;
                     if (next && opened?.id === chapter.id) {
                       pageSpot = null;
-                      // The editor's own first focus comes a moment later and would put the keyboard at the end.
-                      next.setOptions({ autofocus: false });
+                      // The keyboard goes to the spot now; the page's first focus, a frame later, finds it there and leaves it.
                       placeSpot(next, opened.spot);
                     }
                   }}
