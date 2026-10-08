@@ -147,6 +147,7 @@ export const Pagination = Extension.create<{ onSheets: (count: number) => void }
 
 class Paginator {
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private frame = 0;
   private observer: ResizeObserver;
   private width = 0;
   // The text's height without the breaks, and how much the breaks add, as set (not read back, which
@@ -174,6 +175,7 @@ class Paginator {
 
   destroy() {
     if (this.timer) clearTimeout(this.timer);
+    if (this.frame) cancelAnimationFrame(this.frame);
     this.observer.disconnect();
     document.fonts?.removeEventListener("loadingdone", this.fontsLoaded);
   }
@@ -182,6 +184,18 @@ class Paginator {
 
   private soon = (delay = PAUSE) => {
     if (this.timer) clearTimeout(this.timer);
+    if (this.frame) cancelAnimationFrame(this.frame);
+    this.timer = null;
+    this.frame = 0;
+    // Right away (a chapter opening, a new sheet size) means before the next paint, so the text is never
+    // seen without its breaks; otherwise once typing pauses.
+    if (delay === 0) {
+      this.frame = requestAnimationFrame(() => {
+        this.frame = 0;
+        this.paginate();
+      });
+      return;
+    }
     this.timer = setTimeout(() => {
       this.timer = null;
       this.paginate();

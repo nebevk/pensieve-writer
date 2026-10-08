@@ -1,7 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import type { Editor } from "@tiptap/core";
-  import type { ManuscriptFont } from "$lib/prefs";
+  import type { ManuscriptFont, PaperMode, PaperSize } from "$lib/prefs";
   import { isLeadLine } from "$lib/chapters/page";
   import { chooseImageFile } from "$lib/storage/backup";
   import { imageType, shrinkImage } from "./imageSize";
@@ -35,6 +35,10 @@
     onNotice,
     expanded = true,
     onExpanded = () => undefined,
+    paper = "continuous",
+    paperSize = "a4",
+    onPaper = () => undefined,
+    onZen = () => undefined,
   }: {
     editor: Editor | null;
     revision: number;
@@ -68,7 +72,18 @@
     /** Whether the full toolbar is open, and how to open or close it. */
     expanded?: boolean;
     onExpanded?: (open: boolean) => void;
+    /** The page in Write (Settings → Paper), chosen here too. */
+    paper?: PaperMode;
+    paperSize?: PaperSize;
+    onPaper?: (paper: PaperMode, size: PaperSize) => void;
+    onZen?: () => void;
   } = $props();
+
+  /** One list for the page: continuous, or sheets of A4 or A5. */
+  function pickPaper(value: string) {
+    if (value === "a4" || value === "a5") onPaper("pages", value);
+    else onPaper("continuous", paperSize);
+  }
 
   // Word's usual sizes for running text, in points, and the one set in Settings if it is between them.
   const textSizes = $derived([...new Set([10, 11, 12, 13, 14, 16, 18, manuscriptPt])].sort((a, b) => a - b));
@@ -318,43 +333,7 @@
     {/each}
     <span class="rule"></span>
     {@render toolButton(blocks[0])}
-    <div class="align-wrap" bind:this={alignWrap}>
-      <button
-        type="button"
-        class="tool"
-        title={t("alignment")}
-        aria-label={t("alignment")}
-        aria-haspopup="menu"
-        aria-expanded={alignOpen}
-        disabled={!editor}
-        onmousedown={(event) => event.preventDefault()}
-        onclick={() => (alignOpen = !alignOpen)}
-      >
-        <Icon name={blocks.slice(2, 6).find((tool) => tool.pressed)?.icon ?? "alignLeft"} />
-      </button>
-      {#if alignOpen}
-        <div class="align-menu" role="menu">
-          {#each blocks.slice(2, 6) as tool (tool.icon)}
-            <button
-              type="button"
-              class="tool"
-              class:active={tool.pressed}
-              role="menuitemradio"
-              aria-checked={tool.pressed}
-              title={tool.title}
-              aria-label={tool.title}
-              onmousedown={(event) => event.preventDefault()}
-              onclick={() => {
-                tool.run();
-                alignOpen = false;
-              }}
-            >
-              <Icon name={tool.icon ?? "alignLeft"} />
-            </button>
-          {/each}
-        </div>
-      {/if}
-    </div>
+    {@render alignMenu()}
     <button type="button" class="tool serif" title={t("blockQuote")} aria-label={t("blockQuote")} onmousedown={(event) => event.preventDefault()} onclick={quote}>“</button>
     <button type="button" class="tool scene" title={t("sceneBreak")} aria-label={t("sceneBreak")} onmousedown={(event) => event.preventDefault()} onclick={sceneBreak}>* *</button>
     <span class="rule"></span>
@@ -380,6 +359,13 @@
     <button type="button" class="tool" title={`${t("find")} (Ctrl+F)`} aria-label={t("find")} onmousedown={(event) => event.preventDefault()} onclick={onFind}>
       <Icon name="search" />
     </button>
+    <span class="rule"></span>
+    <select class="paper-pick" aria-label={t("paper")} title={t("paper")} value={paper === "pages" ? paperSize : "continuous"} onchange={(event) => pickPaper(event.currentTarget.value)}>
+      <option value="continuous">{t("paperContinuous")}</option>
+      <option value="a4">{t("pagesA4")}</option>
+      <option value="a5">{t("pagesA5")}</option>
+    </select>
+    <button type="button" class="tool" title={t("zen")} aria-label={t("zen")} onclick={onZen}><Icon name="moon" /></button>
   {:else}
     {@render group(t("groupHistory"), history)}
     <section class="group">
@@ -421,9 +407,14 @@
     </section>
     <section class="group">
       <div class="tools">
-        {#each blocks as tool (tool.title)}
-          {@render toolButton(tool)}
-        {/each}
+        {@render toolButton(blocks[0])}
+        {@render toolButton(blocks[1])}
+        <span class="aligns">
+          {#each blocks.slice(2, 6) as tool (tool.title)}
+            {@render toolButton(tool)}
+          {/each}
+        </span>
+        <span class="align-fold">{@render alignMenu()}</span>
         <button type="button" class="tool" title={t("decreaseIndent")} aria-label={t("decreaseIndent")} onmousedown={(event) => event.preventDefault()} onclick={() => shiftIndent(-1)}><Icon name="outdent" /></button>
         <button type="button" class="tool" title={t("increaseIndent")} aria-label={t("increaseIndent")} onmousedown={(event) => event.preventDefault()} onclick={() => shiftIndent(1)}><Icon name="indent" /></button>
       </div>
@@ -486,16 +477,28 @@
       </div>
       <p>Pensieve</p>
     </section>
-    <section class="group last">
+    <section class="group">
       <div class="tools">
         <button type="button" class="tool" title={`${t("find")} (Ctrl+F)`} aria-label={t("find")} onmousedown={(event) => event.preventDefault()} onclick={onFind}><Icon name="search" /></button>
         <button type="button" class="tool" title={t("replace")} aria-label={t("replace")} onmousedown={(event) => event.preventDefault()} onclick={onReplace}><Icon name="replace" /></button>
       </div>
       <p>{t("groupFind")}</p>
     </section>
+    <!-- The page: continuous or on sheets, and Zen. -->
+    <section class="group last">
+      <div class="tools picks">
+        <select class="paper-pick" aria-label={t("paper")} title={t("paper")} value={paper === "pages" ? paperSize : "continuous"} onchange={(event) => pickPaper(event.currentTarget.value)}>
+          <option value="continuous">{t("paperContinuous")}</option>
+          <option value="a4">{t("pagesA4")}</option>
+          <option value="a5">{t("pagesA5")}</option>
+        </select>
+        <button type="button" class="tool" title={t("zen")} aria-label={t("zen")} onclick={onZen}><Icon name="moon" /></button>
+      </div>
+      <p>{t("groupView")}</p>
+    </section>
     <span class="spacer"></span>
-    <button type="button" class="more fewer" onclick={() => onExpanded(false)}>
-      {t("fewerTools")}
+    <button type="button" class="more fewer" title={t("fewerTools")} aria-label={t("fewerTools")} onclick={() => onExpanded(false)}>
+      <span class="more-label">{t("fewerTools")}</span>
       <Icon name="chevronUp" />
     </button>
   {/if}
@@ -529,6 +532,46 @@
       <Icon name={tool.icon} />
     {/if}
   </button>
+{/snippet}
+
+{#snippet alignMenu()}
+  <div class="align-wrap" bind:this={alignWrap}>
+    <button
+      type="button"
+      class="tool"
+      title={t("alignment")}
+      aria-label={t("alignment")}
+      aria-haspopup="menu"
+      aria-expanded={alignOpen}
+      disabled={!editor}
+      onmousedown={(event) => event.preventDefault()}
+      onclick={() => (alignOpen = !alignOpen)}
+    >
+      <Icon name={blocks.slice(2, 6).find((tool) => tool.pressed)?.icon ?? "alignLeft"} />
+    </button>
+    {#if alignOpen}
+      <div class="align-menu" role="menu">
+        {#each blocks.slice(2, 6) as tool (tool.icon)}
+          <button
+            type="button"
+            class="tool"
+            class:active={tool.pressed}
+            role="menuitemradio"
+            aria-checked={tool.pressed}
+            title={tool.title}
+            aria-label={tool.title}
+            onmousedown={(event) => event.preventDefault()}
+            onclick={() => {
+              tool.run();
+              alignOpen = false;
+            }}
+          >
+            <Icon name={tool.icon ?? "alignLeft"} />
+          </button>
+        {/each}
+      </div>
+    {/if}
+  </div>
 {/snippet}
 
 {#snippet group(label: string, tools: Tool[])}
@@ -892,5 +935,48 @@
     align-self: center;
     margin-bottom: 14px;
     background: var(--pv-pressed);
+  }
+
+  .aligns {
+    display: contents;
+  }
+
+  .align-fold {
+    display: none;
+  }
+
+  /* The page in the toolbar: as wide as its longest choice. */
+  .paper-pick {
+    padding: 0 4px 0 8px;
+  }
+
+  /*
+   * On a laptop's screen (Eva's is 1366 or 1536 px wide) the full toolbar folds as Word's ribbon does,
+   * so it stays one row: the alignments into one menu and Fewer into its arrow, then a little closer.
+   */
+  @media (max-width: 1700px) {
+    .aligns,
+    .more-label {
+      display: none;
+    }
+
+    .align-fold {
+      display: flex;
+    }
+  }
+
+  @media (max-width: 1450px) {
+    .ribbon.expanded {
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+
+    .group {
+      padding: 0 3px;
+    }
+
+    .expanded .tool:not(.scene, .note-link, .wide) {
+      width: 26px;
+    }
   }
 </style>

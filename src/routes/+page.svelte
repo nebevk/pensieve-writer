@@ -2758,6 +2758,10 @@
     editor={textEditor}
     expanded={prefs.toolsExpanded}
     onExpanded={(open) => (prefs = { ...prefs, toolsExpanded: open })}
+    paper={prefs.paper}
+    paperSize={prefs.paperSize}
+    onPaper={(paper, size) => (prefs = { ...prefs, paper, paperSize: size })}
+    onZen={() => void setZen(true)}
     revision={editorRevision}
     chaptersOpen={!collapsed}
     notesOpen={prefs.panel === "notes"}
