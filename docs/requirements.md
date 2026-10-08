@@ -99,7 +99,7 @@ Priority key (MoSCoW): **M** = Must (v1), **S** = Should (v1 if time allows), **
 |----|-------------|----------|
 | VW-1 | **Writing view:** editor with optional sidebar and notes panel. The full toolbar is open until she closes it (8 October). Settings → Paper chooses one continuous page or sheets of A4 or A5 (owner, 8 October): on sheets the text flows from one to the next where it would print, with the desk between them and each one numbered; Zen stays one continuous page, and the Word file takes the same paper. The toolbar's View group ("Pogled") chooses the paper too and opens Zen, in the full toolbar and the short one; on a laptop's screen the full toolbar folds its alignments into one menu, as Word's ribbon does, so it stays one row | M |
 | VW-2 | **Book view:** read-only paginated preview with configurable page size (e.g. 5x8 in, A5), facing pages. Since 8 October it is set as a printed book (owner): page 1 on the right, the narrower margin at the spine and the deeper one at the foot, justified text with first-line indents flowing from page to page with no single line left alone at a page's foot or head, each chapter opening a new page, running heads (the book's title on the left, the chapter's on the right) and page numbers | S |
-| VW-3 | **Outline view:** chapters as cards with synopsis and status (the status hidden for now, see CH-6) | S |
+| VW-3 | **Outline view:** chapters as cards with synopsis and status (the status hidden for now, see CH-6). Since 8 October (owner): cards or a list (remembered), each with its number, title, words toward its goal, synopsis, part and goal; chapters dragged into order or moved with the arrow keys on their handle, renamed with a double click, opened in Write; a new chapter named where it appears; parts as headings | S |
 | VW-4 | **Dashboard:** project cards, progress, todo summary, recently edited | M |
 | VW-5 | Editable book view (type directly in paginated layout) | C |
 
@@ -144,6 +144,7 @@ Coziness is the top product priority. All effects must stay within the performan
 | AT-6 | "Gentle mode" toggle that disables particles and heavy effects; honors the Windows "reduce animations" setting. It leaves the chosen ambience playing (7 October): Silence is how the sound goes off | M |
 | AT-7 | Optional Harry Potter-flavored labels for features (e.g. Zen mode = "Nox", Notes = "Pensieve" panel, Todos = "Remembrall"); off by default, switchable in settings | C |
 | AT-8 | A pomodoro in the floating bar (owner, 8 October): a click starts the writing time with a clock's tick-tock, then a soft chime, a word on the page and a break, and a chime when the break ends. While it runs, icons pause or resume it, start the phase again and stop it, and Zen shows its time. Its lengths (25 and 5 minutes to start with) are in Settings → Writing & goals. The floating bar no longer shows the words in the book, the language or Saved (the title bar says when all is saved; a problem saving still shows in the bar) | S |
+| AT-9 | Keystroke sounds as she types on the page (owner, 8 October): off to start with; Settings → Ambience chooses a typewriter (keys click, space thumps, Enter rings the bell) or a soft keyboard, with its own volume at up to half. Shortcuts and arrows stay quiet, and a key is no slower with them on | C |
 
 ### 4.8 Settings and Polish
 
