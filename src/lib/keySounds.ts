@@ -1,87 +1,104 @@
 /**
- * Keys that sound as they are typed on the page (owner, 8 October): an old typewriter, or a soft
- * keyboard; off to start with (Settings → Sound). The sounds are made once, as a few tiny clips, when
- * the first key wants one; after that a key only starts a clip, a few microseconds of work, so typing
- * never waits for it.
+ * Keys that sound as they are typed on the page (owner, 8 October): a typewriter, a mechanical keyboard
+ * or a soft one, from recordings the owner chose (static/keys/CREDITS.txt); off to start with (Settings →
+ * Ambience). Each style is one small file of its keys back to back, with clips.json saying where each
+ * key's sound is, so every key on a keyboard sounds like itself. It is loaded once, as soon as a sound is
+ * chosen; after that a key only starts a slice of it, a few microseconds of work, so typing never waits.
  */
-export type KeySoundStyle = "off" | "typewriter" | "soft";
+export type KeySoundStyle = "off" | "typewriter" | "mechanical" | "soft";
 
-type Clips = { keys: AudioBuffer[]; space: AudioBuffer; enter: AudioBuffer };
+type Slice = [start: number, length: number];
+type Listing = { sprite: string; keys: Record<string, Slice>; space: Slice; enter: Slice; backspace: Slice };
+type Sounds = { buffer: AudioBuffer; listing: Listing; letters: Slice[] };
 
 // The slider shows 0 to 100; its 100 plays at half, as the ambience does.
 const CEILING = 0.5;
 
+// A key's place on the keyboard, as the recordings' maps number them (the PC's scan codes), from the
+// browser's name for that place: the same on a Slovenian keyboard, where č, š and ž sit on ;, [ and \.
+const SCAN: Record<string, number> = {
+  Backquote: 41, Minus: 12, Equal: 13, Tab: 15, BracketLeft: 26, BracketRight: 27, Semicolon: 39, Quote: 40,
+  Backslash: 43, IntlBackslash: 86, Comma: 51, Period: 52, Slash: 53,
+};
+"1234567890".split("").forEach((digit, index) => (SCAN[`Digit${digit}`] = index + 2));
+"QWERTYUIOP".split("").forEach((letter, index) => (SCAN[`Key${letter}`] = index + 16));
+"ASDFGHJKL".split("").forEach((letter, index) => (SCAN[`Key${letter}`] = index + 30));
+"ZXCVBNM".split("").forEach((letter, index) => (SCAN[`Key${letter}`] = index + 44));
+
 let context: AudioContext | null = null;
 let output: GainNode | null = null;
-let made: { style: Exclude<KeySoundStyle, "off">; clips: Clips } | null = null;
+let ready: { style: Exclude<KeySoundStyle, "off">; sounds: Sounds | null } | null = null;
+let loading: { style: Exclude<KeySoundStyle, "off">; done: Promise<void> } | null = null;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 let turn = 0;
 
-/** A clip of `seconds`, each sample from `at(time, index)`. */
-function clip(audio: AudioContext, seconds: number, at: (time: number) => number): AudioBuffer {
-  const buffer = audio.createBuffer(1, Math.ceil(audio.sampleRate * seconds), audio.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let index = 0; index < data.length; index += 1) data[index] = at(index / audio.sampleRate);
-  return buffer;
-}
-
-/** White noise smoothed toward its last value: lower `keep` keeps more of the high, clicky part. */
-function noise(keep: number) {
-  let last = 0;
-  return () => {
-    last = last * keep + (Math.random() * 2 - 1) * (1 - keep);
-    return last;
-  };
-}
-
-function make(audio: AudioContext, style: Exclude<KeySoundStyle, "off">): Clips {
-  if (style === "typewriter") {
-    // A sharp strike over a short wooden thump; a few of them, so no two keys sound quite alike.
-    const key = (pitch: number) => {
-      const hiss = noise(0.35);
-      return clip(audio, 0.07, (time) => hiss() * Math.exp(-time * 160) * 0.9 + Math.sin(2 * Math.PI * pitch * time) * Math.exp(-time * 55) * 0.45);
-    };
-    const thud = noise(0.8);
-    return {
-      keys: [key(170), key(190), key(150), key(205)],
-      space: clip(audio, 0.11, (time) => thud() * Math.exp(-time * 70) * 1.2 + Math.sin(2 * Math.PI * 110 * time) * Math.exp(-time * 40) * 0.5),
-      // The carriage's bell.
-      enter: clip(audio, 1.1, (time) => (Math.sin(2 * Math.PI * 2093 * time) * 0.5 + Math.sin(2 * Math.PI * 4186 * time) * 0.2) * Math.exp(-time * 4.5) * Math.min(1, time * 400)),
-    };
-  }
-  // A soft keyboard: muted ticks.
-  const key = (keep: number) => {
-    const tap = noise(keep);
-    return clip(audio, 0.04, (time) => tap() * Math.exp(-time * 220) * 1.6);
-  };
-  return { keys: [key(0.75), key(0.78), key(0.72)], space: key(0.86), enter: key(0.84) };
-}
-
-/** The sound for a key pressed on the page; nothing for the keys that don't write (arrows, Ctrl+…). */
-export function keySound(event: KeyboardEvent, style: KeySoundStyle, volume: number) {
-  if (style === "off" || event.repeat || event.ctrlKey || event.metaKey || (event.altKey && !event.getModifierState("AltGraph"))) return;
-  const kind = event.key === "Enter" ? "enter" : event.key === " " ? "space" : event.key.length === 1 || event.key === "Backspace" || event.key === "Delete" || event.key === "Tab" ? "key" : null;
-  if (!kind) return;
+function audio(): AudioContext {
+  // Made before her first key, it waits (the window's autoplay rule) and sounds from that key on.
   context ??= new AudioContext({ latencyHint: "interactive" });
   if (!output) {
     output = context.createGain();
     output.connect(context.destination);
   }
-  if (context.state === "suspended") void context.resume().catch(() => undefined);
-  if (made?.style !== style) made = { style, clips: make(context, style) };
-  output.gain.value = Math.min(1, Math.max(0, volume)) * CEILING;
-  const clips = made.clips;
-  turn = (turn + 1) % clips.keys.length;
-  const source = context.createBufferSource();
-  source.buffer = kind === "key" ? clips.keys[turn] : clips[kind];
-  // A little play in the pitch, as no two strikes are alike.
-  if (kind === "key") source.playbackRate.value = 0.94 + Math.random() * 0.12;
-  source.connect(output);
-  source.start();
+  return context;
+}
+
+async function load(target: AudioContext, style: Exclude<KeySoundStyle, "off">): Promise<Sounds | null> {
+  try {
+    const listing = (await (await fetch(`/keys/${style}/clips.json`)).json()) as Listing;
+    const response = await fetch(`/keys/${style}/${listing.sprite}`);
+    if (!response.ok) return null;
+    const buffer = await target.decodeAudioData(await response.arrayBuffer());
+    return { buffer, listing, letters: Object.values(listing.keys) };
+  } catch {
+    return null;
+  }
+}
+
+/** Gets a style's sounds ready, so the first key already sounds. */
+export function prepareKeySounds(style: KeySoundStyle): Promise<void> {
+  if (style === "off" || ready?.style === style) return Promise.resolve();
+  if (loading?.style === style) return loading.done;
+  const target = audio();
+  const done = load(target, style).then((sounds) => {
+    ready = { style, sounds };
+  });
+  loading = { style, done };
+  return done;
+}
+
+/** The sound for a key pressed on the page; nothing for the keys that don't write (arrows, Ctrl+…). */
+export function keySound(event: KeyboardEvent, style: KeySoundStyle, volume: number) {
+  if (style === "off" || event.repeat || event.ctrlKey || event.metaKey || (event.altKey && !event.getModifierState("AltGraph"))) return;
+  const kind = event.key === "Enter" ? "enter" : event.key === " " ? "space" : event.key === "Backspace" || event.key === "Delete" ? "backspace" : event.key.length === 1 || event.key === "Tab" ? "key" : null;
+  if (!kind) return;
+  const target = audio();
+  if (target.state === "suspended") void target.resume().catch(() => undefined);
+  // Not ready yet (the first key after choosing): this one stays quiet, the next ones sound.
+  if (ready?.style !== style) {
+    void prepareKeySounds(style);
+    return;
+  }
+  const sounds = ready.sounds;
+  if (!sounds) return;
+  const { listing } = sounds;
+  let slice: Slice;
+  if (kind !== "key") slice = listing[kind];
+  else {
+    // The key's own sound, or (the typewriter, or a key the keyboard didn't record) one of its letters.
+    const own = listing.keys[String(SCAN[event.code])];
+    turn = (turn + 1) % sounds.letters.length;
+    slice = own ?? listing.keys["*"] ?? sounds.letters[turn];
+  }
+  if (output) output.gain.value = Math.min(1, Math.max(0, volume)) * CEILING;
+  const source = target.createBufferSource();
+  source.buffer = sounds.buffer;
+  // A typewriter has one key sound; a touch of play in its pitch keeps a run of them from sounding alike.
+  if (kind === "key" && sounds.letters.length === 1) source.playbackRate.value = 0.96 + Math.random() * 0.08;
+  source.connect(output ?? target.destination);
+  source.start(0, slice[0], slice[1]);
   // The audio device is let go a little after the typing stops.
   if (idleTimer) clearTimeout(idleTimer);
-  const audio = context;
   idleTimer = setTimeout(() => {
-    if (audio.state === "running") void audio.suspend();
+    if (target.state === "running") void target.suspend();
   }, 4000);
 }

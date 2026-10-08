@@ -92,6 +92,7 @@ describe("settings", () => {
   it("keep the keys quiet unless she chose a sound for them", () => {
     expect(loadSaved(null)).toMatchObject({ keySounds: "off", keySoundVolume: 0.5 });
     expect(loadSaved({ keySounds: "typewriter", keySoundVolume: 0.8 })).toMatchObject({ keySounds: "typewriter", keySoundVolume: 0.8 });
+    expect(loadSaved({ keySounds: "mechanical" }).keySounds).toBe("mechanical");
     expect(loadSaved({ keySounds: "piano", keySoundVolume: 7 })).toMatchObject({ keySounds: "off", keySoundVolume: 1 });
   });
 

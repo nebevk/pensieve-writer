@@ -14,7 +14,8 @@
   import { ChapterPage, bodyText } from "./chapterPage";
   import { Pagination, setSheet, type SheetGeometry } from "./pagination";
   import { UndoSteps } from "./undoSteps";
-  import { keySound, type KeySoundStyle } from "$lib/keySounds";
+  import { SmoothTyping, refreshSmoothTyping } from "./smoothTyping";
+  import { keySound, prepareKeySounds, type KeySoundStyle } from "$lib/keySounds";
 
   let {
     docId,
@@ -35,6 +36,7 @@
     onSheets,
     keySounds = "off",
     keyVolume = 0.5,
+    smoothTyping = false,
   }: {
     /** The chapter or note this editor opened. Every change is handed back with it. */
     docId?: string;
@@ -63,6 +65,8 @@
     /** Keys that sound as she types (Settings → Sound), and how loud. */
     keySounds?: KeySoundStyle;
     keyVolume?: number;
+    /** The caret glides and new letters ink in (Settings → Appearance). */
+    smoothTyping?: boolean;
   } = $props();
 
   let typewriterOn = false;
@@ -81,6 +85,7 @@
   let countSheets: ((count: number) => void) | undefined;
   let keysSound: KeySoundStyle = "off";
   let keysVolume = 0.5;
+  let smoothOn = false;
   // The sheet the editor was last told about, so a new one goes in only when it differs.
   let sheetApplied = "null";
 
@@ -96,7 +101,16 @@
     countSheets = onSheets;
     keysSound = keySounds;
     keysVolume = keyVolume;
+    // Ready before the first key, so that one sounds too.
+    if (keySounds !== "off") void prepareKeySounds(keySounds);
     if (editor && !editor.isDestroyed) editor.view.dom.setAttribute("lang", lang);
+  });
+
+  $effect(() => {
+    const on = page && smoothTyping;
+    if (on === smoothOn) return;
+    smoothOn = on;
+    if (editor && !editor.isDestroyed) refreshSmoothTyping(editor.view);
   });
 
   $effect(() => {
@@ -134,6 +148,7 @@
           ? [
               ChapterPage.configure({ titleHint: t("chapterTitleHint"), partHint: t("partTitleHint") }),
               Pagination.configure({ onSheets: (count) => countSheets?.(count) }),
+              SmoothTyping.configure({ isOn: () => smoothOn }),
             ]
           : []),
         NoteLinks.configure({ brackets: noteLinkBrackets, onOpen: (target) => openNote?.(target) }),
@@ -208,7 +223,65 @@
 
 <style>
   .editor-host {
+    position: relative;
     min-height: 8rem;
+  }
+
+  /*
+   * Smooth typing (smoothTyping.ts): the page's own caret gives way to one that glides, and a letter just
+   * typed inks in. She chose it in Settings, so it moves even where Windows' animations are off; Gentle
+   * mode turns it off.
+   */
+  .editor-host :global(.ProseMirror.ink-caret-on) {
+    caret-color: transparent;
+  }
+
+  .editor-host :global(.ink-caret) {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 2px;
+    margin-left: -1px;
+    border-radius: 1px;
+    background: var(--pv-ink-accent);
+    pointer-events: none;
+    opacity: 0;
+    will-change: transform;
+  }
+
+  .editor-host :global(.ink-caret.shown) {
+    opacity: 1;
+  }
+
+  .editor-host :global(.ink-caret.gliding) {
+    transition: transform 75ms cubic-bezier(0.2, 0.7, 0.2, 1) !important;
+  }
+
+  .editor-host :global(.ink-caret.shown.blinking) {
+    animation: ink-blink 1.1s steps(1, end) infinite !important;
+  }
+
+  @keyframes ink-blink {
+    50% {
+      opacity: 0;
+    }
+  }
+
+  /* A veil of paper over letters just typed, faded away by smoothTyping.ts, so they seem to ink in. */
+  .editor-host :global(.ink-veil) {
+    position: absolute;
+    top: 0;
+    left: 0;
+    background: var(--pv-paper);
+    pointer-events: none;
+    opacity: 0;
+  }
+
+  @media print {
+    .editor-host :global(.ink-caret),
+    .editor-host :global(.ink-veil) {
+      display: none;
+    }
   }
 
   .editor-host :global(.ProseMirror) {

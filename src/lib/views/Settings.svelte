@@ -160,6 +160,7 @@
   const keyStyles: { id: KeySoundStyle; key: UiKey }[] = [
     { id: "off", key: "keySoundsOff" },
     { id: "typewriter", key: "keySoundsTypewriter" },
+    { id: "mechanical", key: "keySoundsMechanical" },
     { id: "soft", key: "keySoundsSoft" },
   ];
 
@@ -364,9 +365,15 @@
                 <span></span>
               </button>
             </div>
-            <div class="row last">
+            <div class="row">
               <span>{t("typewriterScrolling")} <em>· {t("typewriterScrollingNote")}</em></span>
               <button type="button" class="toggle" class:on={prefs.typewriter} role="switch" aria-checked={prefs.typewriter} aria-label={t("typewriterScrolling")} onclick={() => onChange({ typewriter: !prefs.typewriter })}>
+                <span></span>
+              </button>
+            </div>
+            <div class="row last">
+              <span>{t("smoothTyping")} <em>· {t("smoothTypingNote")}</em></span>
+              <button type="button" class="toggle" class:on={prefs.smoothTyping} role="switch" aria-checked={prefs.smoothTyping} aria-label={t("smoothTyping")} onclick={() => onChange({ smoothTyping: !prefs.smoothTyping })}>
                 <span></span>
               </button>
             </div>

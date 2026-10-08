@@ -1,0 +1,22 @@
+{
+ "pack": "Lincoln Typewriter (Mechvibes custom-sound-pack-1203000000091)",
+ "sprite": "keys.ogg",
+ "keys": {
+  "*": [
+   0.05,
+   0.3861
+  ]
+ },
+ "space": [
+  0.4861,
+  0.4274
+ ],
+ "enter": [
+  0.9635,
+  1.275
+ ],
+ "backspace": [
+  2.2885,
+  0.2813
+ ]
+}

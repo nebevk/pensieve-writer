@@ -1,0 +1,10 @@
+Keystroke sounds in Pensieve
+
+Chosen by the owner on 8 October 2026 from Mechvibes sound packs (https://mechvibes.com), for Pensieve's
+own, private use. Only the keys Pensieve plays were cut from each pack, evened out in loudness, and saved
+back to back as one Ogg Opus file per style; clips.json says where each key's sound is.
+
+typewriter/   Lincoln Typewriter (custom-sound-pack-1203000000091): keystroke, space, backspace, and the
+              carriage return with its bell for Enter.
+mechanical/   CherryMX Brown - ABS keycaps (sound-pack-1200000000005), a sound for each key.
+soft/         EG Oreo (sound-pack-1200000000010), a sound for each key.

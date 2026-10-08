@@ -60,6 +60,8 @@ export type Prefs = {
   grain: boolean;
   runningHead: boolean;
   typewriter: boolean;
+  /** The caret glides and new letters ink in (not in Gentle mode). */
+  smoothTyping: boolean;
   /** The list beside the page in Write: the chapter's to-dos, the notes it mentions, the word goals, or none. */
   panel: "" | "todos" | "notes" | "goals";
   sidebarView: SidebarView;
@@ -151,6 +153,7 @@ export const defaultPrefs = (): Prefs => ({
   grain: true,
   runningHead: true,
   typewriter: false,
+  smoothTyping: true,
   panel: "",
   sidebarView: "chapters",
   outlineLayout: "grid",
@@ -200,7 +203,8 @@ function fromStored(raw: string): Prefs {
     ambience: "off",
     toolsExpanded: rest.toolsExpanded !== false,
     tips: rest.tips !== false,
-    keySounds: rest.keySounds === "typewriter" || rest.keySounds === "soft" ? rest.keySounds : "off",
+    smoothTyping: rest.smoothTyping !== false,
+    keySounds: rest.keySounds === "typewriter" || rest.keySounds === "mechanical" || rest.keySounds === "soft" ? rest.keySounds : "off",
     keySoundVolume: typeof rest.keySoundVolume === "number" && Number.isFinite(rest.keySoundVolume) ? Math.min(1, Math.max(0, rest.keySoundVolume)) : 0.5,
     pomodoroFocus: minutes(rest.pomodoroFocus, 25, 5, 90),
     pomodoroBreak: minutes(rest.pomodoroBreak, 5, 1, 30),
