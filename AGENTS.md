@@ -21,6 +21,7 @@ Full requirements: `docs/requirements.md` (read it before big features; requirem
 - `npm run tauri dev` : run the desktop app in development
 - `npm run check` : type-check (svelte-check / tsc)
 - `npm run build` / `npm run tauri build` : production build / installer
+- `npm run release -- 0.2.0 --notes "…"` : a signed release for GitHub Releases, which installed copies update from (see `docs/releasing.md`; needs the key in `%USERPROFILE%\.tauri`)
 
 ## Working style
 - Work in small steps; after each step the app must still run (`npm run tauri dev`).

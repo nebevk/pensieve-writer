@@ -1,6 +1,6 @@
 # Suggested improvements
 
-Ideas for making Pensieve safer, faster and nicer to write in, beyond matching the design. Written 2 October 2026; rechecked 5 October against commit `22d85eb` and updated several times that day, then with IMP-50 to IMP-55, found while building the design's rounds 5 and 6, and on 6 October with IMP-56 to IMP-81, and on 7 October with IMP-82 to IMP-87.
+Ideas for making Pensieve safer, faster and nicer to write in, beyond matching the design. Written 2 October 2026; rechecked 5 October against commit `22d85eb` and updated several times that day, then with IMP-50 to IMP-55, found while building the design's rounds 5 and 6, and on 6 October with IMP-56 to IMP-81, and on 7 October with IMP-82 to IMP-87, and on 8 October with IMP-88.
 
 - Design gaps live in `docs/design-gaps.md`; this list doesn't repeat them.
 - Requirement IDs in brackets point to `docs/requirements.md`.
@@ -10,7 +10,7 @@ Ideas for making Pensieve safer, faster and nicer to write in, beyond matching t
 
 ## Summary
 
-87 suggestions: 79 done, 6 partly done, 2 open. No P1 items are left.
+88 suggestions: 80 done, 6 partly done, 2 open. No P1 items are left.
 
 Every round of changes on 5 October passed the type check (no errors or warnings), the tests (85 then), `cargo check` and a production build. The 6 and 7 October changes passed the type check, the tests (160 now) and a production build. On 7 October Rust gained library.rs (`cargo check` and its test pass). The Word work was also checked in Word 2021: exported books, drop caps at 13, 17 and 24 px in all three fonts, and an edit saved in Word and imported back. Removing a dictionary word was checked against the Windows spell checker itself. The new screens were also clicked through in the built app in a browser, with a test stand-in for the window's database and example books. Nobody has tried the desktop window itself since then, so try these once by hand:
 
@@ -66,6 +66,7 @@ Every round of changes on 5 October passed the type check (no errors or warnings
 50. Settings → Appearance: choose Sunset; the window, the page and Home are warm and golden. Day and night still switches Daylight to Candlelit at 19:00.
 51. Choose Rain on the floating bar, close Pensieve and start it again: the rain begins with your first click. Turn on Gentle mode: the rain plays on; Silence stops it.
 52. Add the long test book and open Home in a narrow window: the Continue card holds its text, the time on one line and both buttons inside it.
+53. After installing a release, publish a newer one (docs/releasing.md) and choose Check for updates in Settings → General: the window bar offers it; click it, and Pensieve saves, installs it and opens again, with everything as it was and the new version in Settings.
 
 ## 1. Never lose the writer's text
 
@@ -90,6 +91,7 @@ Every round of changes on 5 October passed the type check (no errors or warnings
 
 | ID | Suggestion | Why | Status | Pri |
 |---|---|---|---|---|
+| **IMP-88** Updates without a new installer | Asked for on 8 October: Pensieve looks on GitHub Releases for a newer version a little after it starts and every six hours (never while developing), and shows a quiet pill in the window bar, on Home and in Write; Settings → General shows the version and can check at once. One click saves everything with the page closed, downloads the update, and its installer replaces Pensieve and opens it again. Updates are signed with the owner's key and refused otherwise; `npm run release` builds and signs one (docs/releasing.md). Uses Tauri's updater plugin. A copy installed before this needs one more installer by hand | Done | P1 |
 | **IMP-86** Ambience you can hear | The owner couldn't hear any sound (7 October). A sound chosen before Pensieve opened, as last time's is, never started: the window plays sound only after a click or a key (its autoplay rule), the audio waited for leave to play before anything else, and nothing asked again. Now the sound is set up at once and begins with her first click or key; another one chosen later plays as before. Gentle mode used to silence the sound without saying so; it leaves it playing now (AT-6) | Done | P1 |
 | **IMP-87** A Continue card that holds its text | On Home, in Slovenian and with long paragraphs (the long test book), the card's last row ran out of the card: the buttons covered the line under it and "Urejeno pred 10 min" broke in two. The card keeps the design's 250px but grows with its text, the time stays on one line, and the buttons go under it, together, when there's no room beside it | Done | P2 |
 | **IMP-85** A Sunset theme | Asked for on 7 October: the design's Follow sunset only switched Daylight to Candlelit. Sunset is a look of its own now, light and golden (its own preview: a lavender sky going apricot, the sun low beside the page), and the switch is called Day and night. Worth a look on Eva's screen: the colours were chosen for contrast (the coral accent reads at about 5.2:1 on the chrome, a little more than Daylight's), not tried by her yet | Done | P3 |
