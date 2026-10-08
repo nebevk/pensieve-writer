@@ -197,7 +197,7 @@
         const part = chapter.part.trim();
         if (part && part !== lastPart) {
           const key = `part:${outline.id}:${index}:${part}`;
-          groupOpen = isOpen(key, true);
+          groupOpen = isOpen(key, false);
           list.push({ key, depth, kind: "part", name: part, icon: "bookmark", expandable: true, open: groupOpen });
         }
         lastPart = part;
@@ -258,7 +258,7 @@
         const key = `wf:${folder}`;
         if (renamed(key, depth, "layers")) continue;
         const inside = live.filter((item) => item.folder === folder);
-        const open = isOpen(key, true);
+        const open = isOpen(key, inside.some((item) => item.id === writingId));
         list.push({ key, depth, kind: "wfolder", name: folder, icon: "layers", expandable: true, open, count: inside.length, folder });
         if (!open) continue;
         pushInput(key, depth + 1);
@@ -273,7 +273,7 @@
         for (const group of GROUPS) {
           const key = `group:${group.id}`;
           const inGroup = library.notes.filter((note) => note.category === group.id).sort((a, b) => order.compare(a.title, b.title));
-          const open = isOpen(key, true);
+          const open = isOpen(key, false);
           list.push({ key, depth: depth + 1, kind: "group", name: t(group.key), icon: group.icon, expandable: inGroup.length > 0, open, count: inGroup.length, category: group.id });
           pushInput(key, depth + 2);
           if (!open) continue;
@@ -354,8 +354,9 @@
     const walk = (entries: LibraryEntry[], depth: number) => {
       for (const folder of entries.filter((entry) => !entry.project && !entry.file)) {
         const key = `dir:${folder.path.toLowerCase()}`;
-        // A folder of projects starts unfolded; one holding only her files starts folded.
-        const open = isOpen(key, holdsProjects(folder));
+        // The library's own folders of projects start unfolded; a folder inside one starts folded, as
+        // everything unfolded does (owner, 8 October), unless the project on the page is in it.
+        const open = isOpen(key, (depth === 0 && holdsProjects(folder)) || (!!currentFile && isInside(currentFile, folder.path)));
         if (!renamed(key, depth, open ? "folderOpen" : "folder")) {
           list.push({ key, depth, kind: "folder", name: folder.name, icon: open ? "folderOpen" : "folder", expandable: true, open, path: folder.path, empty: folder.children.length === 0, below: levelsIn(folder) });
         }
@@ -821,7 +822,29 @@
       {#if editing.error}
         <p class="problem" role="alert" style:--depth={row.depth}>{editing.error}</p>
       {/if}
+    {:else if row.kind === "notes" || row.kind === "group"}
+      <!-- Notes and each of its groups have a + for a new note there (owner, 8 October). -->
+      <div class="with-add">
+        {@render rowButton(row)}
+        <button
+          type="button"
+          class="row-add"
+          title={t("newNoteTitle")}
+          aria-label={row.kind === "group" ? t("newNoteIn", { group: row.name }) : t("newNoteTitle")}
+          onclick={() => startNew("note", row.kind === "group" ? row.key : "group:ideas", "", row.category ?? "ideas")}
+        >
+          <Icon name="plus" />
+        </button>
+      </div>
     {:else}
+      {@render rowButton(row)}
+    {/if}
+  {:else}
+    <p class="empty">{t("emptyLibrary")}</p>
+  {/each}
+</div>
+
+{#snippet rowButton(row: Row)}
       <button
         type="button"
         class="tree-row {row.kind}"
@@ -878,11 +901,7 @@
           <span class="words">{row.count}</span>
         {/if}
       </button>
-    {/if}
-  {:else}
-    <p class="empty">{t("emptyLibrary")}</p>
-  {/each}
-</div>
+{/snippet}
 {#if menu}
   <!-- A question that takes a menu's place is a menu of its own: it fits the window and takes the keyboard. -->
   {#key menu}
@@ -914,6 +933,46 @@
 
   .library.drop-root {
     box-shadow: inset 0 0 0 1px var(--pv-accent);
+  }
+
+  /* A row with a + at its end, which keeps its count clear of it. */
+  .with-add {
+    position: relative;
+    display: flex;
+    flex: none;
+  }
+
+  .with-add > :global(.tree-row) {
+    padding-right: 28px;
+  }
+
+  .row-add {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--pv-radius-xs);
+    background: transparent;
+    color: var(--pv-text-faint);
+  }
+
+  .row-add :global(svg) {
+    width: 14px;
+    height: 14px;
+  }
+
+  .with-add:hover .row-add,
+  .row-add:focus-visible {
+    color: var(--pv-accent);
+  }
+
+  .row-add:hover {
+    background: var(--pv-pressed);
   }
 
   .current .tree-icon {

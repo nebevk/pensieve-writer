@@ -413,6 +413,7 @@ const en = {
   welcomeErase: "Erase these lines when you start writing.",
   defaultChapter: "Chapter {n}",
   newNoteTitle: "New note",
+  newNoteIn: "New note in {group}",
 
   // Problems Pensieve reports itself
   errFontMissing: "The {font} font file is missing",
@@ -935,6 +936,7 @@ const sl: Record<UiKey, string> = {
   welcomeErase: "Ko začnete pisati, te vrstice izbrišite.",
   defaultChapter: "Poglavje {n}",
   newNoteTitle: "Nov zapisek",
+  newNoteIn: "Nov zapisek v skupini {group}",
 
   errFontMissing: "Datoteka pisave {font} manjka",
   errWordUnreadable: "Pensieve te datoteke Word ni mogel prebrati.",

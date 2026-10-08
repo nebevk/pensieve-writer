@@ -121,8 +121,9 @@
   let draggingId = $state<string | null>(null);
   let dropTargetId = $state<string | null>(null);
   let previousActiveId = $state<string | null | undefined>(undefined);
-  // Parts folded away, by name, in the chapter list and the library's tree alike.
-  let foldedParts = $state(new Set<string>());
+  // Parts folded or unfolded by hand, by tab and name. The Chapters tab shows every part unfolded to
+  // start with; the library shows only the one holding the chapter on the page (owner, 8 October).
+  let partChoice = $state<Record<string, boolean>>({});
 
   const active = $derived(chapters.find((chapter) => chapter.id === activeId) ?? null);
   const rows = $derived.by(() => {
@@ -172,11 +173,14 @@
     onRename(id, title);
   }
 
+  const activePart = $derived(rows.find((row) => row.chapter.id === activeId)?.group ?? "");
+
+  function partOpen(part: string): boolean {
+    return partChoice[`${shown}:${part}`] ?? (shown === "chapters" || part === activePart);
+  }
+
   function togglePart(part: string) {
-    const next = new Set(foldedParts);
-    if (next.has(part)) next.delete(part);
-    else next.add(part);
-    foldedParts = next;
+    partChoice = { ...partChoice, [`${shown}:${part}`]: !partOpen(part) };
   }
 
   function onRenameKeydown(event: KeyboardEvent) {
@@ -195,10 +199,11 @@
   <div class="sidebar-inner">
     <div class="sidebar-head">
       <div class="views" role="tablist" aria-label={t("sidebarViews")}>
+        <!-- The library first, then the open writing's chapters (owner, 8 October). -->
+        <button type="button" role="tab" aria-selected={shown === "library"} class:on={shown === "library"} onclick={() => onView("library")}>{t("library")}</button>
         {#if !article}
           <button type="button" role="tab" aria-selected={view === "chapters"} class:on={view === "chapters"} onclick={() => onView("chapters")}>{t("chapters")}</button>
         {/if}
-        <button type="button" role="tab" aria-selected={shown === "library"} class:on={shown === "library"} onclick={() => onView("library")}>{t("library")}</button>
       </div>
       {#if shown === "library"}
         <button type="button" class="add" title={t("newInLibrary")} aria-label={t("newInLibrary")} aria-haspopup="menu" onclick={(event) => openNewMenu(event.currentTarget)}><Icon name="plus" /></button>
@@ -218,7 +223,7 @@
         {@const words = wordsFor(chapter.id, chapter.plainText)}
         {@const inTree = depth + (row.group ? 1 : 0)}
         {#if row.showPart}
-          {@const open = !foldedParts.has(row.part)}
+          {@const open = partOpen(row.part)}
           <li class="part">
             <button type="button" class="tree-row" style:--depth={depth} aria-expanded={open} onclick={() => togglePart(row.part)}>
               <span class="twist" class:open aria-hidden="true"><Icon name="chevronRight" /></span>
@@ -227,7 +232,7 @@
             </button>
           </li>
         {/if}
-        {#if !row.group || !foldedParts.has(row.group)}
+        {#if !row.group || partOpen(row.group)}
           <li
             class:drop-target={dropTargetId === chapter.id}
             ondragover={(event) => {
