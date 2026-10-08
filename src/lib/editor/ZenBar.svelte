@@ -2,6 +2,7 @@
   import type { Editor } from "@tiptap/core";
   import { isLeadLine } from "$lib/chapters/page";
   import { plural, t } from "$lib/ui.svelte";
+  import { clock, pomodoro, pomodoroLeft } from "$lib/pomodoro.svelte";
   import Icon from "./Icon.svelte";
 
   let {
@@ -23,6 +24,13 @@
     /** Says why a change was turned away, such as a list on the title line. */
     onRefused?: (message: string) => void;
   } = $props();
+
+  // The pomodoro's time left, while one runs.
+  const pomodoroTime = $derived.by(() => {
+    void pomodoro.now;
+    const left = clock(pomodoroLeft());
+    return pomodoro.phase === "break" ? t("pomodoroBreak", { time: left }) : left;
+  });
 
   const ready = () => (editor && !editor.isDestroyed ? editor : null);
   const active = (name: string, attrs?: Record<string, unknown>) => revision >= 0 && ready()?.isActive(name, attrs) === true;
@@ -51,6 +59,10 @@
   <button type="button" class:on={active("orderedList")} aria-pressed={active("orderedList")} title={t("numberedList")} aria-label={t("numberedList")} onmousedown={(event) => event.preventDefault()} onclick={() => restyle((chain) => chain.toggleOrderedList())}><Icon name="listOrdered" /></button>
   <span class="rule"></span>
   <span class="words">{plural("words", words)}</span>
+  <!-- A pomodoro started in the floating bar goes on counting here. -->
+  {#if pomodoro.phase !== "idle"}
+    <span class="words" title={t("pomodoro")}>{pomodoroTime}</span>
+  {/if}
   <input class="width" type="range" min="32" max="60" bind:value={column} title={t("columnWidth")} aria-label={t("columnWidth")} />
   <button type="button" class="leave" title={`${t("leaveZen")} (Esc)`} onclick={onLeave}><Icon name="moon" />{t("leaveZen")}</button>
 </div>

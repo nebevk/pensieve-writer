@@ -2,13 +2,11 @@
   import type { UiKey } from "$lib/i18n";
   import type { ThemeName } from "$lib/prefs";
   import { num, plural, t } from "$lib/ui.svelte";
+  import { BREAK_MINUTES, FOCUS_MINUTES, clock, pausePomodoro, pomodoro, pomodoroLeft, resumePomodoro, startPomodoro, stopPomodoro } from "$lib/pomodoro.svelte";
   import Icon from "./Icon.svelte";
 
   let {
     words,
-    projectWords,
-    language = "",
-    saveLabel,
     error = "",
     zen = false,
     onZen,
@@ -19,9 +17,7 @@
     onTheme,
   }: {
     words: number;
-    projectWords: number;
-    language?: string;
-    saveLabel: string;
+    /** A problem saving; the title bar says when all is saved. */
     error?: string;
     zen?: boolean;
     onZen: () => void;
@@ -33,6 +29,20 @@
   } = $props();
 
   let themesOpen = $state(false);
+  let pomodoroOpen = $state(false);
+
+  // The timer's face: its name while it rests, the time left while it runs, the break's time in a break.
+  const pomodoroLabel = $derived.by(() => {
+    void pomodoro.now;
+    if (pomodoro.phase === "idle") return t("pomodoro");
+    const left = clock(pomodoroLeft());
+    return pomodoro.phase === "break" ? t("pomodoroBreak", { time: left }) : left;
+  });
+
+  function pressPomodoro() {
+    if (pomodoro.phase === "idle") startPomodoro();
+    else pomodoroOpen = !pomodoroOpen;
+  }
 
   const themes = [
     { id: "daylight", key: "themeDaylight" },
@@ -86,17 +96,53 @@
   <span class="rule"></span>
   <span>{plural("words", words)}</span>
   <span class="rule"></span>
-  <span class="muted">{t("inTheBook", { n: projectWords })}</span>
-  <span class="rule"></span>
   <span class="today">{t("today")} {num(today)}</span>
   <span class="rule"></span>
-  <span class="muted">{language}</span>
+  <!-- A pomodoro: writing for a while, then a short break. -->
+  <div class="menu-wrap">
+    <button
+      type="button"
+      class="quiet with-icon pomodoro"
+      class:running={pomodoro.phase !== "idle"}
+      class:paused={pomodoro.pausedLeft > 0}
+      title={t("pomodoroHint", { focus: FOCUS_MINUTES, rest: BREAK_MINUTES })}
+      aria-haspopup={pomodoro.phase === "idle" ? undefined : "menu"}
+      aria-expanded={pomodoro.phase === "idle" ? undefined : pomodoroOpen}
+      onclick={pressPomodoro}
+    >
+      <Icon name="timer" />{pomodoroLabel}
+    </button>
+    {#if pomodoroOpen && pomodoro.phase !== "idle"}
+      <div class="menu" role="menu">
+        <button
+          type="button"
+          class="quiet"
+          role="menuitem"
+          onclick={() => {
+            if (pomodoro.pausedLeft) resumePomodoro();
+            else pausePomodoro();
+            pomodoroOpen = false;
+          }}
+        >
+          {pomodoro.pausedLeft ? t("pomodoroResume") : t("pomodoroPause")}
+        </button>
+        <button
+          type="button"
+          class="quiet"
+          role="menuitem"
+          onclick={() => {
+            stopPomodoro();
+            pomodoroOpen = false;
+          }}
+        >
+          {t("pomodoroStop")}
+        </button>
+      </div>
+    {/if}
+  </div>
   {#if error}
     <span class="rule"></span>
     <span class="error" role="alert">{error}</span>
-  {:else}
-    <span class="rule"></span>
-    <span class="muted">{saveLabel}</span>
   {/if}
   <button type="button" class="with-icon" class:on={zen} onclick={onZen}><Icon name="moon" />{t("zen")}</button>
 </div>
@@ -117,7 +163,6 @@
     white-space: nowrap;
   }
 
-  .muted,
   .today {
     color: var(--pv-bar-muted);
   }
@@ -170,6 +215,20 @@
     width: 1px;
     height: 12px;
     background: var(--pv-bar-line);
+  }
+
+  .pomodoro {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pomodoro.running {
+    color: var(--pv-bar-text);
+    font-weight: 600;
+  }
+
+  .pomodoro.paused {
+    color: var(--pv-bar-muted);
+    font-weight: 400;
   }
 
   .error {
