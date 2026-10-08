@@ -168,6 +168,8 @@ These differ from the design on purpose and are not gaps.
 - **Slim scrollbars (6 October):** the design doesn't draw scrollbars, so Windows' grey ones showed. They are slim and rounded now, in the theme's text colour, with no track or arrows.
 - **A Sunset theme (7 October):** the design has three looks and "Follow sunset", which only switches Daylight to Candlelit after dark. The owner asked for an actual sunset look, so the app adds Sunset (a light, golden-hour palette: peach chrome, an apricot desk, warm paper, a coral accent) between Daylight and Candlelit, and calls the switch "Day and night" ("Dan in noč"), so the two can't be taken for each other. Its colours live in `src/app.css`, not in the design system's tokens.
 - **The library's +, in words (7 October):** three icons for a new writing, a new project and opening one couldn't be told apart (the owner asked which was which), so the library's head has one + with a menu that says it: New writing, New project, New folder, Open another project.
+- **No chapter status for now (8 October):** the design gives each chapter a status dot, with a legend under the list (CHAP-1, CHAP-4). The owner asked to hide statuses, so nothing shows or sets them (each chapter keeps its own), the Outline has no status field, and Home's chapter bars are only written or empty. The Chapters tab stays beside the library, its rows drawn like the library's tree.
+- **One sheet, or sheets of paper (8 October):** the design lays a second sheet, slightly turned, under the page. The owner didn't like it, so it's gone, and Settings → Paper adds Pages beside the continuous page: A4 or A5 sheets a desk's width apart, numbered at the foot, with the text flowing from one to the next.
 - **AT-4 Candlelit particles:** the design keeps decoration off the writing views; the owner wants the sparks drifting over the desk behind the page while writing (5 October). They stay off in Gentle mode and with Windows' reduced motion.
 
 ## Not designed yet
@@ -176,7 +178,7 @@ The design system doesn't cover these, so they aren't gaps. Each already works i
 
 - The library beside the page (7 October): a second tab of the chapter list, drawn like VS Code's file explorer at the owner's wish: the library folder's projects, the open project's writing folders, writings, parts and chapters, its Notes and To-dos, with right-click menus, and folders, projects, writings and notes renamed and dragged as in Explorer. A one-page writing shows only the Library tab. Home is to be redone around projects later (owner).
 
-- Outline view (VW-3) and Book view (VW-2).
+- Outline view (VW-3) and Book view (VW-2). Since 8 October the Book view is set as a printed book at the owner's wish: facing pages with the classic margins, justified text with indents, running heads and page numbers.
 - Zen layout (ZN-1 to ZN-5). The UI kit only hides the chrome and keeps the floating bar; on 6 October the owner asked for Grammarly's plain page instead: the paper's colour from edge to edge, a centred column, no sparks, and a quiet bar at the bottom.
 - Settings sections other than Appearance: General, Writing & goals, Ambience, Backup & export, Language, and the new Shortcuts list. Backup & export now also holds Export Word, the Word copy and the Word import preview, and General has the example books (add or reset) and the long test book.
 - The find and replace bar (ED-8), now with a whole-book mode and a list of matches, and the link field in "All tools".

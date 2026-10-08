@@ -55,7 +55,7 @@ Priority key (MoSCoW): **M** = Must (v1), **S** = Should (v1 if time allows), **
 | ED-3 | Bulleted and numbered lists | M |
 | ED-4 | Text alignment (left, center, right, justify) | M |
 | ED-5 | Font family, font size, text color, highlight | S |
-| ED-6 | Undo/redo with deep history | M |
+| ED-6 | Undo/redo with deep history. Undo goes back about a word at a time, as in Word (8 October): each space and new paragraph starts a step, and a paste is a step of its own | M |
 | ED-7 | Familiar shortcuts (Ctrl/Cmd + B, I, U, Z, Y, S, F) | M |
 | ED-8 | Find and replace within a chapter and across the project | S |
 | ED-9 | Live word and character count (chapter and project) | M |
@@ -70,11 +70,11 @@ Priority key (MoSCoW): **M** = Must (v1), **S** = Should (v1 if time allows), **
 | ID | Requirement | Priority |
 |----|-------------|----------|
 | CH-1 | A project holds writings (books, stories, articles; since 7 October), and a writing an ordered list of chapters | M |
-| CH-2 | Sidebar "binder" showing chapters; click to open | M |
+| CH-2 | Sidebar "binder" showing chapters; click to open. The Chapters tab stays beside the library, to keep to the writing at hand, and its rows look like the library's tree (owner, 8 October): parts fold, a right-click or F2 renames | M |
 | CH-3 | Create, rename, delete, duplicate chapters | M |
 | CH-4 | Drag-and-drop reordering | M |
 | CH-5 | Optional grouping (parts/sections containing chapters, or scenes within chapters) | S |
-| CH-6 | Per-chapter metadata: status (draft / revising / final), synopsis, word goal (set in the Goals list beside the page since 6 October) | S |
+| CH-6 | Per-chapter metadata: status (draft / revising / final), synopsis, word goal (set in the Goals list beside the page since 6 October). The status is hidden for now (owner, 8 October): it is kept with each chapter, but nothing shows or sets it | S |
 | CH-7 | Collapsible sidebar | M |
 | CH-8 | No project types since 7 October: each writing has a "Split into chapters" switch instead. On, a Heading 2 starts a new chapter; off, the writing is one page (an article or blog post), and its headings stay headings. Turning it off joins the chapters (an earlier version keeps them as they were), and for a writing over 20,000 words the question warns that typing in one page that long is slower; turning it on splits the page at its headings | S |
 | CH-9 | A library folder, chosen in Settings (Documents\Pensieve by default, never inside a synced folder such as OneDrive or Google Drive), holds the projects, each in its own folder with one file. The library beside the page shows it as a tree: folders, projects, a project's writing folders and writings, a writing's parts and chapters, its Notes (by group) and To-dos, and a Deleted folder for writings taken out. Projects kept elsewhere are listed under "Elsewhere" and can be moved in (owner, 7 October). As in Explorer, folders and projects are renamed and dragged into other folders on disk, and empty folders deleted; a project goes by its folder's name. Writings are dragged into writing folders or into order, notes into groups. Her other files (pictures, PDFs, Word files) show in their folders and in a project's Files, open in their own program with a double click, and a Word file can come in as a new writing (owner, 7 October) | M |
@@ -97,9 +97,9 @@ Priority key (MoSCoW): **M** = Must (v1), **S** = Should (v1 if time allows), **
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| VW-1 | **Writing view:** editor with optional sidebar and notes panel | M |
-| VW-2 | **Book view:** read-only paginated preview with configurable page size (e.g. 5x8 in, A5), facing pages | S |
-| VW-3 | **Outline view:** chapters as cards with synopsis and status | S |
+| VW-1 | **Writing view:** editor with optional sidebar and notes panel. The full toolbar is open until she closes it (8 October). Settings → Paper chooses one continuous page or sheets of A4 or A5 (owner, 8 October): on sheets the text flows from one to the next where it would print, with the desk between them and each one numbered; Zen stays one continuous page, and the Word file takes the same paper | M |
+| VW-2 | **Book view:** read-only paginated preview with configurable page size (e.g. 5x8 in, A5), facing pages. Since 8 October it is set as a printed book (owner): page 1 on the right, the narrower margin at the spine and the deeper one at the foot, justified text with first-line indents flowing from page to page with no single line left alone at a page's foot or head, each chapter opening a new page, running heads (the book's title on the left, the chapter's on the right) and page numbers | S |
+| VW-3 | **Outline view:** chapters as cards with synopsis and status (the status hidden for now, see CH-6) | S |
 | VW-4 | **Dashboard:** project cards, progress, todo summary, recently edited | M |
 | VW-5 | Editable book view (type directly in paginated layout) | C |
 
@@ -138,7 +138,7 @@ Coziness is the top product priority. All effects must stay within the performan
 |----|-------------|----------|
 | AT-1 | Smooth transitions between views, panels, and zen mode (soft fades and slides) | M |
 | AT-2 | Warm themes (paper, sepia, dark, candlelit) with bundled serif writing fonts. The app has Daylight, Sunset (owner, 7 October), Candlelit and Moonlit, and Day and night, which is Daylight by day and Candlelit after dark | M |
-| AT-3 | Ambient sound: a few looping tracks (rain, fireplace, cafe, soft piano) with volume and fade controls | S |
+| AT-3 | Ambient sound: a few looping tracks (rain, fireplace, cafe, soft piano) with volume and fade controls. Pensieve always starts quiet; the volume starts at 10 of 100, and the slider's 100 plays at half of full loudness, never more (owner, 8 October) | S |
 | AT-4 | Subtle visual ambience: slow gradients, vignette, paper texture, optional drifting particles or candle flicker | S |
 | AT-5 | Theme bundles pairing colors, font, and ambience (e.g. "Rainy Library", "Fireside") | C |
 | AT-6 | "Gentle mode" toggle that disables particles and heavy effects; honors the Windows "reduce animations" setting. It leaves the chosen ambience playing (7 October): Silence is how the sound goes off | M |
@@ -172,7 +172,7 @@ Coziness is the top product priority. All effects must stay within the performan
 | UI framework | **Svelte** (TypeScript) | Ships less code and runs faster on older hardware; built-in transitions suit the cozy goal |
 | Ambience | CSS animations, small throttled canvas, HTML audio | Cheap on CPU and GPU |
 | Editor core | **TipTap** (ProseMirror) | Mature rich text, extensible, Word-like behavior |
-| Pagination (book view) | paged.js or CSS paged media | Page layout without writing a layout engine |
+| Pagination (book view, Pages in Write) | Measured in the page itself: the Book view cuts each chapter's blocks into pages, and Write adds empty blocks where a sheet ends, worked out once typing pauses | No dependency; typing never waits for it |
 | Local storage | SQLite (via Tauri SQL plugin) or a folder of JSON/HTML files | See Section 7 |
 | DOCX export | `docx` library | Programmatic Word generation |
 | Spell check | WebView2 built-in spell check if it supports Slovenian; otherwise Hunspell dictionaries (en, sl) via a JS library such as nspell | Must be verified early (see risks) |
@@ -242,12 +242,12 @@ Design hooks for the future: all persistence sits behind a storage interface (`s
 - Projects and the library (owner, 7 October): a library folder of projects; a project holds as many writings as she wants, optionally in writing folders ("Drafts", "Published"); notes and to-dos belong to the project; Home's Continue writing opens the item opened last. Home itself is to be redone later, around projects.
 - Cloud: Google Drive.
 - Distribution: personal use only, so installer signing and licensing are not needed.
+- The chapter list stays as a tab beside the library, looking like the library's tree (owner, 8 October).
 
 **Still open**
 1. Windows version (10 or 11) and RAM of the laptop, to set the effects budget.
 2. Which Word features beyond the current list are must-haves (shortlist provided separately).
 3. Does the writer use Word's page numbers, headers, or a table of contents in her manuscripts?
-4. Whether the chapter list stays as a tab beside the library, now that the library shows a writing's chapters too.
 
 ## 12. Naming
 
