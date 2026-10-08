@@ -8,6 +8,8 @@ export type PageWidth = "narrow" | "book" | "wide";
 /** The page in Write: one that never ends, or sheets of paper as they print. */
 export type PaperMode = "continuous" | "pages";
 export type PaperSize = "a4" | "a5";
+/** Oris shows the chapters as cards, or as a list with one row each. */
+export type OutlineLayout = "grid" | "list";
 /** What the list beside the page shows: the open writing's chapters, or the library of projects. */
 export type SidebarView = "chapters" | "library";
 
@@ -57,6 +59,7 @@ export type Prefs = {
   /** The list beside the page in Write: the chapter's to-dos, the notes it mentions, the word goals, or none. */
   panel: "" | "todos" | "notes" | "goals";
   sidebarView: SidebarView;
+  outlineLayout: OutlineLayout;
   /** Words to write each day; 0 means no goal. */
   dailyGoal: number;
   /** A pomodoro's minutes of writing, and of the break after them. */
@@ -144,6 +147,7 @@ export const defaultPrefs = (): Prefs => ({
   typewriter: false,
   panel: "",
   sidebarView: "chapters",
+  outlineLayout: "grid",
   dailyGoal: 500,
   pomodoroFocus: 25,
   pomodoroBreak: 5,
@@ -196,6 +200,7 @@ function fromStored(raw: string): Prefs {
     uiLanguage: stored.uiLanguage === "en" ? "en" : "sl",
     panel,
     sidebarView: rest.sidebarView === "library" ? "library" : "chapters",
+    outlineLayout: rest.outlineLayout === "list" ? "list" : "grid",
     paper: rest.paper === "pages" ? "pages" : "continuous",
     paperSize: rest.paperSize === "a5" ? "a5" : "a4",
     manuscriptPt: typeof rest.manuscriptPt === "number" ? rest.manuscriptPt : fromPixels,

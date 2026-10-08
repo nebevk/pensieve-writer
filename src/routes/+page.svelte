@@ -3193,7 +3193,21 @@
         {/key}
       {:else if view === "outline" && OutlinePart.current}
         {@const Outline = OutlinePart.current}
-        <Outline {chapters} onUpdate={updateChapterMeta} />
+        <Outline
+          {chapters}
+          title={writing?.title ?? ""}
+          layout={prefs.outlineLayout}
+          canAdd={writing?.split ?? false}
+          onLayout={(layout) => (prefs = { ...prefs, outlineLayout: layout })}
+          onUpdate={updateChapterMeta}
+          onReorder={reorderChapters}
+          onOpen={(id) => {
+            view = "write";
+            void selectChapter(id);
+          }}
+          onRename={renameChapter}
+          onCreate={() => void addChapter()}
+        />
       {:else if view === "book" && BookPart.current}
         {@const Book = BookPart.current}
         <Book
