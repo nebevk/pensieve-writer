@@ -1,4 +1,5 @@
 import type { ProjectSummary } from "$lib/chapters/progress";
+import type { KeySoundStyle } from "$lib/keySounds";
 
 /** The looks, and "sunset": Daylight by day and Candlelit after dark ("Day and night"). "dusk" is the Sunset look. */
 export type ThemeName = "daylight" | "dusk" | "candlelit" | "moonlit" | "sunset";
@@ -46,6 +47,9 @@ export type Prefs = {
   samples: Record<string, string>;
   ambience: AmbienceName;
   ambienceVolume: number;
+  /** Keys that sound as she types on the page, and how loud (0 to 1, played at up to half). */
+  keySounds: KeySoundStyle;
+  keySoundVolume: number;
   manuscriptFont: ManuscriptFont;
   /** The writing's text size in points, as Word counts it: 12 pt is 16 px on screen. */
   manuscriptPt: number;
@@ -137,6 +141,8 @@ export const defaultPrefs = (): Prefs => ({
   ambience: "off",
   // The slider's 10 of 100, which plays at a twentieth of full loudness (see ambience.ts).
   ambienceVolume: 0.1,
+  keySounds: "off",
+  keySoundVolume: 0.5,
   manuscriptFont: "literata",
   manuscriptPt: 12,
   pageWidth: "book",
@@ -194,6 +200,8 @@ function fromStored(raw: string): Prefs {
     ambience: "off",
     toolsExpanded: rest.toolsExpanded !== false,
     tips: rest.tips !== false,
+    keySounds: rest.keySounds === "typewriter" || rest.keySounds === "soft" ? rest.keySounds : "off",
+    keySoundVolume: typeof rest.keySoundVolume === "number" && Number.isFinite(rest.keySoundVolume) ? Math.min(1, Math.max(0, rest.keySoundVolume)) : 0.5,
     pomodoroFocus: minutes(rest.pomodoroFocus, 25, 5, 90),
     pomodoroBreak: minutes(rest.pomodoroBreak, 5, 1, 30),
     tipsSeen: Array.isArray(rest.tipsSeen) ? rest.tipsSeen.filter((place): place is string => typeof place === "string") : [],

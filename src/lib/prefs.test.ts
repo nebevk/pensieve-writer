@@ -89,6 +89,12 @@ describe("settings", () => {
     expect(loadSaved({ pomodoroFocus: 500, pomodoroBreak: 0 })).toMatchObject({ pomodoroFocus: 90, pomodoroBreak: 1 });
   });
 
+  it("keep the keys quiet unless she chose a sound for them", () => {
+    expect(loadSaved(null)).toMatchObject({ keySounds: "off", keySoundVolume: 0.5 });
+    expect(loadSaved({ keySounds: "typewriter", keySoundVolume: 0.8 })).toMatchObject({ keySounds: "typewriter", keySoundVolume: 0.8 });
+    expect(loadSaved({ keySounds: "piano", keySoundVolume: 7 })).toMatchObject({ keySounds: "off", keySoundVolume: 1 });
+  });
+
   it("keep a daily goal that was set, 0 for none", () => {
     expect(loadSaved({ dailyGoal: 1000 }).dailyGoal).toBe(1000);
     expect(loadSaved({ dailyGoal: 0 }).dailyGoal).toBe(0);

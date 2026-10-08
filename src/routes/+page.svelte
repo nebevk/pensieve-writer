@@ -3007,6 +3007,8 @@
                   language={writing ? effectiveLanguage(writing, chapter) : "en"}
                   typewriter={prefs.typewriter}
                   {sheet}
+                  keySounds={prefs.keySounds}
+                  keyVolume={prefs.keySoundVolume}
                   onSheets={(count) => {
                     sheetCount = count;
                     // Lines a break moved take their comment cards with them.

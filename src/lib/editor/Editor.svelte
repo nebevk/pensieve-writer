@@ -14,6 +14,7 @@
   import { ChapterPage, bodyText } from "./chapterPage";
   import { Pagination, setSheet, type SheetGeometry } from "./pagination";
   import { UndoSteps } from "./undoSteps";
+  import { keySound, type KeySoundStyle } from "$lib/keySounds";
 
   let {
     docId,
@@ -32,6 +33,8 @@
     focusOnOpen = true,
     sheet = null,
     onSheets,
+    keySounds = "off",
+    keyVolume = 0.5,
   }: {
     /** The chapter or note this editor opened. Every change is handed back with it. */
     docId?: string;
@@ -57,6 +60,9 @@
     sheet?: SheetGeometry | null;
     /** How many sheets the text fills, whenever that changes. */
     onSheets?: (count: number) => void;
+    /** Keys that sound as she types (Settings → Sound), and how loud. */
+    keySounds?: KeySoundStyle;
+    keyVolume?: number;
   } = $props();
 
   let typewriterOn = false;
@@ -73,6 +79,8 @@
   let notify = () => {};
   let openNote: ((target: NoteTarget) => void) | undefined;
   let countSheets: ((count: number) => void) | undefined;
+  let keysSound: KeySoundStyle = "off";
+  let keysVolume = 0.5;
   // The sheet the editor was last told about, so a new one goes in only when it differs.
   let sheetApplied = "null";
 
@@ -86,6 +94,8 @@
     markEdited = onEdit;
     openNote = onOpenNote;
     countSheets = onSheets;
+    keysSound = keySounds;
+    keysVolume = keyVolume;
     if (editor && !editor.isDestroyed) editor.view.dom.setAttribute("lang", lang);
   });
 
@@ -163,6 +173,8 @@
         notify();
       },
     });
+    // A key's sound, if she chose one; read from the latest settings, not when the editor opened.
+    editor.view.dom.addEventListener("keydown", (event) => keySound(event, keysSound, keysVolume));
     onEditor(editor);
   });
 

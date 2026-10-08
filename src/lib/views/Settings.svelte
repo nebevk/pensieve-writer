@@ -2,6 +2,7 @@
   import type { ManuscriptFont, PageWidth, PaperMode, PaperSize, Prefs, ThemeName } from "$lib/prefs";
   import type { WritingLanguage } from "$lib/model";
   import type { UiKey } from "$lib/i18n";
+  import type { KeySoundStyle } from "$lib/keySounds";
   import { ago, num, plural, t } from "$lib/ui.svelte";
   import { LONG_PAGE_WORDS } from "$lib/chapters/page";
   import Icon from "$lib/editor/Icon.svelte";
@@ -156,6 +157,11 @@
     { id: "pages", key: "paperPages" },
   ];
   const sizes: PaperSize[] = ["a4", "a5"];
+  const keyStyles: { id: KeySoundStyle; key: UiKey }[] = [
+    { id: "off", key: "keySoundsOff" },
+    { id: "typewriter", key: "keySoundsTypewriter" },
+    { id: "soft", key: "keySoundsSoft" },
+  ];
 
   function widthLabel(width: PageWidth): string {
     if (width === "narrow") return t("widthNarrow");
@@ -534,6 +540,29 @@
                 onChange({ ambienceVolume: Number((event.currentTarget as HTMLInputElement).value) })}
             />
           </label>
+          <!-- Keys that sound as she types on the page. -->
+          <p class="lab">{t("keySounds")}</p>
+          <div class="segment" role="radiogroup" aria-label={t("keySounds")}>
+            {#each keyStyles as style (style.id)}
+              <button type="button" role="radio" aria-checked={prefs.keySounds === style.id} class:on={prefs.keySounds === style.id} onclick={() => onChange({ keySounds: style.id })}>
+                {t(style.key)}
+              </button>
+            {/each}
+          </div>
+          {#if prefs.keySounds !== "off"}
+            <label class="slider">
+              <span>{t("keySoundsVolume")} <b>{Math.round(prefs.keySoundVolume * 100)}</b></span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={prefs.keySoundVolume}
+                style:--pv-fill="{prefs.keySoundVolume * 100}%"
+                oninput={(event) => onChange({ keySoundVolume: Number((event.currentTarget as HTMLInputElement).value) })}
+              />
+            </label>
+          {/if}
         {:else if section === "Backup & export"}
           <h2>{t("backup")}</h2>
           <p class="hint">{t("backupHint")}</p>
