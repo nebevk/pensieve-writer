@@ -2,6 +2,7 @@
   import { t } from "$lib/ui.svelte";
   import Icon from "./Icon.svelte";
   import WindowControls from "./WindowControls.svelte";
+  import UpdatePill, { type UpdateOffer } from "./UpdatePill.svelte";
 
   type ViewId = "write" | "notes" | "todos" | "outline" | "book" | "home" | "settings";
 
@@ -18,6 +19,8 @@
     onSettings,
     settingsOpen = false,
     appearance = "daylight",
+    update = null,
+    onUpdate = () => undefined,
   }: {
     project?: string;
     view: ViewId;
@@ -31,6 +34,9 @@
     onSettings: () => void;
     settingsOpen?: boolean;
     appearance?: "daylight" | "dusk" | "candlelit" | "moonlit";
+    /** A newer Pensieve to install, when there is one. */
+    update?: UpdateOffer | null;
+    onUpdate?: () => void;
   } = $props();
 
   // Four tabs, as designed (WIN-2). To-dos open from the Notes / To-dos switch, so Notes stays lit there.
@@ -62,6 +68,9 @@
       </button>
     {/each}
   </div>
+  {#if update}
+    <UpdatePill offer={update} {onUpdate} />
+  {/if}
   <p class="save" class:quiet={saveState === "saving" || saveState === "unsaved"} class:problem={saveState === "error"}>
     {#if error}
       <span class="error" role="alert">{error}</span>

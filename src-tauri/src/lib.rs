@@ -32,6 +32,8 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // Updates from GitHub Releases, signed with the owner's key (see docs/releasing.md).
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:pensieve.db", migrations)

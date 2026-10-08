@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from "$lib/editor/Icon.svelte";
   import WindowControls from "$lib/editor/WindowControls.svelte";
+  import UpdatePill, { type UpdateOffer } from "$lib/editor/UpdatePill.svelte";
   import type { Prefs, ThemeName } from "$lib/prefs";
   import type { UiKey } from "$lib/i18n";
   import { ago, t } from "$lib/ui.svelte";
@@ -14,6 +15,8 @@
     onLanguage,
     onSettings,
     onTheme,
+    update = null,
+    onUpdate = () => undefined,
   }: {
     prefs: Prefs;
     /** The page's minute clock, so "12 min ago" keeps up. */
@@ -26,6 +29,9 @@
     onSettings: () => void;
     /** Picks a theme from Home, as the design's theme switch does (round 6). */
     onTheme: (theme: ThemeName) => void;
+    /** A newer Pensieve to install, when there is one. */
+    update?: UpdateOffer | null;
+    onUpdate?: () => void;
   } = $props();
 
   const THEMES: { name: Exclude<ThemeName, "sunset">; icon: string; key: UiKey }[] = [
@@ -52,6 +58,9 @@
     <span class="name">Pensieve</span>
   </span>
   <span class="spacer"></span>
+  {#if update}
+    <UpdatePill offer={update} {onUpdate} />
+  {/if}
   {#if error}
     <span class="error" role="alert">{error}</span>
   {/if}

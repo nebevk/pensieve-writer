@@ -50,6 +50,12 @@
     onSplit,
     projectTitle = "",
     wordCopyName = "",
+    appVersion = "",
+    updateVersion = "",
+    updateCheck = "",
+    updateCheckMessage = "",
+    onCheckUpdate,
+    onInstallUpdate,
     onClose,
   }: {
     prefs: Prefs;
@@ -105,6 +111,13 @@
     projectTitle?: string;
     /** The name the Word copy is written under. */
     wordCopyName?: string;
+    /** The installed version, and a newer one found on GitHub Releases ("" when none). */
+    appVersion?: string;
+    updateVersion?: string;
+    updateCheck?: "" | "checking" | "none" | "failed";
+    updateCheckMessage?: string;
+    onCheckUpdate: () => void;
+    onInstallUpdate: () => void;
     onClose: () => void;
   } = $props();
 
@@ -341,6 +354,25 @@
           </div>
           {#if backupMessage}
             <p class="hint">{backupMessage}</p>
+          {/if}
+          <!-- Which Pensieve this is; a newer one also shows in the window bar by itself. -->
+          <p class="lab">{t("appVersion", { version: appVersion || "…" })}</p>
+          {#if updateVersion}
+            <p class="hint">{t("updateAvailable", { version: updateVersion })}</p>
+            <div class="actions">
+              <button type="button" onclick={onInstallUpdate}>{t("updateNow")}</button>
+            </div>
+          {:else}
+            <div class="actions">
+              <button type="button" disabled={updateCheck === "checking"} onclick={onCheckUpdate}>{t("checkForUpdates")}</button>
+            </div>
+            {#if updateCheck === "checking"}
+              <p class="hint">{t("updateChecking")}</p>
+            {:else if updateCheck === "none"}
+              <p class="hint">{t("updateNone")}</p>
+            {:else if updateCheck === "failed"}
+              <p class="hint">{t("updateCheckFailed", { message: updateCheckMessage })}</p>
+            {/if}
           {/if}
         {:else if section === "Writing & goals"}
           <h2>{t("goals")}</h2>

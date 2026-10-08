@@ -50,6 +50,15 @@
   "plugins": {
     "sql": {
       "preload": []
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNENEVGRjYyQUY2MDg3QzgKUldUSWgyQ3ZZdjlPUGNWTC80NzFCdDhVZUNFc3NsMHFDUmVSTE9pVkROVjNPbUlBZDIzMUZ6UlQK",
+      "endpoints": [
+        "https://github.com/nebevk/pensieve-writer/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }
