@@ -145,15 +145,27 @@ export const Pagination = Extension.create<{ onSheets: (count: number) => void }
   },
 });
 
+/**
+ * What asked for a pass: the sheet chosen, an edit, a new width (these always count), or the text's own
+ * height changing by itself (a font or a picture loading).
+ */
+type Reason = "sheet" | "text" | "width" | "height";
+const COUNTS: Reason[] = ["sheet", "text", "width"];
+// Passes in a row that only the text's own height asked for, after which the breaks stay put until the
+// next edit: a page that kept changing size by itself would otherwise be measured again and again, and
+// seen to flicker (owner, 8 October).
+const RESTLESS = 3;
+
 class Paginator {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private frame = 0;
   private observer: ResizeObserver;
+  private reason: Reason | null = null;
+  private restless = 0;
+  private lastPass = 0;
+  // The text's size as the last pass left it, breaks and all: a resize that leaves it so asks for nothing.
   private width = 0;
-  // The text's height without the breaks, and how much the breaks add, as set (not read back, which
-  // rounds to whole pixels and made the text seem to change size after every pass).
   private height = 0;
-  private pushed = 0;
   private sheets = 0;
 
   constructor(
@@ -169,8 +181,8 @@ class Paginator {
   update(view: EditorView, previous: EditorState) {
     this.view = view;
     const sheet = key.getState(view.state)?.sheet ?? null;
-    if (sheet !== (key.getState(previous)?.sheet ?? null)) this.soon(0);
-    else if (sheet && view.state.doc !== previous.doc) this.soon();
+    if (sheet !== (key.getState(previous)?.sheet ?? null)) this.soon("sheet", 0);
+    else if (sheet && view.state.doc !== previous.doc) this.soon("text");
   }
 
   destroy() {
@@ -180,15 +192,17 @@ class Paginator {
     document.fonts?.removeEventListener("loadingdone", this.fontsLoaded);
   }
 
-  private fontsLoaded = () => this.soon();
+  // A font that loaded matters only if it changed the text's size.
+  private fontsLoaded = () => this.resized();
 
-  private soon = (delay = PAUSE) => {
-    if (this.timer) clearTimeout(this.timer);
-    if (this.frame) cancelAnimationFrame(this.frame);
-    this.timer = null;
-    this.frame = 0;
+  private soon(reason: Reason, delay = PAUSE) {
+    // A reason that counts isn't taken over by one that may not.
+    if (!(this.reason && COUNTS.includes(this.reason) && !COUNTS.includes(reason))) this.reason = reason;
     // Right away (a chapter opening, a new sheet size) means before the next paint, so the text is never
-    // seen without its breaks; otherwise once typing pauses.
+    // seen without its breaks, and nothing later puts that off; otherwise once typing pauses.
+    if (this.frame) return;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
     if (delay === 0) {
       this.frame = requestAnimationFrame(() => {
         this.frame = 0;
@@ -200,12 +214,12 @@ class Paginator {
       this.timer = null;
       this.paginate();
     }, delay);
-  };
+  }
 
   private resized() {
     if (!key.getState(this.view.state)?.sheet) return;
-    const height = this.view.dom.getBoundingClientRect().height - this.pushed;
-    if (this.view.dom.clientWidth !== this.width || Math.abs(height - this.height) > 2) this.soon();
+    if (this.view.dom.clientWidth !== this.width) this.soon("width");
+    else if (Math.abs(this.view.dom.getBoundingClientRect().height - this.height) > 2) this.soon("height");
   }
 
   // Every pass, so the page can line up what sits beside the text (the comment cards) again.
@@ -214,27 +228,43 @@ class Paginator {
     this.onSheets(count);
   }
 
+  private settle() {
+    this.width = this.view.dom.clientWidth;
+    this.height = this.view.dom.getBoundingClientRect().height;
+  }
+
   private paginate() {
     const view = this.view;
+    const reason = this.reason ?? "height";
+    this.reason = null;
     if (!view.dom.isConnected) return;
     // Not in the middle of a word being composed (an accent typed in two keys): after it.
     if (view.composing) {
-      this.soon();
+      this.soon(reason);
       return;
     }
     const state = key.getState(view.state);
     const sheet = state?.sheet ?? null;
     if (!state || !sheet) {
-      this.pushed = 0;
       if (this.sheets !== 1) this.report(1);
       return;
     }
+    if (COUNTS.includes(reason)) this.restless = 0;
+    else if (++this.restless > RESTLESS) {
+      if (import.meta.env.DEV && this.restless === RESTLESS + 1) {
+        console.info("[Pages] The text keeps changing size by itself; the breaks stay as they are until the next edit.", { width: view.dom.clientWidth, height: view.dom.getBoundingClientRect().height, was: this.height });
+      }
+      this.settle();
+      return;
+    }
+    const began = performance.now();
     // Measure the text as it lies without the breaks: they step aside (the editor ignores changes
     // inside its widgets), then lie flat where they belong, and each is made as tall as it must be.
     for (const at of state.breaks) at.gap.classList.add("measuring");
     const found = findBreaks(view, sheet);
     let breaks = state.breaks;
-    if (found.length === breaks.length && found.every((pos, index) => pos === breaks[index].pos)) {
+    const moved = !(found.length === breaks.length && found.every((pos, index) => pos === breaks[index].pos));
+    if (!moved) {
       // The usual case: no break moved, so only their heights change and no line is drawn again.
       for (const at of breaks) {
         at.gap.style.height = "0px";
@@ -251,8 +281,6 @@ class Paginator {
     }
     const origin = view.dom.getBoundingClientRect().top;
     const tops = breaks.map((at) => at.gap.getBoundingClientRect().top - origin);
-    this.width = view.dom.clientWidth;
-    this.height = view.dom.getBoundingClientRect().height;
     // Sheet n's text begins n sheets and gaps below the first's.
     const pitch = sheet.height + sheet.gap;
     let pushed = 0;
@@ -261,7 +289,13 @@ class Paginator {
       at.gap.style.height = `${height}px`;
       pushed += height;
     });
-    this.pushed = pushed;
+    const before = { width: this.width, height: this.height };
+    this.settle();
+    // While Pages is being looked into: passes that come hard on each other's heels say why they came.
+    if (import.meta.env.DEV && began - this.lastPass < 1000) {
+      console.info(`[Pages] pass (${reason})`, { ms: Math.round(performance.now() - began), moved, sheets: breaks.length + 1, before, after: { width: this.width, height: this.height } });
+    }
+    this.lastPass = performance.now();
     this.report(breaks.length + 1);
   }
 }
