@@ -374,12 +374,22 @@
             <button type="button" onclick={onChooseLibraryFolder}>{t("chooseFolderEllipsis")}</button>
           </div>
           <div class="rows">
-            <div class="row last">
+            <div class="row">
               <span>{t("gentleMode")} <em>· {t("gentleModeNote")}</em></span>
               <button type="button" class="toggle" class:on={prefs.gentle} role="switch" aria-checked={prefs.gentle} aria-label={t("gentleMode")} onclick={() => onChange({ gentle: !prefs.gentle })}>
                 <span></span>
               </button>
             </div>
+            <!-- The tutorial tips: on or off, and all of them again. -->
+            <div class="row last">
+              <span>{t("tipsRow")} <em>· {t("tipsRowNote")}</em></span>
+              <button type="button" class="toggle" class:on={prefs.tips} role="switch" aria-checked={prefs.tips} aria-label={t("tipsRow")} onclick={() => onChange({ tips: !prefs.tips })}>
+                <span></span>
+              </button>
+            </div>
+          </div>
+          <div class="actions">
+            <button type="button" onclick={() => onChange({ tips: true, tipsSeen: [] })}>{t("tipsAgain")}</button>
           </div>
           <p class="lab">{t("interfaceLanguage")}</p>
           <div class="segment" role="radiogroup" aria-label={t("interfaceLanguage")}>

@@ -29,6 +29,10 @@ export type Prefs = {
   gentle: boolean;
   /** The full toolbar (All tools) is open; it is, until she closes it. */
   toolsExpanded: boolean;
+  /** Tutorial tips the first time she reaches each place (Settings → General). */
+  tips: boolean;
+  /** The places whose tips she has been through: home, write, notes, book. */
+  tipsSeen: string[];
   backupFolder: string;
   /** The open project's file. */
   projectPath: string;
@@ -117,6 +121,8 @@ export const defaultPrefs = (): Prefs => ({
   columnRem: 44,
   gentle: false,
   toolsExpanded: true,
+  tips: true,
+  tipsSeen: [],
   backupFolder: "",
   projectPath: "",
   libraryFolder: "",
@@ -178,6 +184,8 @@ function fromStored(raw: string): Prefs {
     // Pensieve always starts quiet (owner, 8 October): a sound is chosen anew each time.
     ambience: "off",
     toolsExpanded: rest.toolsExpanded !== false,
+    tips: rest.tips !== false,
+    tipsSeen: Array.isArray(rest.tipsSeen) ? rest.tipsSeen.filter((place): place is string => typeof place === "string") : [],
     uiLanguage: stored.uiLanguage === "en" ? "en" : "sl",
     panel,
     sidebarView: rest.sidebarView === "library" ? "library" : "chapters",

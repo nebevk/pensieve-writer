@@ -25,6 +25,8 @@
   import { chooseBackupFile, chooseBackupFolder, chooseProjectFile, readBackupFile, writeBackup } from "$lib/storage/backup";
   import { backupSignature, type BackupContent } from "$lib/storage/backupFile";
   import Particles from "$lib/views/Particles.svelte";
+  import Tour from "$lib/views/Tour.svelte";
+  import { tourFor, type TourPlace } from "$lib/views/tours";
   import Dashboard from "$lib/views/Dashboard.svelte";
   import HomeHeader from "$lib/views/HomeHeader.svelte";
   import ChapterPanel from "$lib/views/ChapterPanel.svelte";
@@ -134,6 +136,27 @@
   let projectLocation = $state("");
   let dictionary = $state<{ language: WritingLanguage; word: string }[]>([]);
   let settingsOpen = $state(false);
+  // Tutorial tips (owner, 8 October): the first time she reaches Home, Write, Notes or the Book, until
+  // she stops them. Not over Settings or in Zen, and a moment after the place appears, so passing
+  // through doesn't bring them and what they point at has settled.
+  const tourWanted = $derived.by((): TourPlace | null => {
+    if (!prefs.tips || settingsOpen || zen || !writing) return null;
+    const place = view === "home" || view === "write" || view === "notes" || view === "book" ? view : null;
+    return place && !prefs.tipsSeen.includes(place) ? place : null;
+  });
+  let tourShown = $state<TourPlace | null>(null);
+  $effect(() => {
+    const place = tourWanted;
+    tourShown = null;
+    if (!place) return;
+    const timer = setTimeout(() => (tourShown = place), 700);
+    return () => clearTimeout(timer);
+  });
+
+  function tourDone(place: TourPlace, stopAll: boolean) {
+    tourShown = null;
+    prefs = { ...prefs, tipsSeen: [...prefs.tipsSeen, place], tips: stopAll ? false : prefs.tips };
+  }
   let restoring = $state(false);
   // How many closings of the editor are under way; it opens again when the last one is done.
   let closings = 0;
@@ -3187,6 +3210,12 @@
       {@render homeHeader()}
       <p class="opening">{t("opening")}</p>
     </div>
+  {/if}
+  {#if tourShown}
+    {@const place = tourShown}
+    {#key place}
+      <Tour steps={tourFor(place)} onDone={(stopAll) => tourDone(place, stopAll)} />
+    {/key}
   {/if}
   {#if settingsOpen && writing && SettingsPart.current}
     {@const Settings = SettingsPart.current}

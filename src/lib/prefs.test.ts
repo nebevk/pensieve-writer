@@ -78,6 +78,11 @@ describe("settings", () => {
     expect(loadSaved({ paper: "scroll", paperSize: "letter" })).toMatchObject({ paper: "continuous", paperSize: "a4" });
   });
 
+  it("show the tutorial tips until she stops them, remembering where she has seen them", () => {
+    expect(loadSaved(null)).toMatchObject({ tips: true, tipsSeen: [] });
+    expect(loadSaved({ tips: false, tipsSeen: ["home", 3, "write"] })).toMatchObject({ tips: false, tipsSeen: ["home", "write"] });
+  });
+
   it("keep a daily goal that was set, 0 for none", () => {
     expect(loadSaved({ dailyGoal: 1000 }).dailyGoal).toBe(1000);
     expect(loadSaved({ dailyGoal: 0 }).dailyGoal).toBe(0);
