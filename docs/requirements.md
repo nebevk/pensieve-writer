@@ -97,7 +97,7 @@ Priority key (MoSCoW): **M** = Must (v1), **S** = Should (v1 if time allows), **
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| VW-1 | **Writing view:** editor with optional sidebar and notes panel. The full toolbar is open until she closes it (8 October). Settings → Paper chooses one continuous page or sheets of A4 or A5 (owner, 8 October): on sheets the text flows from one to the next where it would print, with the desk between them and each one numbered; Zen stays one continuous page, and the Word file takes the same paper | M |
+| VW-1 | **Writing view:** editor with optional sidebar and notes panel. The full toolbar is open until she closes it (8 October). Settings → Paper chooses one continuous page or sheets of A4 or A5 (owner, 8 October): on sheets the text flows from one to the next where it would print, with the desk between them and each one numbered; Zen stays one continuous page, and the Word file takes the same paper. The toolbar's View group ("Pogled") chooses the paper too and opens Zen, in the full toolbar and the short one; on a laptop's screen the full toolbar folds its alignments into one menu, as Word's ribbon does, so it stays one row | M |
 | VW-2 | **Book view:** read-only paginated preview with configurable page size (e.g. 5x8 in, A5), facing pages. Since 8 October it is set as a printed book (owner): page 1 on the right, the narrower margin at the spine and the deeper one at the foot, justified text with first-line indents flowing from page to page with no single line left alone at a page's foot or head, each chapter opening a new page, running heads (the book's title on the left, the chapter's on the right) and page numbers | S |
 | VW-3 | **Outline view:** chapters as cards with synopsis and status (the status hidden for now, see CH-6) | S |
 | VW-4 | **Dashboard:** project cards, progress, todo summary, recently edited | M |
@@ -245,7 +245,7 @@ Design hooks for the future: all persistence sits behind a storage interface (`s
 - The chapter list stays as a tab beside the library, looking like the library's tree (owner, 8 October).
 
 **Still open**
-1. Windows version (10 or 11) and RAM of the laptop, to set the effects budget.
+1. Windows version (10 or 11) and RAM of the laptop, to set the effects budget. The laptop is an HP ProBook 650 G2 (owner, 8 October): a 2016 15.6-inch laptop, usually with a 6th-generation Core i5, whose screen is 1366×768 or 1920×1080 (about 1536×864 at Windows' usual 125%), so layouts are checked at 1366 and 1536 pixels wide.
 2. Which Word features beyond the current list are must-haves (shortlist provided separately).
 3. Does the writer use Word's page numbers, headers, or a table of contents in her manuscripts?
 
