@@ -143,6 +143,7 @@ Coziness is the top product priority. All effects must stay within the performan
 | AT-5 | Theme bundles pairing colors, font, and ambience (e.g. "Rainy Library", "Fireside") | C |
 | AT-6 | "Gentle mode" toggle that disables particles and heavy effects; honors the Windows "reduce animations" setting. It leaves the chosen ambience playing (7 October): Silence is how the sound goes off | M |
 | AT-7 | Optional Harry Potter-flavored labels for features (e.g. Zen mode = "Nox", Notes = "Pensieve" panel, Todos = "Remembrall"); off by default, switchable in settings | C |
+| AT-8 | A pomodoro in the floating bar (owner, 8 October): a click starts the writing time with a clock's tick-tock, then a soft chime, a word on the page and a break, and a chime when the break ends. While it runs, icons pause or resume it, start the phase again and stop it, and Zen shows its time. Its lengths (25 and 5 minutes to start with) are in Settings → Writing & goals. The floating bar no longer shows the words in the book, the language or Saved (the title bar says when all is saved; a problem saving still shows in the bar) | S |
 
 ### 4.8 Settings and Polish
 
@@ -152,6 +153,7 @@ Coziness is the top product priority. All effects must stay within the performan
 | ST-2 | Language selection. The interface starts in Slovenian (owner, 6 October); English is in Settings | S |
 | ST-3 | Daily writing goal and simple streak display. The owner dropped the streak on 5 October. The daily goal went on 6 October and came back that evening, kept simple: the Goals list beside the page in Write shows the words written today toward it (500 to start with, 0 for none), with the chapter's words toward its own goal (CH-6) | C |
 | ST-4 | Keyboard shortcut cheat sheet | C |
+| ST-5 | Tutorial tips the first time she reaches Home, Write, Notes and the Book: each points at the part it is about and leaves the window free to use, with "Ne prikazuj več namigov" to stop them; Settings → General turns them on and off and shows them all again (owner, 8 October) | S |
 
 ## 5. Non-Functional Requirements
 
