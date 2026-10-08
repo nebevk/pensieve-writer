@@ -20,11 +20,12 @@ const FACES: [FontFace, string][] = [
   ["boldItalic", "BoldItalic"],
 ];
 
-export function wordLook(prefs: Pick<Prefs, "manuscriptFont" | "manuscriptPt" | "pageWidth" | "runningHead">): WordLook {
+export function wordLook(prefs: Pick<Prefs, "manuscriptFont" | "manuscriptPt" | "pageWidth" | "paper" | "paperSize" | "runningHead">): WordLook {
   return {
     font: FAMILIES[prefs.manuscriptFont].name,
     sizePt: prefs.manuscriptPt,
     pageWidth: prefs.pageWidth,
+    paper: prefs.paper === "pages" ? prefs.paperSize : undefined,
     runningHead: prefs.runningHead,
   };
 }
@@ -97,7 +98,7 @@ async function wordImage(src: string): Promise<WordImage | null> {
 /** The book as a Word file, laid out like the page in Pensieve. */
 export async function wordFileFor(
   project: Pick<Writing, "title" | "split" | "language" | "chapters">,
-  prefs: Pick<Prefs, "manuscriptFont" | "manuscriptPt" | "pageWidth" | "runningHead">,
+  prefs: Pick<Prefs, "manuscriptFont" | "manuscriptPt" | "pageWidth" | "paper" | "paperSize" | "runningHead">,
 ): Promise<Uint8Array> {
   const { wordFile } = await import("./word");
   const sources = new Set<string>();

@@ -5,7 +5,7 @@
   import TreeMenu, { type MenuItem } from "./TreeMenu.svelte";
   import type { LibraryActions, LibraryView } from "./library";
   import { compactWords, wordsFor } from "$lib/editor/counts";
-  import { isUntitled, type UiKey } from "$lib/i18n";
+  import { isUntitled } from "$lib/i18n";
   import { t } from "$lib/ui.svelte";
   import Icon from "$lib/editor/Icon.svelte";
 
@@ -121,10 +121,8 @@
   let draggingId = $state<string | null>(null);
   let dropTargetId = $state<string | null>(null);
   let previousActiveId = $state<string | null | undefined>(undefined);
-  // Parts folded away in the library's tree, by name.
+  // Parts folded away, by name, in the chapter list and the library's tree alike.
   let foldedParts = $state(new Set<string>());
-
-  const STATUS: Record<Chapter["status"], UiKey> = { draft: "statusDraft", revised: "statusRevised", final: "statusFinal" };
 
   const active = $derived(chapters.find((chapter) => chapter.id === activeId) ?? null);
   const rows = $derived.by(() => {
@@ -209,28 +207,27 @@
       {/if}
       <button type="button" class="hide" title={t(shown === "library" ? "hideLibrary" : "hideChapters")} aria-label={t(shown === "library" ? "hideLibrary" : "hideChapters")} onclick={onHide}><Icon name="panelLeftClose" /></button>
     </div>
-    <!-- With a depth, the rows are part of the library's tree: each is indented by its depth, and parts fold. -->
-    {#snippet chapterRows(depth: number | null)}
-    <ul class:tree={depth !== null}>
+    <!--
+      The open writing's chapters as rows of a tree, in the Chapters tab and under the writing in the library:
+      each is indented by its depth, and a part folds its chapters away.
+    -->
+    {#snippet chapterRows(depth: number)}
+    <ul class="tree">
       {#each rows as row (row.chapter.id)}
         {@const chapter = row.chapter}
         {@const words = wordsFor(chapter.id, chapter.plainText)}
-        {@const inTree = depth === null ? undefined : depth + (row.group ? 1 : 0)}
+        {@const inTree = depth + (row.group ? 1 : 0)}
         {#if row.showPart}
-          {#if depth === null}
-            <li class="part">{row.part}</li>
-          {:else}
-            {@const open = !foldedParts.has(row.part)}
-            <li>
-              <button type="button" class="tree-row" style:--depth={depth} aria-expanded={open} onclick={() => togglePart(row.part)}>
-                <span class="twist" class:open aria-hidden="true"><Icon name="chevronRight" /></span>
-                <span class="tree-icon" aria-hidden="true"><Icon name="bookmark" /></span>
-                <span class="name">{row.part}</span>
-              </button>
-            </li>
-          {/if}
+          {@const open = !foldedParts.has(row.part)}
+          <li class="part">
+            <button type="button" class="tree-row" style:--depth={depth} aria-expanded={open} onclick={() => togglePart(row.part)}>
+              <span class="twist" class:open aria-hidden="true"><Icon name="chevronRight" /></span>
+              <span class="tree-icon" aria-hidden="true"><Icon name="bookmark" /></span>
+              <span class="name">{row.part}</span>
+            </button>
+          </li>
         {/if}
-        {#if depth === null || !row.group || !foldedParts.has(row.group)}
+        {#if !row.group || !foldedParts.has(row.group)}
           <li
             class:drop-target={dropTargetId === chapter.id}
             ondragover={(event) => {
@@ -258,19 +255,17 @@
               <button
                 type="button"
                 draggable="true"
-                class:tree-row={depth !== null}
+                class="tree-row"
                 class:active={chapter.id === activeId}
                 style:--depth={inTree}
-                title={depth === null ? undefined : chapter.title}
+                title={chapter.title}
                 onclick={() => onSelect(chapter.id)}
                 ondblclick={() => beginRename(chapter)}
                 oncontextmenu={(event) => {
-                  if (depth === null) return;
                   event.preventDefault();
                   openChapterMenu(chapter, event.currentTarget, event);
                 }}
                 onkeydown={(event) => {
-                  if (depth === null) return;
                   if (event.key === "F2") {
                     event.preventDefault();
                     beginRename(chapter);
@@ -285,12 +280,11 @@
                   dropTargetId = null;
                 }}
               >
-                {#if depth !== null}<span class="twist" aria-hidden="true"></span>{/if}
+                <span class="twist" aria-hidden="true"></span>
                 <span class="num">{row.index + 1}</span>
                 <span class="name" class:untitled={isUntitled(chapter.title)}>{chapter.title}</span>
-                <span class="dot" class:final={chapter.status === "final"} class:revised={chapter.status === "revised"} class:empty={!chapter.plainText.trim()} aria-label={t(STATUS[chapter.status])}></span>
-                <!-- The tree keeps to the words; the goal is in the chapter list and the Goals list. -->
-                <span class="count">{compactWords(words)}{depth === null && chapter.wordGoal > 0 ? `/${compactWords(chapter.wordGoal)}` : ""}</span>
+                <!-- The library keeps to the words; the goal is in the Chapters tab and the Goals list. -->
+                <span class="count">{compactWords(words)}{shown === "chapters" && chapter.wordGoal > 0 ? `/${compactWords(chapter.wordGoal)}` : ""}</span>
               </button>
             {/if}
           </li>
@@ -300,29 +294,9 @@
     {/snippet}
     {#if shown === "library"}
       <Library {library} {actions} {createRequest} {writingId} {writingTitle} {writingSplit} {writingWords} chapterRows={article ? undefined : chapterRows} />
-      {#if chapterMenu}
-        {#key chapterMenu}
-          <TreeMenu
-            x={chapterMenu.x}
-            y={chapterMenu.y}
-            items={chapterMenu.items}
-            onClose={() => {
-              const back = chapterMenu?.back;
-              chapterMenu = null;
-              setTimeout(() => {
-                if (back?.isConnected && (document.activeElement === document.body || !document.activeElement)) back.focus();
-              });
-            }}
-          />
-        {/key}
-      {/if}
     {:else}
-    {@render chapterRows(null)}
-    <!-- What the dots mean, as at the foot of the design's chapter list. -->
-    <div class="legend" aria-hidden="true">
-      <span><span class="dot final"></span>{t("statusFinal")}</span>
-      <span><span class="dot revised"></span>{t("statusRevised")}</span>
-      <span><span class="dot"></span>{t("statusDraft")}</span>
+    <div class="chapter-list tree-list">
+      {@render chapterRows(0)}
     </div>
     <!-- A part begins where a Heading 1 is on the page, and the word goal is in the Goals list beside it. -->
     <div class="chapter-actions">
@@ -346,6 +320,22 @@
         <button type="button" onclick={() => (confirmDelete = false)}>{t("cancel")}</button>
       </div>
     {/if}
+    {/if}
+    {#if chapterMenu}
+      {#key chapterMenu}
+        <TreeMenu
+          x={chapterMenu.x}
+          y={chapterMenu.y}
+          items={chapterMenu.items}
+          onClose={() => {
+            const back = chapterMenu?.back;
+            chapterMenu = null;
+            setTimeout(() => {
+              if (back?.isConnected && (document.activeElement === document.body || !document.activeElement)) back.focus();
+            });
+          }}
+        />
+      {/key}
     {/if}
   </div>
 </aside>
@@ -374,15 +364,10 @@
     padding: 14px 12px 8px;
   }
 
-  .sidebar-head button,
-  li button,
-  li input {
+  .sidebar-head button {
     border: 0;
     background: transparent;
     border-radius: var(--pv-radius-xs);
-  }
-
-  .sidebar-head button {
     display: grid;
     place-items: center;
     padding: 3px;
@@ -425,82 +410,45 @@
     height: 15px;
   }
 
-  /* Colours only, so a row of the library's tree keeps its guides. */
-  .sidebar-head button:hover,
-  li button:hover {
+  .sidebar-head button:hover {
     background-color: var(--pv-selected);
   }
 
-  .sidebar-head button:active,
-  li button:active {
+  .sidebar-head button:active {
     background-color: var(--pv-pressed);
   }
 
-  ul {
-    list-style: none;
-    margin: 0;
-    padding: 0 8px;
-    overflow: auto;
+  /* The Chapters tab: the open writing's chapters as rows of the library's tree (see app.css). */
+  .chapter-list {
     flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 0 6px 8px;
   }
 
-  /* Under the open book in the library, the chapters are rows of the tree (see Library.svelte). */
   ul.tree {
-    flex: none;
-    overflow: visible;
+    list-style: none;
+    margin: 0;
     padding: 0;
   }
 
   /* A chapter's number stands where a file's icon would. */
-  ul.tree .num {
-    width: 16px;
-    text-align: center;
-  }
-
-  ul.tree .count {
-    width: auto;
-    margin-left: 2px;
-  }
-
-  /* Renaming in the tree: the field starts where the chapter's number does (past the indent and the arrow's place). */
-  ul.tree li input {
-    height: 24px;
-    margin-left: calc(22px + var(--depth, 0) * 10px);
-    width: calc(100% - 22px - var(--depth, 0) * 10px);
-    padding: 0 6px;
-  }
-
-  li button,
-  li input {
-    width: 100%;
-    text-align: left;
-    padding: 7px 8px;
-  }
-
-  li button {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: var(--pv-text-base);
-    color: var(--pv-text);
-  }
-
-  li button.active,
-  li.drop-target button {
-    background-color: var(--pv-selected);
-    font-weight: 600;
-  }
-
   .num,
   .count {
+    flex: none;
     color: var(--pv-text-faint);
     font-weight: 400;
-    font-size: var(--pv-text-sm);
   }
 
   .num {
-    width: 14px;
+    width: 16px;
+    text-align: center;
     font-size: 11px;
+  }
+
+  .count {
+    margin-left: 2px;
+    font-size: var(--pv-text-sm);
   }
 
   .name {
@@ -517,65 +465,16 @@
     color: var(--pv-text-faint);
   }
 
-  .legend {
-    display: flex;
-    /* A long label moves to the next row whole: Slovenian's "V popravljanju" doesn't fit one row. */
-    flex-wrap: wrap;
-    gap: 4px 12px;
-    padding: 8px 20px 4px;
-    font-size: 11px;
-    color: var(--pv-text-subtle);
-  }
-
-  .legend > span {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    white-space: nowrap;
-  }
-
-  .count {
-    width: 28px;
-    text-align: right;
-  }
-
-  .dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    box-sizing: border-box;
-    border: 1.5px solid var(--pv-text-faint);
-    flex: none;
-  }
-
-  .dot.final {
-    background: var(--pv-status-final);
-    border: 0;
-  }
-
-  .dot.revised {
-    background: var(--pv-accent);
-    border: 0;
-  }
-
-  .dot.empty {
-    border-color: var(--pv-empty);
-    background: transparent;
-  }
-
+  /* Renaming: the field starts where the chapter's number does (past the indent and the arrow's place). */
   li input {
-    background: var(--pv-field);
+    width: calc(100% - 22px - var(--depth, 0) * 10px);
+    height: 24px;
+    margin-left: calc(22px + var(--depth, 0) * 10px);
+    padding: 0 6px;
     border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-xs);
+    background: var(--pv-field);
     color: var(--pv-text);
-  }
-
-  li.part {
-    padding: 0.45rem 0.2rem 0.1rem;
-    font-size: var(--pv-text-xs);
-    font-weight: 600;
-    letter-spacing: var(--pv-track-eyebrow);
-    text-transform: uppercase;
-    color: var(--pv-text-faint);
   }
 
   .chapter-actions,

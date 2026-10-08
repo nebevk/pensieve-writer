@@ -48,6 +48,8 @@ export type WordLook = {
   /** The writing's text size in points, as set in Settings. */
   sizePt: number;
   pageWidth: "narrow" | "book" | "wide";
+  /** The sheets she writes on (Settings → Paper → Pages): the file's pages are the same. Without, A4 as wide as the page. */
+  paper?: "a4" | "a5";
   runningHead: boolean;
 };
 
@@ -76,6 +78,11 @@ const PAGE_WIDTH = 11906; // A4, in twips
 const PAGE_HEIGHT = 16838;
 const SHEET_PX = { narrow: 520, book: 600, wide: 720 } as const;
 const SHEET_PADDING_PX = 76;
+// A4 and A5 in twips, with the margins of the sheets in Pensieve: 2.5 cm and 2 cm (see PAPER in prefs.ts).
+const PAPER_TWIPS = {
+  a4: { width: PAGE_WIDTH, height: PAGE_HEIGHT, margin: 1417 },
+  a5: { width: 8391, height: 11906, margin: 1134 },
+} as const;
 const TWIPS_PER_PX = 15; // 1 CSS pixel = 0.75 pt = 15 twips
 const LEADING = 1.5; // the page's line height, as a multiple of the text size
 const PARAGRAPH_GAP = 0.6; // the space between two paragraphs on the page, in the same measure
@@ -83,6 +90,9 @@ const PARAGRAPH_GAP = 0.6; // the space between two paragraphs on the page, in t
 type Measures = {
   halfPoints: number;
   pt: number;
+  page: { width: number; height: number };
+  /** The margin above and below the text. */
+  top: number;
   textWidth: number;
   side: number;
   paragraphGap: number;
@@ -91,12 +101,15 @@ type Measures = {
 
 function measures(look: WordLook): Measures {
   const pt = Math.round(look.sizePt * 2) / 2;
-  const textWidth = (SHEET_PX[look.pageWidth] - 2 * SHEET_PADDING_PX) * TWIPS_PER_PX;
+  const paper = look.paper ? PAPER_TWIPS[look.paper] : null;
+  const textWidth = paper ? paper.width - 2 * paper.margin : (SHEET_PX[look.pageWidth] - 2 * SHEET_PADDING_PX) * TWIPS_PER_PX;
   return {
     halfPoints: Math.round(pt * 2),
     pt,
+    page: paper ? { width: paper.width, height: paper.height } : { width: PAGE_WIDTH, height: PAGE_HEIGHT },
+    top: paper ? paper.margin : 1440,
     textWidth,
-    side: Math.round((PAGE_WIDTH - textWidth) / 2),
+    side: paper ? paper.margin : Math.round((PAGE_WIDTH - textWidth) / 2),
     paragraphGap: Math.round(PARAGRAPH_GAP * pt * 20),
     indentStep: Math.round(1.5 * pt * 20),
   };
@@ -422,8 +435,8 @@ function runningHead(title: string, m: Measures): Header {
 export function buildWordDocument(book: WordBook, look: WordLook, assets: WordAssets = {}): Document {
   const m = measures(look);
   const page = {
-    size: { width: PAGE_WIDTH, height: PAGE_HEIGHT },
-    margin: { top: 1440, bottom: 1440, left: m.side, right: m.side, header: 720, footer: 720 },
+    size: m.page,
+    margin: { top: m.top, bottom: m.top, left: m.side, right: m.side, header: 720, footer: 720 },
   };
   const lists = { next: 0 };
   const footnotes: Context["footnotes"] = { next: 1, items: {} };

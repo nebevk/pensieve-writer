@@ -5,6 +5,9 @@ export type ThemeName = "daylight" | "dusk" | "candlelit" | "moonlit" | "sunset"
 export type AmbienceName = "off" | "rain" | "fire" | "cafe" | "piano";
 export type ManuscriptFont = "literata" | "garamond" | "typewriter";
 export type PageWidth = "narrow" | "book" | "wide";
+/** The page in Write: one that never ends, or sheets of paper as they print. */
+export type PaperMode = "continuous" | "pages";
+export type PaperSize = "a4" | "a5";
 /** What the list beside the page shows: the open writing's chapters, or the library of projects. */
 export type SidebarView = "chapters" | "library";
 
@@ -24,6 +27,8 @@ export type Prefs = {
   theme: ThemeName;
   columnRem: number;
   gentle: boolean;
+  /** The full toolbar (All tools) is open; it is, until she closes it. */
+  toolsExpanded: boolean;
   backupFolder: string;
   /** The open project's file. */
   projectPath: string;
@@ -39,6 +44,9 @@ export type Prefs = {
   /** The writing's text size in points, as Word counts it: 12 pt is 16 px on screen. */
   manuscriptPt: number;
   pageWidth: PageWidth;
+  paper: PaperMode;
+  /** The sheet in Pages; Page width is for the continuous page. */
+  paperSize: PaperSize;
   grain: boolean;
   runningHead: boolean;
   typewriter: boolean;
@@ -94,20 +102,34 @@ export function pageWidthValue(width: PageWidth): string {
   return "clamp(760px, 60cqi, 960px)";
 }
 
+/**
+ * A sheet in Pages, in CSS pixels (96 to the inch): A4 (210 × 297 mm) with Word's margins of 2.5 cm,
+ * and A5 (148 × 210 mm), a book's page, with 2 cm. The desk shows between two sheets.
+ */
+export const PAPER: Record<PaperSize, { width: number; height: number; margin: number }> = {
+  a4: { width: 794, height: 1123, margin: 94 },
+  a5: { width: 559, height: 794, margin: 76 },
+};
+export const SHEET_GAP = 28;
+
 export const defaultPrefs = (): Prefs => ({
   theme: "daylight",
   columnRem: 44,
   gentle: false,
+  toolsExpanded: true,
   backupFolder: "",
   projectPath: "",
   libraryFolder: "",
   lastOpened: { path: "", writingId: "", chapterId: "" },
   samples: {},
   ambience: "off",
-  ambienceVolume: 0.4,
+  // The slider's 10 of 100, which plays at a twentieth of full loudness (see ambience.ts).
+  ambienceVolume: 0.1,
   manuscriptFont: "literata",
   manuscriptPt: 12,
   pageWidth: "book",
+  paper: "continuous",
+  paperSize: "a4",
   grain: true,
   runningHead: true,
   typewriter: false,
@@ -153,9 +175,14 @@ function fromStored(raw: string): Prefs {
     ...defaultPrefs(),
     ...rest,
     theme: normalizeTheme(stored.theme),
+    // Pensieve always starts quiet (owner, 8 October): a sound is chosen anew each time.
+    ambience: "off",
+    toolsExpanded: rest.toolsExpanded !== false,
     uiLanguage: stored.uiLanguage === "en" ? "en" : "sl",
     panel,
     sidebarView: rest.sidebarView === "library" ? "library" : "chapters",
+    paper: rest.paper === "pages" ? "pages" : "continuous",
+    paperSize: rest.paperSize === "a5" ? "a5" : "a4",
     manuscriptPt: typeof rest.manuscriptPt === "number" ? rest.manuscriptPt : fromPixels,
     libraryFolder: typeof rest.libraryFolder === "string" ? rest.libraryFolder : "",
     lastOpened: lastOpenedFrom(rest.lastOpened),

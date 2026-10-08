@@ -27,6 +27,9 @@ const FADE_OUT = 0.8;
 // The recordings are evened out to the same loudness, so the slider sets their level directly.
 // The generated stand-in is much louder per sample and plays quieter.
 const RECORDED_GAIN = 1;
+// The slider shows 0 to 100, but its 100 plays at half: louder was never wanted (owner, 8 October).
+const CEILING = 0.5;
+const levelOf = (slider: number) => Math.min(1, Math.max(0, slider)) * CEILING;
 const GENERATED_GAIN = 0.15;
 
 type Playing = { source: AudioBufferSourceNode; gain: GainNode; level: number };
@@ -94,7 +97,7 @@ export function createAmbience() {
   async function start(kind: AmbienceKind, level: number) {
     stop();
     const token = generation;
-    volume = Math.max(0, level);
+    volume = levelOf(level);
     // "playback" asks for larger audio buffers (less work for an older laptop), and 32 kHz keeps a
     // decoded loop at two thirds of the size; ambience loses nothing it needs.
     const audio = (context ??= new AudioContext({ latencyHint: "playback", sampleRate: 32000 }));
@@ -122,7 +125,7 @@ export function createAmbience() {
 
   /** Follows the volume slider smoothly, without starting the sound again. */
   function setVolume(level: number) {
-    volume = Math.max(0, level);
+    volume = levelOf(level);
     if (!context || !playing) return;
     const now = context.currentTime;
     playing.gain.gain.cancelScheduledValues(now);

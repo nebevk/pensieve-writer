@@ -29,7 +29,7 @@
     writingSplit: boolean;
     writingWords: number;
     /** The open writing's chapters, drawn at the depth given; a one-page writing has none to draw. */
-    chapterRows?: Snippet<[number | null]>;
+    chapterRows?: Snippet<[number]>;
     /** The header's "New writing", "New project" or "New folder", by the time it was asked. */
     createRequest?: { kind: "writing" | "project" | "folder"; at: number } | null;
   } = $props();
@@ -769,7 +769,7 @@
 <!-- The library, drawn as a file explorer: its folders and projects, the open project's writings, notes and to-dos. -->
 <!-- The empty space below the rows is the library's top: a folder or project dropped there goes to it. -->
 <div
-  class="library"
+  class="library tree-list"
   class:drop-root={dropKey === "root"}
   role="presentation"
   bind:this={tree}
@@ -912,102 +912,8 @@
     padding: 0 6px 8px;
   }
 
-  /* The guides between a row and its parent show while the pointer or the keyboard is in the tree. */
-  .library:hover,
-  .library:focus-within {
-    --tree-guide: var(--pv-line-strong);
-  }
-
-  /*
-   * One row of the tree, the chapter list's rows under the open writing too: one line, indented by its
-   * --depth, with a guide under each parent's arrow (at 11px, then every 10px).
-   */
-  .library :global(.tree-row),
-  .tree-input {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex: none;
-    width: 100%;
-    height: 24px;
-    padding: 0 6px 0 calc(4px + var(--depth, 0) * 10px);
-    border: 0;
-    border-radius: var(--pv-radius-xs);
-    background-color: transparent;
-    background-image: repeating-linear-gradient(90deg, var(--tree-guide, transparent) 0 1px, transparent 1px 10px);
-    background-repeat: no-repeat;
-    background-position: 11px 0;
-    background-size: calc(var(--depth, 0) * 10px) 100%;
-    color: var(--pv-text);
-    font-size: var(--pv-text-base);
-    text-align: left;
-  }
-
-  .library :global(.tree-row:hover) {
-    background-color: var(--pv-selected);
-  }
-
-  .library :global(.tree-row:active) {
-    background-color: var(--pv-pressed);
-  }
-
-  /* The chapter on the page, and a chapter something is dragged over, marked as in the chapter list. */
-  .library :global(.tree-row.active),
-  .library :global(li.drop-target > .tree-row) {
-    background-color: var(--pv-selected);
-    font-weight: 600;
-  }
-
-  /* Where a dragged row would land: in a folder or group, or (a writing) just before another writing. */
-  .library :global(.tree-row.drop-target) {
-    background-color: var(--pv-selected);
-    box-shadow: inset 0 0 0 1px var(--pv-accent);
-  }
-
-  .library :global(.tree-row.drop-before) {
-    box-shadow: inset 0 2px 0 var(--pv-accent);
-  }
-
   .library.drop-root {
     box-shadow: inset 0 0 0 1px var(--pv-accent);
-  }
-
-  /* Inside the row, so it doesn't run into the rows above and below. */
-  .library :global(.tree-row:focus-visible) {
-    outline-offset: -2px;
-  }
-
-  .library :global(.twist) {
-    display: grid;
-    place-items: center;
-    flex: none;
-    width: 14px;
-    height: 14px;
-    color: var(--pv-text-faint);
-    transition: transform var(--pv-dur-fast) ease;
-  }
-
-  .library :global(.twist.open) {
-    transform: rotate(90deg);
-  }
-
-  .library :global(.twist svg) {
-    width: 12px;
-    height: 12px;
-  }
-
-  .library :global(.tree-icon) {
-    display: grid;
-    place-items: center;
-    flex: none;
-    width: 16px;
-    height: 16px;
-    color: var(--pv-text-subtle);
-  }
-
-  .library :global(.tree-icon svg) {
-    width: 15px;
-    height: 15px;
   }
 
   .current .tree-icon {

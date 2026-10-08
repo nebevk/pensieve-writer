@@ -244,6 +244,100 @@ textarea:focus-visible {
   color: var(--pv-ink);
 }
 
+/*
+ * The tree: the library's rows, and the chapter list's, which look the same (owner, 8 October). One row
+ * is one line, indented by its --depth, with a guide under each parent's arrow (at 11px, then every 10px);
+ * the guides show while the pointer or the keyboard is in the tree.
+ */
+.tree-list:hover,
+.tree-list:focus-within {
+  --tree-guide: var(--pv-line-strong);
+}
+
+.tree-list .tree-row,
+.tree-list .tree-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  width: 100%;
+  height: 24px;
+  padding: 0 6px 0 calc(4px + var(--depth, 0) * 10px);
+  border: 0;
+  border-radius: var(--pv-radius-xs);
+  background-color: transparent;
+  background-image: repeating-linear-gradient(90deg, var(--tree-guide, transparent) 0 1px, transparent 1px 10px);
+  background-repeat: no-repeat;
+  background-position: 11px 0;
+  background-size: calc(var(--depth, 0) * 10px) 100%;
+  color: var(--pv-text);
+  font-size: var(--pv-text-base);
+  text-align: left;
+}
+
+.tree-list .tree-row:hover {
+  background-color: var(--pv-selected);
+}
+
+.tree-list .tree-row:active {
+  background-color: var(--pv-pressed);
+}
+
+/* The chapter on the page, and a chapter something is dragged over. */
+.tree-list .tree-row.active,
+.tree-list li.drop-target > .tree-row {
+  background-color: var(--pv-selected);
+  font-weight: 600;
+}
+
+/* Where a dragged row would land: in a folder or group, or (a writing) just before another writing. */
+.tree-list .tree-row.drop-target {
+  background-color: var(--pv-selected);
+  box-shadow: inset 0 0 0 1px var(--pv-accent);
+}
+
+.tree-list .tree-row.drop-before {
+  box-shadow: inset 0 2px 0 var(--pv-accent);
+}
+
+/* Inside the row, so it doesn't run into the rows above and below. */
+.tree-list .tree-row:focus-visible {
+  outline-offset: -2px;
+}
+
+.tree-list .twist {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--pv-text-faint);
+  transition: transform var(--pv-dur-fast) ease;
+}
+
+.tree-list .twist.open {
+  transform: rotate(90deg);
+}
+
+.tree-list .twist svg {
+  width: 12px;
+  height: 12px;
+}
+
+.tree-list .tree-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--pv-text-subtle);
+}
+
+.tree-list .tree-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
 /* The window clips to one screen; a printout needs the whole document, without the candle sparks. */
 @media print {
   html,

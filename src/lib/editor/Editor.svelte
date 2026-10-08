@@ -11,6 +11,8 @@
   import { Footnote } from "./footnote";
   import { CommentMark } from "./comments";
   import { ChapterPage, bodyText } from "./chapterPage";
+  import { Pagination, setSheet, type SheetGeometry } from "./pagination";
+  import { UndoSteps } from "./undoSteps";
 
   let {
     docId,
@@ -27,6 +29,8 @@
     onOpenNote,
     page = false,
     focusOnOpen = true,
+    sheet = null,
+    onSheets,
   }: {
     /** The chapter or note this editor opened. Every change is handed back with it. */
     docId?: string;
@@ -48,6 +52,10 @@
     page?: boolean;
     /** Whether the page takes the keyboard when it opens; not while a name is being typed elsewhere. */
     focusOnOpen?: boolean;
+    /** A chapter's page on sheets of paper (Settings → Paper → Pages), or null for one continuous page. */
+    sheet?: SheetGeometry | null;
+    /** How many sheets the text fills, whenever that changes. */
+    onSheets?: (count: number) => void;
   } = $props();
 
   let typewriterOn = false;
@@ -63,6 +71,9 @@
   let publish: (json: DocumentJson, text: string, docId?: string) => void = () => {};
   let notify = () => {};
   let openNote: ((target: NoteTarget) => void) | undefined;
+  let countSheets: ((count: number) => void) | undefined;
+  // The sheet the editor was last told about, so a new one goes in only when it differs.
+  let sheetApplied = "null";
 
   $effect(() => {
     publish = onChange;
@@ -73,7 +84,15 @@
     reportText = onText;
     markEdited = onEdit;
     openNote = onOpenNote;
+    countSheets = onSheets;
     if (editor && !editor.isDestroyed) editor.view.dom.setAttribute("lang", lang);
+  });
+
+  $effect(() => {
+    const wanted = JSON.stringify(sheet);
+    if (!page || !editor || editor.isDestroyed || wanted === sheetApplied) return;
+    sheetApplied = wanted;
+    setSheet(editor.view, sheet);
   });
 
   onMount(() => {
@@ -98,7 +117,13 @@
         NoteLinkMark,
         Footnote,
         CommentMark,
-        ...(page ? [ChapterPage.configure({ titleHint: t("chapterTitleHint"), partHint: t("partTitleHint") })] : []),
+        UndoSteps,
+        ...(page
+          ? [
+              ChapterPage.configure({ titleHint: t("chapterTitleHint"), partHint: t("partTitleHint") }),
+              Pagination.configure({ onSheets: (count) => countSheets?.(count) }),
+            ]
+          : []),
         NoteLinks.configure({ brackets: noteLinkBrackets, onOpen: (target) => openNote?.(target) }),
       ],
       content: initialContent as JSONContent,
@@ -237,7 +262,33 @@
 
   .editor-host :global(.ProseMirror img) {
     max-width: 100%;
+    /* On a sheet, a picture fits the sheet's text (see --pv-sheet-room in +page.svelte). */
+    max-height: var(--pv-sheet-room, none);
     height: auto;
+    object-fit: contain;
+  }
+
+  /* Where a sheet ends: the rest of its text area, its bottom margin, the desk, the next one's top margin. */
+  .editor-host :global(.page-gap) {
+    display: block;
+    height: 0;
+  }
+
+  /* Out of the way while the text is measured as it lies without breaks (see pagination.ts). */
+  .editor-host :global(.page-gap.measuring) {
+    display: none;
+  }
+
+  /* A block carried to a new sheet starts at its top, as in Word. */
+  .editor-host :global(.page-gap:not(.measuring) + *) {
+    margin-top: 0;
+  }
+
+  /* A printer makes its own pages. */
+  @media print {
+    .editor-host :global(.page-gap) {
+      display: none;
+    }
   }
 
   /* Footnotes number themselves in page order. */

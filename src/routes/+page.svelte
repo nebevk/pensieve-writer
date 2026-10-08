@@ -27,7 +27,7 @@
   import Dashboard from "$lib/views/Dashboard.svelte";
   import HomeHeader from "$lib/views/HomeHeader.svelte";
   import ChapterPanel from "$lib/views/ChapterPanel.svelte";
-  import { flushPrefs, loadPrefs, loadPrefsFile, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs, type KnownProject } from "$lib/prefs";
+  import { PAPER, SHEET_GAP, flushPrefs, loadPrefs, loadPrefsFile, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs, type KnownProject } from "$lib/prefs";
   import { duplicateChapterIn, patchChapter, removeChapter, renameChapterIn, reorderChapterList, setChapterText } from "$lib/chapters/mutate";
   import { chapterTitle } from "$lib/chapters/welcome";
   import { applyPage, chapterBreak, composePage, heldHeading, isLeadLine, joinWriting, leadLines, readPage, splitWriting, startsPart, textStart, withoutBreaks } from "$lib/chapters/page";
@@ -104,6 +104,17 @@
   // Set before the first paint, so a Slovenian interface never flashes English.
   ui.language = startPrefs.uiLanguage;
   let zen = $state(false);
+  // Pages (Settings → Paper): the sheet the chapter is written on, or null for the continuous page,
+  // which Zen always is. The editor says how many sheets the text fills.
+  const paperSize = $derived(PAPER[prefs.paperSize]);
+  const sheet = $derived(
+    prefs.paper === "pages" && !zen
+      ? { height: paperSize.height, top: paperSize.margin, bottom: paperSize.margin, gap: SHEET_GAP }
+      : null,
+  );
+  let sheetCount = $state(1);
+  // The footnotes take a sheet of their own after the chapter's.
+  const leafCount = $derived(sheetCount + (pageNotes.length > 0 ? 1 : 0));
   /** A comment just added, whose card takes the keyboard. */
   let commentFocus = $state("");
   let commentCount = $state(0);
@@ -1222,6 +1233,13 @@
     }
   }
 
+  // Print asked for while the Book view still lays out its pages: it prints once they are all there,
+  // and not on a later visit if she leaves before then.
+  let printWhenLaidOut = false;
+  $effect(() => {
+    if (view !== "book") printWhenLaidOut = false;
+  });
+
   /** Prints every chapter from the Book view, not whatever happens to be on screen. */
   async function printBook() {
     settingsOpen = false;
@@ -1229,7 +1247,8 @@
     view = "book";
     await BookPart.load();
     await tick();
-    window.print();
+    if (document.querySelector(".book[data-laid-out]")) window.print();
+    else printWhenLaidOut = true;
   }
 
   async function openHistory() {
@@ -2737,6 +2756,8 @@
   {#if view === "write"}
   <Ribbon
     editor={textEditor}
+    expanded={prefs.toolsExpanded}
+    onExpanded={(open) => (prefs = { ...prefs, toolsExpanded: open })}
     revision={editorRevision}
     chaptersOpen={!collapsed}
     notesOpen={prefs.panel === "notes"}
@@ -2928,11 +2949,24 @@
           <div
             class="page-row"
             class:commented={commentCount > 0 && !zen}
-            style:--sheet={zen ? `${prefs.columnRem}rem` : pageWidthValue(prefs.pageWidth)}
+            class:paged={sheet !== null}
+            style:--sheet={zen ? `${prefs.columnRem}rem` : sheet ? `${paperSize.width}px` : pageWidthValue(prefs.pageWidth)}
+            style:--leaf-h={sheet ? `${paperSize.height}px` : undefined}
+            style:--leaf-margin={sheet ? `${paperSize.margin}px` : undefined}
           >
           <div class="sheet">
-            <div class="sheet-under" aria-hidden="true"></div>
-            <article class="paper">
+            {#if sheet}
+              <!-- The sheets of paper behind the text, each numbered at its foot. -->
+              {#each { length: leafCount }, index (index)}
+                <div class="leaf" style:top="{index * (sheet.height + sheet.gap)}px" aria-hidden="true"><span class="folio">{index + 1}</span></div>
+              {/each}
+            {/if}
+            <article
+              class="paper"
+              style:padding={sheet ? `${sheet.top}px ${paperSize.margin}px ${sheet.bottom}px` : undefined}
+              style:min-height={sheet ? `${leafCount * (sheet.height + sheet.gap) - sheet.gap}px` : undefined}
+              style:--pv-sheet-room={sheet ? `${sheet.height - sheet.top - sheet.bottom}px` : undefined}
+            >
               {#if EditorPart.current}
                 {@const Editor = EditorPart.current}
                 <Editor
@@ -2942,6 +2976,12 @@
                   focusOnOpen={!libraryCreate || Date.now() - libraryCreate.at > 3000}
                   language={writing ? effectiveLanguage(writing, chapter) : "en"}
                   typewriter={prefs.typewriter}
+                  {sheet}
+                  onSheets={(count) => {
+                    sheetCount = count;
+                    // Lines a break moved take their comment cards with them.
+                    editorRevision += 1;
+                  }}
                   live={false}
                   onChange={(json, _text, id) => updateChapter(id ?? chapter.id, json)}
                   onEdit={() => autosave.schedule()}
@@ -2976,7 +3016,12 @@
                 />
               {/if}
               {#if pageNotes.length > 0}
-                <ol class="page-notes">
+                <!-- On sheets, the footnotes have a sheet of their own after the chapter's. -->
+                <ol
+                  class="page-notes"
+                  class:on-sheet={sheet !== null}
+                  style:top={sheet ? `${sheetCount * (sheet.height + sheet.gap) + sheet.top}px` : undefined}
+                >
                   {#each pageNotes as note, index (index)}
                     <li>{note || "…"}</li>
                   {/each}
@@ -3123,7 +3168,15 @@
         <Outline {chapters} onUpdate={updateChapterMeta} />
       {:else if view === "book" && BookPart.current}
         {@const Book = BookPart.current}
-        <Book {chapters} />
+        <Book
+          {chapters}
+          title={writing?.title ?? ""}
+          onLaidOut={() => {
+            if (!printWhenLaidOut) return;
+            printWhenLaidOut = false;
+            window.print();
+          }}
+        />
       {/if}
     </div>
   {:else}
@@ -3491,6 +3544,10 @@
       height: auto !important;
       box-shadow: none !important;
     }
+
+    .leaf {
+      display: none !important;
+    }
   }
 
   .stage {
@@ -3508,13 +3565,12 @@
   .page-row {
     flex: 1 0 auto;
     display: grid;
-    /* 12px more than the page leaves room for the sheet underneath. */
-    grid-template-columns: minmax(0, 1fr) minmax(0, calc(var(--sheet, var(--pv-sheet-book)) + 12px)) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, var(--sheet, var(--pv-sheet-book))) minmax(0, 1fr);
   }
 
   /* The cards keep their column: the page stays centred while there is room, then moves left. */
   .page-row.commented {
-    grid-template-columns: minmax(0, 1fr) minmax(280px, calc(var(--sheet, var(--pv-sheet-book)) + 12px)) minmax(240px, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(280px, var(--sheet, var(--pv-sheet-book))) minmax(240px, 1fr);
   }
 
   .page-row > :global(.rail) {
@@ -3526,16 +3582,8 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    width: calc(100% - 12px);
+    width: 100%;
     margin: 0 auto;
-  }
-
-  .sheet-under {
-    position: absolute;
-    inset: 0;
-    transform: translate(5px, 6px) rotate(0.6deg);
-    background: var(--pv-paper-under);
-    box-shadow: var(--pv-shadow-under);
   }
 
   .paper {
@@ -3554,8 +3602,7 @@
     background: var(--pv-paper);
   }
 
-  .app.zen .writing::before,
-  .app.zen .sheet-under {
+  .app.zen .writing::before {
     display: none;
   }
 
@@ -3567,6 +3614,45 @@
 
   :global(:root[data-grain="true"]) .paper {
     background-image: var(--pv-grain), var(--pv-vignette);
+  }
+
+  /* Pages: the text lies on sheets drawn behind it, a desk's width apart (see pagination.ts). */
+  .page-row.paged .paper {
+    background: none;
+    box-shadow: none;
+  }
+
+  .leaf {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: var(--leaf-h);
+    background-color: var(--pv-paper);
+    background-image: var(--pv-vignette);
+    box-shadow: var(--pv-shadow-sheet);
+  }
+
+  :global(:root[data-grain="true"]) .leaf {
+    background-image: var(--pv-grain), var(--pv-vignette);
+  }
+
+  /* The sheet's number, centred in its bottom margin. */
+  .folio {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--leaf-margin) / 2 - 0.5lh);
+    text-align: center;
+    color: var(--pv-ink-meta);
+    font-family: var(--pv-writing-font, var(--pv-font-manuscript));
+    font-size: var(--pv-text-sm);
+  }
+
+  .page-notes.on-sheet {
+    position: absolute;
+    left: var(--leaf-margin);
+    right: var(--leaf-margin);
+    margin: 0;
   }
 
   .float-wrap {

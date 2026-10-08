@@ -33,6 +33,8 @@
     onReplace,
     onComment,
     onNotice,
+    expanded = true,
+    onExpanded = () => undefined,
   }: {
     editor: Editor | null;
     revision: number;
@@ -63,12 +65,15 @@
     onComment: () => void;
     /** Says something on the page for a few seconds, such as why the title line turned a change away. */
     onNotice?: (message: string) => void;
+    /** Whether the full toolbar is open, and how to open or close it. */
+    expanded?: boolean;
+    onExpanded?: (open: boolean) => void;
   } = $props();
 
   // Word's usual sizes for running text, in points, and the one set in Settings if it is between them.
   const textSizes = $derived([...new Set([10, 11, 12, 13, 14, 16, 18, manuscriptPt])].sort((a, b) => a - b));
 
-  let expanded = $state(false);
+  // The full toolbar's state comes from Settings (open by default) and goes back there.
   // The quiet row's one Alignment button opens the four alignments (design TOOL-8).
   let alignOpen = $state(false);
   let alignWrap = $state<HTMLElement | undefined>(undefined);
@@ -353,7 +358,7 @@
     <button type="button" class="tool serif" title={t("blockQuote")} aria-label={t("blockQuote")} onmousedown={(event) => event.preventDefault()} onclick={quote}>“</button>
     <button type="button" class="tool scene" title={t("sceneBreak")} aria-label={t("sceneBreak")} onmousedown={(event) => event.preventDefault()} onclick={sceneBreak}>* *</button>
     <span class="rule"></span>
-    <button type="button" class="more" onclick={() => (expanded = true)}>
+    <button type="button" class="more" onclick={() => onExpanded(true)}>
       {t("allTools")}
       <Icon name="chevronDown" />
     </button>
@@ -489,7 +494,7 @@
       <p>{t("groupFind")}</p>
     </section>
     <span class="spacer"></span>
-    <button type="button" class="more fewer" onclick={() => (expanded = false)}>
+    <button type="button" class="more fewer" onclick={() => onExpanded(false)}>
       {t("fewerTools")}
       <Icon name="chevronUp" />
     </button>

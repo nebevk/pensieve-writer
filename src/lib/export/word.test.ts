@@ -147,6 +147,22 @@ describe("Word export", () => {
     expect(holding(">a bullet<")).toContain('w:before="156"');
   });
 
+  it("makes its pages A4 as wide as the page, or the sheets she writes on in Pages", async () => {
+    const size = (xml: string) => xml.match(/<w:pgSz [^>]*>/)?.[0] ?? "";
+    const margins = (xml: string) => xml.match(/<w:pgMar [^>]*>/)?.[0] ?? "";
+    const continuous = await documentXml(await wordFile(book(), look));
+    expect(size(continuous)).toContain('w:w="11906"');
+    expect(size(continuous)).toContain('w:h="16838"');
+    const a5 = await documentXml(await wordFile(book(), { ...look, paper: "a5" }));
+    expect(size(a5)).toContain('w:w="8391"');
+    expect(size(a5)).toContain('w:h="11906"');
+    expect(margins(a5)).toContain('w:left="1134"');
+    expect(margins(a5)).toContain('w:top="1134"');
+    const a4 = await documentXml(await wordFile(book(), { ...look, paper: "a4" }));
+    expect(size(a4)).toContain('w:w="11906"');
+    expect(margins(a4)).toContain('w:left="1417"');
+  });
+
   it("packs every style of the manuscript font under one family name", async () => {
     const font = new Uint8Array(64).fill(7);
     const fonts = [

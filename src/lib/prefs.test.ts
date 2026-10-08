@@ -58,6 +58,26 @@ describe("settings", () => {
     expect(loadSaved({ panel: "streak" }).panel).toBe("");
   });
 
+  it("start quiet every time, keeping the volume, which begins at 10 of 100", () => {
+    expect(loadSaved(null).ambience).toBe("off");
+    expect(loadSaved(null).ambienceVolume).toBe(0.1);
+    const saved = loadSaved({ ambience: "rain", ambienceVolume: 0.6 });
+    expect(saved.ambience).toBe("off");
+    expect(saved.ambienceVolume).toBe(0.6);
+  });
+
+  it("open the full toolbar until it is closed, and remember that", () => {
+    expect(loadSaved(null).toolsExpanded).toBe(true);
+    expect(loadSaved({ toolsExpanded: false }).toolsExpanded).toBe(false);
+  });
+
+  it("write on one continuous page until Pages is chosen, on A4 unless A5 is", () => {
+    expect(loadSaved(null).paper).toBe("continuous");
+    expect(loadSaved(null).paperSize).toBe("a4");
+    expect(loadSaved({ paper: "pages", paperSize: "a5" })).toMatchObject({ paper: "pages", paperSize: "a5" });
+    expect(loadSaved({ paper: "scroll", paperSize: "letter" })).toMatchObject({ paper: "continuous", paperSize: "a4" });
+  });
+
   it("keep a daily goal that was set, 0 for none", () => {
     expect(loadSaved({ dailyGoal: 1000 }).dailyGoal).toBe(1000);
     expect(loadSaved({ dailyGoal: 0 }).dailyGoal).toBe(0);

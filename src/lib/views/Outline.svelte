@@ -1,6 +1,6 @@
 <script lang="ts">
   import { wordsFor } from "$lib/editor/counts";
-  import type { Chapter, ChapterStatus } from "$lib/model";
+  import type { Chapter } from "$lib/model";
   import { num, plural, t } from "$lib/ui.svelte";
 
   let {
@@ -33,20 +33,6 @@
           onchange={(event) =>
             onUpdate(chapter.id, { wordGoal: Number((event.currentTarget as HTMLInputElement).value) || 0 })}
         />
-      </label>
-      <label>
-        {t("status")}
-        <select
-          value={chapter.status}
-          onchange={(event) =>
-            onUpdate(chapter.id, {
-              status: (event.currentTarget as HTMLSelectElement).value as ChapterStatus,
-            })}
-        >
-          <option value="draft">{t("statusDraft")}</option>
-          <option value="revised">{t("statusRevised")}</option>
-          <option value="final">{t("statusFinal")}</option>
-        </select>
       </label>
       <label>
         {t("synopsis")}
@@ -105,8 +91,7 @@
   }
 
   input,
-  textarea,
-  select {
+  textarea {
     font: inherit;
     font-size: var(--pv-text-base);
     color: var(--pv-ink);

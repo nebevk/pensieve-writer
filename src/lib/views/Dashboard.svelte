@@ -4,7 +4,7 @@
   import { compactWords, wordsFor } from "$lib/editor/counts";
   import { roman } from "$lib/chapters/labels";
   import type { AmbienceName, KnownProject, Prefs } from "$lib/prefs";
-  import type { Chapter, ChapterStatus, Writing } from "$lib/model";
+  import type { Chapter, Writing } from "$lib/model";
   import { isUntitled, type UiKey } from "$lib/i18n";
   import { ago, locale, num, plural, t, ui } from "$lib/ui.svelte";
   import Icon from "$lib/editor/Icon.svelte";
@@ -66,7 +66,6 @@
 
   // A short verse for Eva under her greeting, a different one each time Home opens.
   const quote = randomQuote();
-  const STATUSES: Record<ChapterStatus, UiKey> = { draft: "statusDraft", revised: "statusRevised", final: "statusFinal" };
   const NOTE_KINDS: Record<NoteCategory, UiKey> = {
     characters: "kindCharacter",
     places: "kindPlace",
@@ -112,14 +111,10 @@
       .sort((a, b) => Number(b.todoState === "doing") - Number(a.todoState === "doing")),
   );
   const recentNotes = $derived([...notes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3));
+  // How many chapters, and how many are still empty: no statuses for now (owner, 8 October).
   const chapterCounts = $derived.by(() => {
-    const counts = new Map<string, number>();
-    for (const chapter of chapters) counts.set(statusOf(chapter), (counts.get(statusOf(chapter)) ?? 0) + 1);
-    return (["final", "revised", "draft", "empty"] as const).flatMap((status) => {
-      const n = counts.get(status) ?? 0;
-      const label = status === "empty" ? t("statusEmpty") : t(STATUSES[status]);
-      return n > 0 ? [`${num(n)} ${label.toLowerCase()}`] : [];
-    });
+    const empty = chapters.filter((chapter) => statusOf(chapter) === "empty").length;
+    return [plural("chapters", chapters.length), ...(empty > 0 ? [`${num(empty)} ${t("statusEmpty").toLowerCase()}`] : [])];
   });
   const sound = $derived(prefs.ambience === "off" ? null : SOUNDS[prefs.ambience]);
 
@@ -131,8 +126,8 @@
       .filter((line) => line.length > 0);
   }
 
-  function statusOf(chapter: Chapter): ChapterStatus | "empty" {
-    return chapter.plainText.trim() ? chapter.status : "empty";
+  function statusOf(chapter: Chapter): "written" | "empty" {
+    return chapter.plainText.trim() ? "written" : "empty";
   }
 
   /**
@@ -266,7 +261,7 @@
         </div>
       </div>
 
-      <!-- The open book's chapters as status bars; each opens its chapter. -->
+      <!-- The open book's chapters as bars, written or still empty; each opens its chapter. -->
       <div class="strip">
         <div class="strip-head">
           {#if renaming}
@@ -305,7 +300,6 @@
 
     <div class="side">
       <div class="continue">
-        <div class="under" aria-hidden="true"></div>
         <div class="sheet">
           <div class="running">
             <span>{writing.title}</span>
@@ -578,16 +572,9 @@
     border-radius: 1px;
   }
 
-  .mark.final {
-    background: var(--pv-status-final);
-  }
-
-  .mark.revised {
-    background: var(--pv-accent);
-  }
-
-  .mark.draft {
-    border: 1.5px solid var(--pv-text-faint);
+  /* A chapter with text in it; no statuses for now (owner, 8 October). */
+  .mark.written {
+    background: color-mix(in oklch, var(--pv-text) 30%, transparent);
   }
 
   .mark.empty {
@@ -641,14 +628,6 @@
   /* The design's 250px card, taller when a long paragraph or Slovenian's longer words need it, never spilling. */
   .continue {
     position: relative;
-  }
-
-  .under {
-    position: absolute;
-    inset: 0;
-    transform: translate(6px, 7px) rotate(1deg);
-    background: var(--pv-paper-under);
-    box-shadow: var(--pv-shadow-under);
   }
 
   .sheet {

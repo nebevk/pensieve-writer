@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ManuscriptFont, PageWidth, Prefs, ThemeName } from "$lib/prefs";
+  import type { ManuscriptFont, PageWidth, PaperMode, PaperSize, Prefs, ThemeName } from "$lib/prefs";
   import type { WritingLanguage } from "$lib/model";
   import type { UiKey } from "$lib/i18n";
   import { ago, num, plural, t } from "$lib/ui.svelte";
@@ -151,6 +151,11 @@
   ];
 
   const widths: PageWidth[] = ["narrow", "book", "wide"];
+  const papers: { id: PaperMode; key: UiKey }[] = [
+    { id: "continuous", key: "paperContinuous" },
+    { id: "pages", key: "paperPages" },
+  ];
+  const sizes: PaperSize[] = ["a4", "a5"];
 
   function widthLabel(width: PageWidth): string {
     if (width === "narrow") return t("widthNarrow");
@@ -284,21 +289,60 @@
               />
             </label>
             <div>
-              <p class="lab">{t("pageWidth")}</p>
-              <div class="segment" role="radiogroup" aria-label={t("pageWidth")}>
-                {#each widths as width (width)}
+              <!-- One page that never ends, or sheets of paper as they print. -->
+              <p class="lab">{t("paper")}</p>
+              <div class="segment" role="radiogroup" aria-label={t("paper")}>
+                {#each papers as paper (paper.id)}
                   <button
                     type="button"
                     role="radio"
-                    aria-checked={prefs.pageWidth === width}
-                    class:on={prefs.pageWidth === width}
-                    onclick={() => onChange({ pageWidth: width })}
+                    aria-checked={prefs.paper === paper.id}
+                    class:on={prefs.paper === paper.id}
+                    onclick={() => onChange({ paper: paper.id })}
                   >
-                    {widthLabel(width)}
+                    {t(paper.key)}
                   </button>
                 {/each}
               </div>
             </div>
+          </div>
+
+          <div class="split">
+            {#if prefs.paper === "pages"}
+              <div>
+                <p class="lab">{t("paperSize")}</p>
+                <div class="segment" role="radiogroup" aria-label={t("paperSize")}>
+                  {#each sizes as size (size)}
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={prefs.paperSize === size}
+                      class:on={prefs.paperSize === size}
+                      onclick={() => onChange({ paperSize: size })}
+                    >
+                      {size.toUpperCase()}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {:else}
+              <div>
+                <p class="lab">{t("pageWidth")}</p>
+                <div class="segment" role="radiogroup" aria-label={t("pageWidth")}>
+                  {#each widths as width (width)}
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={prefs.pageWidth === width}
+                      class:on={prefs.pageWidth === width}
+                      onclick={() => onChange({ pageWidth: width })}
+                    >
+                      {widthLabel(width)}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
           </div>
 
           <div class="rows">
