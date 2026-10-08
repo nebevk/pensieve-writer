@@ -12,8 +12,8 @@ import type { EditorView } from "@tiptap/pm/view";
  * frame at most. Marking the letters in the text itself made each key slower on a long chapter.
  */
 const key = new PluginKey<Typed | null>("smoothTyping");
-// How long a new letter takes to ink in.
-const INK_MS = 150;
+// How long a new letter takes to ink in: long enough to be seen at typing speed (150 ms wasn't).
+const INK_MS = 240;
 // Veils in turn, so quick letters each have one.
 const VEILS = 4;
 
@@ -183,7 +183,11 @@ class Caret {
     }, 600);
   }
 
-  /** A veil of paper over the letters just typed, fading away, so they seem to ink in. */
+  /**
+   * A veil of paper over the letters just typed, drawn back from the left as it fades, so the ink seems
+   * to flow into them. It stays in their own box, never over the letters beside them, and they show
+   * faintly from the first moment, so a key never seems late.
+   */
   private ink(host: DOMRect) {
     const typed = key.getState(this.view.state);
     if (!typed || typed.serial === this.inked) return;
@@ -194,9 +198,17 @@ class Caret {
     if (Math.abs(start.top - end.top) > 2 || end.right <= start.left) return;
     const veil = this.veils[this.veilTurn];
     this.veilTurn = (this.veilTurn + 1) % this.veils.length;
-    veil.style.transform = `translate(${start.left - host.left}px, ${start.top - host.top}px)`;
+    const place = `translate(${start.left - host.left}px, ${start.top - host.top}px)`;
     veil.style.width = `${end.right - start.left + 1}px`;
     veil.style.height = `${end.bottom - start.top}px`;
-    veil.animate([{ opacity: 0.85 }, { opacity: 0 }], { duration: INK_MS, easing: "ease-out", fill: "forwards" });
+    // Drawn back toward its right edge (transform and opacity only, which the browser animates without
+    // painting anything again; drawing back its outline instead made each key slower).
+    veil.animate(
+      [
+        { opacity: 0.8, transform: `${place} scaleX(1)` },
+        { opacity: 0, transform: `${place} scaleX(0)` },
+      ],
+      { duration: INK_MS, easing: "cubic-bezier(0.3, 0.6, 0.4, 1)", fill: "forwards" },
+    );
   }
 }
