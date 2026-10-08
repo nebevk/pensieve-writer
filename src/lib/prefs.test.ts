@@ -83,6 +83,12 @@ describe("settings", () => {
     expect(loadSaved({ tips: false, tipsSeen: ["home", 3, "write"] })).toMatchObject({ tips: false, tipsSeen: ["home", "write"] });
   });
 
+  it("time a pomodoro at 25 and 5 minutes unless she set others, within the sliders", () => {
+    expect(loadSaved(null)).toMatchObject({ pomodoroFocus: 25, pomodoroBreak: 5 });
+    expect(loadSaved({ pomodoroFocus: 50, pomodoroBreak: 10 })).toMatchObject({ pomodoroFocus: 50, pomodoroBreak: 10 });
+    expect(loadSaved({ pomodoroFocus: 500, pomodoroBreak: 0 })).toMatchObject({ pomodoroFocus: 90, pomodoroBreak: 1 });
+  });
+
   it("keep a daily goal that was set, 0 for none", () => {
     expect(loadSaved({ dailyGoal: 1000 }).dailyGoal).toBe(1000);
     expect(loadSaved({ dailyGoal: 0 }).dailyGoal).toBe(0);

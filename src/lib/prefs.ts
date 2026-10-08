@@ -59,6 +59,9 @@ export type Prefs = {
   sidebarView: SidebarView;
   /** Words to write each day; 0 means no goal. */
   dailyGoal: number;
+  /** A pomodoro's minutes of writing, and of the break after them. */
+  pomodoroFocus: number;
+  pomodoroBreak: number;
   writingDay: string;
   dayStartWords: number;
   uiLanguage: "en" | "sl";
@@ -142,6 +145,8 @@ export const defaultPrefs = (): Prefs => ({
   panel: "",
   sidebarView: "chapters",
   dailyGoal: 500,
+  pomodoroFocus: 25,
+  pomodoroBreak: 5,
   writingDay: "",
   dayStartWords: 0,
   uiLanguage: "sl",
@@ -185,6 +190,8 @@ function fromStored(raw: string): Prefs {
     ambience: "off",
     toolsExpanded: rest.toolsExpanded !== false,
     tips: rest.tips !== false,
+    pomodoroFocus: minutes(rest.pomodoroFocus, 25, 5, 90),
+    pomodoroBreak: minutes(rest.pomodoroBreak, 5, 1, 30),
     tipsSeen: Array.isArray(rest.tipsSeen) ? rest.tipsSeen.filter((place): place is string => typeof place === "string") : [],
     uiLanguage: stored.uiLanguage === "en" ? "en" : "sl",
     panel,
@@ -197,6 +204,11 @@ function fromStored(raw: string): Prefs {
     samples: stringsFrom(rest.samples),
     knownProjects: Array.isArray(rest.knownProjects) ? rest.knownProjects.flatMap(knownFrom) : [],
   };
+}
+
+/** Whole minutes within the slider's range, or the default. */
+function minutes(value: unknown, fallback: number, least: number, most: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.min(most, Math.max(least, Math.round(value))) : fallback;
 }
 
 function lastOpenedFrom(value: unknown): LastOpened {

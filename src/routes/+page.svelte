@@ -18,7 +18,7 @@
   import { wordFileFor, wordLook } from "$lib/export/wordAssets";
   import { appendBookChapters, looksLikeChapterTitle, readWordFile, replaceBookChapters, type WordImport } from "$lib/export/wordImport";
   import { createAmbience } from "$lib/ambience";
-  import { BREAK_MINUTES, onPomodoroTurn } from "$lib/pomodoro.svelte";
+  import { onPomodoroTurn, pomodoro } from "$lib/pomodoro.svelte";
   import { check, type Update } from "@tauri-apps/plugin-updater";
   import { getVersion } from "@tauri-apps/api/app";
   import type { UpdateOffer } from "$lib/editor/UpdatePill.svelte";
@@ -299,7 +299,7 @@
   onMount(() => {
     let disposed = false;
     // The pomodoro's chime comes with a word on the page.
-    onPomodoroTurn((phase) => notice(phase === "break" ? t("pomodoroBreakNow", { rest: BREAK_MINUTES }) : t("pomodoroBackNow")));
+    onPomodoroTurn((phase) => notice(phase === "break" ? t("pomodoroBreakNow", { rest: pomodoro.rest }) : t("pomodoroBackNow")));
     let unlistenClose: (() => void) | undefined;
     let unlistenFocus: (() => void) | undefined;
     let closing = false;
@@ -3087,6 +3087,8 @@
         onAmbience={cycleAmbience}
         theme={prefs.theme}
         onTheme={(theme) => (prefs.theme = theme)}
+        focusMinutes={prefs.pomodoroFocus}
+        breakMinutes={prefs.pomodoroBreak}
       />
     </div>
     {#if zen}

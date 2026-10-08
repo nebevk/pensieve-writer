@@ -476,6 +476,35 @@
             />
           </label>
           <p class="hint">{t("bookGoalHint")}</p>
+          <!-- The pomodoro in the floating bar: how long she writes, and how long the break is. -->
+          <p class="lab">{t("pomodoro")}</p>
+          <div class="split">
+            <label class="slider">
+              <span>{t("pomodoroWriting")} <b>{prefs.pomodoroFocus} min</b></span>
+              <input
+                type="range"
+                min="5"
+                max="90"
+                step="5"
+                value={prefs.pomodoroFocus}
+                style:--pv-fill="{((prefs.pomodoroFocus - 5) / 85) * 100}%"
+                oninput={(event) => onChange({ pomodoroFocus: Number((event.currentTarget as HTMLInputElement).value) })}
+              />
+            </label>
+            <label class="slider">
+              <span>{t("pomodoroRest")} <b>{prefs.pomodoroBreak} min</b></span>
+              <input
+                type="range"
+                min="1"
+                max="30"
+                step="1"
+                value={prefs.pomodoroBreak}
+                style:--pv-fill="{((prefs.pomodoroBreak - 1) / 29) * 100}%"
+                oninput={(event) => onChange({ pomodoroBreak: Number((event.currentTarget as HTMLInputElement).value) })}
+              />
+            </label>
+          </div>
+          <p class="hint">{t("pomodoroLengthHint")}</p>
         {:else if section === "Ambience"}
           <h2>{t("ambience")}</h2>
           <label class="field">
