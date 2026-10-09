@@ -12,8 +12,11 @@ import type { EditorView } from "@tiptap/pm/view";
  * frame at most. Marking the letters in the text itself made each key slower on a long chapter.
  */
 const key = new PluginKey<Typed | null>("smoothTyping");
-// How long a new letter takes to ink in: long enough to be seen at typing speed (150 ms wasn't).
-const INK_MS = 240;
+// How long a new letter takes to ink in: long enough to be seen at typing speed (150 ms wasn't), a
+// touch less than the 240 ms that first showed (owner, 9 October: "reduce it a little").
+const INK_MS = 200;
+// How much of the letter the veil hides as it starts.
+const INK_VEIL = 0.65;
 // Veils in turn, so quick letters each have one.
 const VEILS = 4;
 
@@ -205,7 +208,7 @@ class Caret {
     // painting anything again; drawing back its outline instead made each key slower).
     veil.animate(
       [
-        { opacity: 0.8, transform: `${place} scaleX(1)` },
+        { opacity: INK_VEIL, transform: `${place} scaleX(1)` },
         { opacity: 0, transform: `${place} scaleX(0)` },
       ],
       { duration: INK_MS, easing: "cubic-bezier(0.3, 0.6, 0.4, 1)", fill: "forwards" },

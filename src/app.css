@@ -135,13 +135,15 @@
   --pv-scrim: rgba(58, 37, 35, 0.32);
 }
 
+/* Gentle mode: nothing on the page moves. Transitions take 0s, not a sliver of time, which would still
+   start one on every element and land each change a frame late (as with Windows' animations off). */
 :root[data-gentle="true"],
 :root[data-gentle="true"] *,
 :root[data-gentle="true"] *::before,
 :root[data-gentle="true"] *::after {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
-  transition-duration: 0.01ms !important;
+  transition-duration: 0s !important;
 }
 
 * {

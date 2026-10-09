@@ -254,7 +254,7 @@
   }
 
   .editor-host :global(.ink-caret.gliding) {
-    transition: transform 120ms cubic-bezier(0.22, 0.8, 0.3, 1) !important;
+    transition: transform 100ms cubic-bezier(0.22, 0.8, 0.3, 1) !important;
   }
 
   .editor-host :global(.ink-caret.shown.blinking) {
