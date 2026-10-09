@@ -46,6 +46,8 @@ export const LUCIDE: Record<string, IconPart[]> = {
   panelLeftClose: [["rect", { width: 18, height: 18, x: 3, y: 3, rx: 2 }], "M9 3v18M16 15l-3-3 3-3"],
   panelLeftOpen: [["rect", { width: 18, height: 18, x: 3, y: 3, rx: 2 }], "M9 3v18M14 9l3 3-3 3"],
   panelRightClose: [["rect", { width: 18, height: 18, x: 3, y: 3, rx: 2 }], "M15 3v18M8 9l3 3-3 3"],
+  panelRight: [["rect", { width: 18, height: 18, x: 3, y: 3, rx: 2 }], "M15 3v18"],
+  maximize: ["M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"],
   undo: ["M3 7v6h6", "M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"],
   redo: ["M21 7v6h-6", "M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"],
   // The library's tree, drawn as a file explorer draws one (not in the design yet).

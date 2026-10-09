@@ -90,7 +90,7 @@ Priority key (MoSCoW): **M** = Must (v1), **S** = Should (v1 if time allows), **
 | NT-4 | Todo state on notes and on standalone tasks: todo / doing / done | M |
 | NT-5 | Todo overview: list or board view grouped by state | M |
 | NT-6 | Idea connections: `[[wiki-style]]` links between notes | S |
-| NT-7 | Side panel to view notes next to the editor while writing. Since 9 October (owner), a note opened while writing (from the library, the panel or the toolbar's New note) opens in a window over the page, to read or change its kind, name, short description and text, with "Open in Notes" for the rest; the project's to-dos open the same way from the library, to add and tick off, with "Open To-dos" for the board | S |
+| NT-7 | Side panel to view notes next to the editor while writing. Since 9 October (owner), a note opened while writing (from the library, the panel or the toolbar's New note) opens in a window over the page, to read or change its kind, name, short description and text, with "Open in Notes" for the rest; the project's to-dos open the same way from the library, to add and tick off, with "Open To-dos" for the board. Either window can be pinned beside the page (its pin by the ✕), taking the panel's place so she writes with it open; the keyboard goes back to the page, a note opened meanwhile (or a linked name clicked on the page) shows in the pinned note's place, and the toolbar's Notes, To-dos and Goals take the panel back. Only the right side, where the panel already is: the library keeps the left (owner's choice, 9 October) | S |
 | NT-8 | Visual idea map / graph | C |
 
 ### 4.4 Views

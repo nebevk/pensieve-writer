@@ -10,6 +10,9 @@
     tasks,
     notes,
     chapters,
+    docked = false,
+    onPin,
+    onUnpin,
     onToggle,
     onAdd,
     onOpenTodos,
@@ -20,6 +23,10 @@
     /** The project's notes, for "From note" lines. */
     notes: Note[];
     chapters: Chapter[];
+    /** Pinned in the panel beside the page, to write with it open. */
+    docked?: boolean;
+    onPin?: () => void;
+    onUnpin?: () => void;
     onToggle: (task: Task) => void;
     /** A new to-do for the whole project. */
     onAdd: (title: string) => void;
@@ -57,13 +64,13 @@
 </script>
 
 <!-- The project's to-dos opened while writing (owner, 9 October), ticked off here; the board is a click away. -->
-<Modal title={t("todos")} size="small" {onClose}>
-  <div class="todos">
+<Modal title={t("todos")} size="small" {docked} {onClose} {onPin} {onUnpin}>
+  <div class="todos" class:docked>
     <form class="add" onsubmit={add}>
       <span aria-hidden="true">+</span>
       <!-- svelte-ignore a11y_autofocus -->
-      <input bind:value={draft} placeholder={t("addTodoHint")} aria-label={t("addTodo")} autofocus />
-      <span class="hint">{t("enterToAdd")}</span>
+      <input bind:value={draft} placeholder={t("addTodoHint")} aria-label={t("addTodo")} autofocus={!docked} />
+      {#if !docked}<span class="hint">{t("enterToAdd")}</span>{/if}
     </form>
     {#each GROUPS as group (group.id)}
       {@const items = tasks.filter((task) => task.todoState === group.id)}
@@ -98,6 +105,10 @@
     min-height: 0;
     overflow: auto;
     padding: 16px 24px 20px;
+  }
+
+  .todos.docked {
+    padding: 12px 14px 16px;
   }
 
   .add {

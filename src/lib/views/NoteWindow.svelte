@@ -12,6 +12,9 @@
     note,
     language = "en",
     fresh = false,
+    docked = false,
+    onPin,
+    onUnpin,
     onEdit,
     onOpenLinked,
     onOpenInNotes,
@@ -21,6 +24,10 @@
     language?: "en" | "sl";
     /** A note just made: the keyboard goes to its title, ready to be named. */
     fresh?: boolean;
+    /** Pinned in the panel beside the page, to write with it open. */
+    docked?: boolean;
+    onPin?: () => void;
+    onUnpin?: () => void;
     /** A change to a note: this one, or the one whose words were last typed. */
     onEdit: (id: string, patch: Partial<Note>) => void;
     /** A [[link]] in the note, clicked. */
@@ -50,8 +57,8 @@
 </script>
 
 <!-- A note opened while writing (owner, 9 October): read or changed here, over the page; Notes is a click away. -->
-<Modal title={t("noteWindowTitle")} size="small" {onClose}>
-  <div class="note">
+<Modal title={t("noteWindowTitle")} size="small" {docked} {onClose} {onPin} {onUnpin}>
+  <div class="note" class:docked>
     <header>
       <select
         aria-label={t("noteKind")}
@@ -83,7 +90,7 @@
         docId={note.id}
         initialContent={note.contentJson}
         {language}
-        focusOnOpen={!fresh}
+        focusOnOpen={!fresh && !docked}
         onChange={(json: DocumentJson, text: string, id?: string) => onEdit(id ?? note.id, { contentJson: json, plainText: text })}
         onEditor={() => {}}
         onActivity={() => {}}
@@ -159,5 +166,14 @@
   .note :global(.ProseMirror) {
     min-height: 9rem;
     font-size: 15px;
+  }
+
+  /* Pinned beside the page, in its narrow panel. */
+  .note.docked {
+    padding: 16px 18px 20px;
+  }
+
+  .docked .title {
+    font-size: var(--pv-heading-xl);
   }
 </style>

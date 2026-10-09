@@ -99,6 +99,8 @@
   // A note or the project's to-dos, opened from Write in a window over the page (owner, 9 October).
   let noteWindow = $state<{ note: Note; fresh: boolean } | null>(null);
   let todosWindowOpen = $state(false);
+  // Which of them is pinned in the panel beside the page instead of over it, to write with it open.
+  let docked = $state<"note" | "todos" | null>(null);
   let settingsSection = $state<"Appearance" | "Ambience" | "Shortcuts" | "General" | "Writing & goals">("Appearance");
   let settingsReturn: HTMLElement | null = null;
   // A one-shot request to the Notes view: the note to open.
@@ -144,7 +146,8 @@
   // she stops them. Not over Settings or in Zen, and a moment after the place appears, so passing
   // through doesn't bring them and what they point at has settled.
   const tourWanted = $derived.by((): TourPlace | null => {
-    if (!prefs.tips || settingsOpen || historyOpen || noteWindow || todosWindowOpen || zen || !writing) return null;
+    const windowOpen = (noteWindow && docked !== "note") || (todosWindowOpen && docked !== "todos");
+    if (!prefs.tips || settingsOpen || historyOpen || windowOpen || zen || !writing) return null;
     const place = view === "home" || view === "write" || view === "notes" || view === "book" ? view : null;
     return place && !prefs.tipsSeen.includes(place) ? place : null;
   });
@@ -206,7 +209,8 @@
   // The panel follows the chapter's text as it is reported after a pause in typing, not every key.
   const chapterTodos = $derived(bookTasks.filter((task) => task.chapterId === activeId));
   const chapterNotes = $derived(activeChapter ? notesInChapter(bookNotes, activeChapter) : []);
-  const panelOpen = $derived(!zen && prefs.panel !== "");
+  const dockedOpen = $derived(docked === "note" ? noteWindow !== null : docked === "todos" && todosWindowOpen);
+  const panelOpen = $derived(!zen && (prefs.panel !== "" || dockedOpen));
   // A one-page writing has no chapter list: the library shows beside it, whichever tab was chosen.
   const libraryShown = $derived(prefs.sidebarView === "library" || (!!writing && !writing.split));
   // The example projects and the long test book written so far; Settings offers to put them back as they were.
@@ -511,7 +515,7 @@
     if (editor.isDestroyed) return;
     editor.view.dispatch(removeComment(editor.state, comment.id));
     bookTasks = [...bookTasks, task];
-    prefs = { ...prefs, panel: "todos" };
+    showList("todos");
   }
 
   /** A comment becomes a note tied to this chapter, and its words link to the note from then on. */
@@ -530,7 +534,7 @@
     editor.view.dispatch(removeComment(editor.state, comment.id, { noteId: note.id, title: note.title }));
     bookNotes = [note, ...bookNotes];
     panelNote = note.id;
-    prefs = { ...prefs, panel: "notes" };
+    showList("notes");
   }
 
   /** Reads the project's notes and to-dos again for the panel, as they may have changed elsewhere. */
@@ -587,10 +591,47 @@
     noteOpenRequest = { id, title: note?.title ?? "", at: Date.now() };
   }
 
-  /** Opens a note in a window over the page; `fresh` for one just made, to be named. */
+  /** Opens a note in a window over the page, or in its place beside the page when a note is pinned there; `fresh` for one just made, to be named. */
   function openNoteWindow(id: string, fresh = false) {
+    if (noteWindow) leaveNoteWindow();
     const note = bookNotes.find((item) => item.id === id);
     if (note) noteWindow = { note, fresh };
+  }
+
+  /** Pins the note or the to-dos window beside the page, and the keyboard goes back to the page. */
+  function pin(what: "note" | "todos") {
+    if (what === "note" && noteWindow) noteWindow = { ...noteWindow, fresh: false };
+    // Only one thing is pinned at a time: what was there closes.
+    if (docked && docked !== what) closeDocked();
+    docked = what;
+    void tick().then(() => {
+      if (textEditor && !textEditor.isDestroyed) textEditor.commands.focus();
+    });
+  }
+
+  /** Closes what is pinned beside the page. */
+  function closeDocked() {
+    if (docked === "note") leaveNoteWindow();
+    else if (docked === "todos") todosWindowOpen = false;
+    docked = null;
+  }
+
+  // Pinned beside the page is for writing. Elsewhere (Notes, say) she may change the pinned note, so it
+  // closes on the way, and its copy can't later be saved over what she changed there.
+  $effect(() => {
+    if (view !== "write" && docked) untrack(closeDocked);
+  });
+
+  /** A list beside the page (the chapter's notes, to-dos or goals), in place of anything pinned there. */
+  function showList(list: "notes" | "todos" | "goals") {
+    if (dockedOpen) closeDocked();
+    prefs = { ...prefs, panel: list };
+  }
+
+  /** The toolbar's Notes, To-dos and Goals buttons: the list, or none; with something pinned, the list. */
+  function togglePanel(list: "notes" | "todos" | "goals") {
+    if (!dockedOpen && prefs.panel === list) prefs = { ...prefs, panel: "" };
+    else showList(list);
   }
 
   /**
@@ -601,7 +642,8 @@
     const current = noteWindow?.note.id === id ? noteWindow.note : bookNotes.find((note) => note.id === id);
     if (!current) return;
     const next = { ...current, ...patch, updatedAt: new Date().toISOString() };
-    if (noteWindow?.note.id === id) noteWindow = { ...noteWindow, note: next };
+    // Typed into once, it is no longer new: shown again (pinned, say), it leaves the keyboard alone.
+    if (noteWindow?.note.id === id) noteWindow = { note: next, fresh: false };
     else bookNotes = bookNotes.map((note) => (note.id === id ? next : note));
     scheduleNoteSave(next);
   }
@@ -622,10 +664,8 @@
     // A note's link to itself leaves it as it is (the book's copy is older than the window's).
     if (found && found.id === noteWindow?.note.id) return;
     if (found) leaveNoteWindow(found);
-    else if (title) {
-      leaveNoteWindow();
-      void newNoteIn("ideas", title);
-    }
+    // Made, it takes the window's place (or the pinned note's), as a found one does.
+    else if (title) void newNoteIn("ideas", title);
   }
 
   /** From the note window to Notes, once what she typed is saved, so Notes reads it. */
@@ -1788,6 +1828,7 @@
     historyPreview = null;
     noteWindow = null;
     todosWindowOpen = false;
+    docked = null;
     splitBack = null;
     pageSpot = null;
     panelNote = "";
@@ -2187,10 +2228,13 @@
   }
 
   async function changeNote(id: string, patch: Partial<Note>) {
-    const note = bookNotes.find((item) => item.id === id);
+    // A note open in its window is changed there too, or its next word would save the old name back.
+    const inWindow = noteWindow?.note.id === id;
+    const note = inWindow ? noteWindow?.note : bookNotes.find((item) => item.id === id);
     if (!note) return;
     const next = { ...note, ...patch, updatedAt: new Date().toISOString() };
     bookNotes = bookNotes.map((item) => (item.id === id ? next : item));
+    if (inWindow && noteWindow) noteWindow = { ...noteWindow, note: next };
     try {
       await saveNote(next);
     } catch (error) {
@@ -2200,7 +2244,7 @@
   }
 
   async function duplicateNote(id: string) {
-    const note = bookNotes.find((item) => item.id === id);
+    const note = noteWindow?.note.id === id ? noteWindow.note : bookNotes.find((item) => item.id === id);
     if (!note) return;
     const now = new Date().toISOString();
     // A JSON copy: the note's text must be its own, not shared with the original.
@@ -2215,6 +2259,11 @@
 
   /** Deletes a note after keeping an earlier version of the open writing, which holds every note as it was. */
   async function deleteNoteFromTree(id: string) {
+    // Its window closes first, so nothing typed there can write it back after the delete.
+    if (noteWindow?.note.id === id) {
+      noteWindow = null;
+      if (docked === "note") docked = null;
+    }
     try {
       await flushNoteSave();
       if (writingId) await snapshotSavedWriting(writingId);
@@ -2874,16 +2923,16 @@
     onZen={() => void setZen(true)}
     revision={editorRevision}
     chaptersOpen={!collapsed}
-    notesOpen={prefs.panel === "notes"}
-    todosOpen={prefs.panel === "todos"}
-    goalsOpen={prefs.panel === "goals"}
+    notesOpen={prefs.panel === "notes" && !dockedOpen}
+    todosOpen={prefs.panel === "todos" && !dockedOpen}
+    goalsOpen={prefs.panel === "goals" && !dockedOpen}
     notesCount={chapterNotes.length}
     todosCount={chapterTodos.filter((task) => task.todoState !== "done").length}
     {wordsToday}
     onToggleChapters={() => (collapsed = !collapsed)}
-    onToggleNotes={() => (prefs = { ...prefs, panel: prefs.panel === "notes" ? "" : "notes" })}
-    onToggleTodos={() => (prefs = { ...prefs, panel: prefs.panel === "todos" ? "" : "todos" })}
-    onToggleGoals={() => (prefs = { ...prefs, panel: prefs.panel === "goals" ? "" : "goals" })}
+    onToggleNotes={() => togglePanel("notes")}
+    onToggleTodos={() => togglePanel("todos")}
+    onToggleGoals={() => togglePanel("goals")}
     onFind={() => {
       replaceMode = false;
       findOpen = true;
@@ -2899,7 +2948,7 @@
       void newNoteIn("ideas", "", activeId ?? "");
     }}
     onAddTodo={() => {
-      prefs = { ...prefs, panel: "todos" };
+      showList("todos");
       panelAddFocus = 1;
     }}
     onReplace={() => {
@@ -3091,10 +3140,15 @@
                     watchHeadings();
                   }}
                   onOpenNote={(target) => {
-                    // A linked name opens its note in the panel beside the page.
+                    // A linked name opens its note in the panel beside the page: in the pinned note's place, when one is pinned.
                     const title = target.title.trim().toLowerCase();
-                    panelNote = target.id || (bookNotes.find((note) => note.title.trim().toLowerCase() === title)?.id ?? "");
-                    prefs = { ...prefs, panel: "notes" };
+                    const id = target.id || (bookNotes.find((note) => note.title.trim().toLowerCase() === title)?.id ?? "");
+                    if (docked === "note" && dockedOpen && id) {
+                      openNoteWindow(id);
+                      return;
+                    }
+                    panelNote = id;
+                    showList("notes");
                   }}
                 />
               {/if}
@@ -3149,7 +3203,44 @@
       <ZenBar editor={textEditor} revision={editorRevision} words={chapterWords} bind:column={prefs.columnRem} onLeave={() => void setZen(false)} onRefused={notice} />
     {/if}
   </section>
-  {#if panelOpen && writing && activeChapter}
+  {#if panelOpen && writing && activeChapter && dockedOpen}
+    {#if docked === "note" && noteWindow && NoteWindowPart.current}
+      {@const NoteWindow = NoteWindowPart.current}
+      <!-- Another note shown here is set out afresh, so a new one's name is ready to type. -->
+      {#key noteWindow.note.id}
+      <NoteWindow
+        docked
+        fresh={noteWindow.fresh}
+        note={noteWindow.note}
+        language={writing.language}
+        onEdit={editNoteInWindow}
+        onOpenLinked={openLinkedInWindow}
+        onOpenInNotes={() => {
+          docked = null;
+          void noteWindowToNotes();
+        }}
+        onUnpin={() => (docked = null)}
+        onClose={closeDocked}
+      />
+      {/key}
+    {:else if docked === "todos" && TodosWindowPart.current}
+      {@const TodosWindow = TodosWindowPart.current}
+      <TodosWindow
+        docked
+        tasks={bookTasks}
+        notes={bookNotes}
+        {chapters}
+        onToggle={(task) => void toggleChapterTodo(task)}
+        onAdd={(title) => void addProjectTodo(title)}
+        onOpenTodos={() => {
+          closeDocked();
+          view = "todos";
+        }}
+        onUnpin={() => (docked = null)}
+        onClose={closeDocked}
+      />
+    {/if}
+  {:else if panelOpen && writing && activeChapter}
     <ChapterPanel
       list={prefs.panel || "notes"}
       todos={chapterTodos}
@@ -3362,7 +3453,7 @@
       onClose={() => (historyOpen = false)}
     />
   {/if}
-  {#if noteWindow && writing && NoteWindowPart.current}
+  {#if noteWindow && docked !== "note" && writing && NoteWindowPart.current}
     {@const NoteWindow = NoteWindowPart.current}
     <NoteWindow
       note={noteWindow.note}
@@ -3371,10 +3462,11 @@
       onEdit={editNoteInWindow}
       onOpenLinked={openLinkedInWindow}
       onOpenInNotes={() => void noteWindowToNotes()}
+      onPin={() => pin("note")}
       onClose={() => leaveNoteWindow()}
     />
   {/if}
-  {#if todosWindowOpen && writing && TodosWindowPart.current}
+  {#if todosWindowOpen && docked !== "todos" && writing && TodosWindowPart.current}
     {@const TodosWindow = TodosWindowPart.current}
     <TodosWindow
       tasks={bookTasks}
@@ -3386,6 +3478,7 @@
         todosWindowOpen = false;
         view = "todos";
       }}
+      onPin={() => pin("todos")}
       onClose={() => (todosWindowOpen = false)}
     />
   {/if}

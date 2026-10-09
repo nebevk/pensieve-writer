@@ -6,7 +6,10 @@
   let {
     title,
     size = "large",
+    docked = false,
     onClose,
+    onPin,
+    onUnpin,
     children,
     foot,
   }: {
@@ -14,14 +17,20 @@
     title: string;
     /** large: Settings' size, for a window with a list down its side; small: one thing, such as a note. */
     size?: "large" | "small";
+    /** Pinned in the panel beside the page instead of over it, so she can write with it open (owner, 9 October). */
+    docked?: boolean;
     onClose: () => void;
+    /** Given, the window has a button that pins it beside the page. */
+    onPin?: () => void;
+    /** Given, the pinned window has a button that makes it a window again. */
+    onUnpin?: () => void;
     children: Snippet;
     /** Buttons along the window's foot, on the right as in Windows. */
     foot?: Snippet;
   } = $props();
 
   const titleId = $props.id();
-  let panel = $state<HTMLDivElement | undefined>(undefined);
+  let panel = $state<HTMLElement | undefined>(undefined);
   // What had the keyboard gets it back when the window closes. Read before anything inside takes it.
   const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   // A click that started inside (selecting words, say) and ended on the dimmed page doesn't close it.
@@ -30,6 +39,8 @@
   const FOCUSABLE = "button, input, select, textarea, [contenteditable='true']";
 
   onMount(() => {
+    // Pinned beside the page, it leaves the keyboard where it is: she is writing.
+    if (docked) return;
     // The keyboard goes to the field marked autofocus (Svelte's own only takes it from nobody), or the
     // first control, unless something inside has it already.
     if (panel && !panel.contains(document.activeElement)) {
@@ -67,38 +78,54 @@
   }
 </script>
 
-<!-- A window over the dimmed app, as Settings is: its name and ✕ at the top, Escape or a click beside it closes it. -->
-<div
-  class="scrim"
-  role="presentation"
-  onpointerdown={(event) => (downOnScrim = event.target === event.currentTarget)}
-  onclick={(event) => {
-    if (downOnScrim && event.target === event.currentTarget) onClose();
-  }}
->
-  <div
-    class="window {size}"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby={titleId}
-    tabindex="-1"
-    bind:this={panel}
-    onkeydown={keys}
-  >
-    <header>
-      <span id={titleId}>{title}</span>
-      <button type="button" class="close" title={t("close")} aria-label={t("close")} onclick={onClose}><Icon name="x" /></button>
-    </header>
-    <div class="content">
-      {@render children()}
-    </div>
-    {#if foot}
-      <footer>
-        {@render foot()}
-      </footer>
+{#snippet frame()}
+  <header>
+    <span id={titleId}>{title}</span>
+    {#if docked && onUnpin}
+      <button type="button" class="icon" title={t("unpinWindow")} aria-label={t("unpinWindow")} onclick={onUnpin}><Icon name="maximize" /></button>
+    {:else if !docked && onPin}
+      <button type="button" class="icon" title={t("pinBeside")} aria-label={t("pinBeside")} onclick={onPin}><Icon name="panelRight" /></button>
     {/if}
+    <button type="button" class="icon" title={t("close")} aria-label={t("close")} onclick={onClose}><Icon name="x" /></button>
+  </header>
+  <div class="content">
+    {@render children()}
   </div>
-</div>
+  {#if foot}
+    <footer>
+      {@render foot()}
+    </footer>
+  {/if}
+{/snippet}
+
+{#if docked}
+  <!-- Pinned: the panel beside the page, which stays free to write in. -->
+  <aside class="window docked" aria-labelledby={titleId} bind:this={panel}>
+    {@render frame()}
+  </aside>
+{:else}
+  <!-- A window over the dimmed app, as Settings is: its name and ✕ at the top, Escape or a click beside it closes it. -->
+  <div
+    class="scrim"
+    role="presentation"
+    onpointerdown={(event) => (downOnScrim = event.target === event.currentTarget)}
+    onclick={(event) => {
+      if (downOnScrim && event.target === event.currentTarget) onClose();
+    }}
+  >
+    <div
+      class="window {size}"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      tabindex="-1"
+      bind:this={panel}
+      onkeydown={keys}
+    >
+      {@render frame()}
+    </div>
+  </div>
+{/if}
 
 <style>
   .scrim {
@@ -132,6 +159,16 @@
     max-height: min(660px, calc(100% - 48px));
   }
 
+  /* Pinned: the panel's place beside the page, as the chapter's notes and to-dos have. */
+  .window.docked {
+    min-width: 0;
+    min-height: 0;
+    border-radius: 0;
+    border-left: 1px solid var(--pv-line);
+    box-shadow: none;
+    animation: dock-in 180ms cubic-bezier(0.2, 0.8, 0.3, 1);
+  }
+
   .window:focus {
     outline: none;
   }
@@ -140,8 +177,9 @@
     display: flex;
     flex: none;
     align-items: center;
+    gap: 2px;
     height: 34px;
-    padding: 0 16px;
+    padding: 0 10px 0 16px;
     border-bottom: 1px solid var(--pv-line);
     font-size: var(--pv-text-md);
     font-weight: 600;
@@ -155,7 +193,7 @@
     text-overflow: ellipsis;
   }
 
-  .close {
+  .icon {
     display: grid;
     place-items: center;
     border: 0;
@@ -165,16 +203,16 @@
     padding: 4px;
   }
 
-  .close :global(svg) {
+  .icon :global(svg) {
     width: 15px;
     height: 15px;
   }
 
-  .close:hover {
+  .icon:hover {
     background: var(--pv-selected);
   }
 
-  .close:active {
+  .icon:active {
     background: var(--pv-pressed);
   }
 
@@ -194,6 +232,10 @@
     gap: 8px;
     padding: 10px 16px;
     border-top: 1px solid var(--pv-line);
+  }
+
+  .docked footer {
+    padding: 10px 12px;
   }
 
   /* The window's buttons: plain ones, and the one it is mostly for in the accent. */
@@ -237,10 +279,6 @@
     font-size: var(--pv-text-base);
   }
 
-  footer :global(.grow) {
-    flex: 1;
-  }
-
   @keyframes scrim-in {
     from {
       opacity: 0;
@@ -251,6 +289,13 @@
     from {
       opacity: 0;
       transform: translateY(6px) scale(0.985);
+    }
+  }
+
+  @keyframes dock-in {
+    from {
+      opacity: 0;
+      transform: translateX(12px);
     }
   }
 </style>
