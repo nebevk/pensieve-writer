@@ -229,8 +229,8 @@
 
   /*
    * Smooth typing (smoothTyping.ts): the page's own caret gives way to one that glides, and a letter just
-   * typed inks in. She chose it in Settings, so it moves even where Windows' animations are off; Gentle
-   * mode turns it off.
+   * typed inks in. It follows its own switch in Settings, so it moves even where Windows' animations are
+   * off or Gentle mode is on (the owner has both, and saw nothing).
    */
   .editor-host :global(.ProseMirror.ink-caret-on) {
     caret-color: transparent;

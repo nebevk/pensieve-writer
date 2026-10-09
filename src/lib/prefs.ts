@@ -60,7 +60,7 @@ export type Prefs = {
   grain: boolean;
   runningHead: boolean;
   typewriter: boolean;
-  /** The caret glides and new letters ink in (not in Gentle mode). */
+  /** The caret glides and new letters ink in; its own switch, which Gentle mode leaves alone (owner, 9 October). */
   smoothTyping: boolean;
   /** The list beside the page in Write: the chapter's to-dos, the notes it mentions, the word goals, or none. */
   panel: "" | "todos" | "notes" | "goals";

@@ -3008,7 +3008,7 @@
                   typewriter={prefs.typewriter}
                   {sheet}
                   keySounds={prefs.keySounds}
-                  smoothTyping={prefs.smoothTyping && !prefs.gentle}
+                  smoothTyping={prefs.smoothTyping}
                   keyVolume={prefs.keySoundVolume}
                   onSheets={(count) => {
                     sheetCount = count;
