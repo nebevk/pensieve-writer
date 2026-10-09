@@ -3732,10 +3732,16 @@
     }
   }
 
+  /*
+   * The scrollbar's room is always kept. Without it, a page as wide as the room left beside the panel
+   * changed width each time the scrollbar was looked at again, twice a key, and the whole chapter was laid
+   * out anew: a key took twice as long with a panel open on the laptop's screen (9 October).
+   */
   .stage {
     position: relative;
     container-type: inline-size;
     overflow: auto;
+    scrollbar-gutter: stable;
     flex: 1;
     min-height: 0;
     display: flex;
