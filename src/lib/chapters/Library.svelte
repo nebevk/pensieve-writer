@@ -838,6 +838,23 @@
           <Icon name="plus" />
         </button>
       </div>
+    {:else if row.kind === "writing" && row.current && row.split && !row.deleted && chapterRows}
+      <!-- The open book has a + for a new chapter at its end, as the notes have (owner, 9 October). -->
+      <div class="with-add">
+        {@render rowButton(row)}
+        <button
+          type="button"
+          class="row-add"
+          title={t("newChapterTitle")}
+          aria-label={t("newChapterTitle")}
+          onclick={() => {
+            setOpen(row.key, true);
+            actions.newChapter();
+          }}
+        >
+          <Icon name="plus" />
+        </button>
+      </div>
     {:else}
       {@render rowButton(row)}
     {/if}
@@ -938,45 +955,6 @@
   }
 
   /* A row with a + at its end, which keeps its count clear of it. */
-  .with-add {
-    position: relative;
-    display: flex;
-    flex: none;
-  }
-
-  .with-add > :global(.tree-row) {
-    padding-right: 28px;
-  }
-
-  .row-add {
-    position: absolute;
-    top: 2px;
-    right: 4px;
-    display: grid;
-    place-items: center;
-    width: 20px;
-    height: 20px;
-    padding: 0;
-    border: 0;
-    border-radius: var(--pv-radius-xs);
-    background: transparent;
-    color: var(--pv-text-faint);
-  }
-
-  .row-add :global(svg) {
-    width: 14px;
-    height: 14px;
-  }
-
-  .with-add:hover .row-add,
-  .row-add:focus-visible {
-    color: var(--pv-accent);
-  }
-
-  .row-add:hover {
-    background: var(--pv-pressed);
-  }
-
   .current .tree-icon {
     color: var(--pv-accent);
   }

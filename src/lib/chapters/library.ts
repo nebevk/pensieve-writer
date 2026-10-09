@@ -204,6 +204,8 @@ export type LibraryActions = {
   moveWriting(id: string, folder: string): void;
   setSplit(id: string, split: boolean): void;
   newNote(category: NoteCategory, title: string): void;
+  /** A new chapter at the end of the open writing. */
+  newChapter(): void;
   renameNote(id: string, title: string): void;
   duplicateNote(id: string): void;
   deleteNote(id: string): void;

@@ -50,6 +50,24 @@ export function duplicateChapterIn(
   return { writing: { ...writing, chapters }, activeId: copy.id };
 }
 
+/**
+ * A new, empty chapter just after another one, in that one's part (the "+" on a part in the tree, owner,
+ * 9 October); the chapters after it move one down.
+ */
+export function insertChapterAfter(
+  writing: Writing,
+  afterId: string,
+  title: string,
+  now = new Date().toISOString(),
+): { writing: Writing; activeId: string } | null {
+  const after = writing.chapters.find((chapter) => chapter.id === afterId);
+  if (!after) return null;
+  const chapter = { ...createChapter(writing.id, title, after.position + 1, now), part: after.part };
+  const chapters = writing.chapters.map((item) => (item.position > after.position ? { ...item, position: item.position + 1 } : item));
+  chapters.push(chapter);
+  return { writing: { ...writing, chapters }, activeId: chapter.id };
+}
+
 export function removeChapter(writing: Writing, id: string): { writing: Writing; activeId: string | null } | null {
   if (writing.chapters.length < 2) return null;
   const chapters = writing.chapters

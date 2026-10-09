@@ -31,7 +31,7 @@
   import HomeHeader from "$lib/views/HomeHeader.svelte";
   import ChapterPanel from "$lib/views/ChapterPanel.svelte";
   import { PAPER, SHEET_GAP, flushPrefs, loadPrefs, loadPrefsFile, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs, type KnownProject } from "$lib/prefs";
-  import { duplicateChapterIn, patchChapter, removeChapter, renameChapterIn, reorderChapterList, setChapterText } from "$lib/chapters/mutate";
+  import { duplicateChapterIn, insertChapterAfter, patchChapter, removeChapter, renameChapterIn, reorderChapterList, setChapterText } from "$lib/chapters/mutate";
   import { chapterTitle } from "$lib/chapters/welcome";
   import { applyPage, chapterBreak, composePage, heldHeading, isLeadLine, joinWriting, leadLines, readPage, splitWriting, startsPart, textStart, withoutBreaks } from "$lib/chapters/page";
   import { summarize, summarizeOutline, summarizeProject } from "$lib/chapters/progress";
@@ -1082,7 +1082,8 @@
     activeId = id;
   }
 
-  async function addChapter() {
+  /** A new chapter at the end of the book, or just after `afterId` (the last of a part, from its "+"). */
+  async function addChapter(afterId = "") {
     // A one-page writing has no chapters to add; "Split into chapters" turns them on.
     if (!writing || !writing.split) return;
     try {
@@ -1090,11 +1091,17 @@
     } catch {
       // The new chapter still exists in memory if the write failed.
     }
-    const position =
-      writing.chapters.reduce((max, chapter) => Math.max(max, chapter.position), -1) + 1;
-    const chapter = createChapter(writing.id, chapterTitle(writing.language, position + 1), position);
-    writing = { ...writing, chapters: [...writing.chapters, chapter] };
-    activeId = chapter.id;
+    const at = afterId ? [...writing.chapters].sort((a, b) => a.position - b.position).findIndex((chapter) => chapter.id === afterId) : -1;
+    const made = at >= 0 ? insertChapterAfter(writing, afterId, chapterTitle(writing.language, at + 2)) : null;
+    if (made) {
+      writing = made.writing;
+      activeId = made.activeId;
+    } else {
+      const position = writing.chapters.reduce((max, chapter) => Math.max(max, chapter.position), -1) + 1;
+      const chapter = createChapter(writing.id, chapterTitle(writing.language, position + 1), position);
+      writing = { ...writing, chapters: [...writing.chapters, chapter] };
+      activeId = chapter.id;
+    }
     autosave.schedule();
     try {
       await autosave.flush();
@@ -2485,6 +2492,7 @@
     moveWriting: (id, folder) => void moveWriting(id, folder),
     setSplit: (id, split) => void setSplit(id, split),
     newNote: (category, title) => void newNoteIn(category, title),
+    newChapter: () => void addChapter(),
     renameNote: (id, title) => void changeNote(id, { title: title.trim() || t("untitled") }),
     duplicateNote: (id) => void duplicateNote(id),
     deleteNote: (id) => void deleteNoteFromTree(id),

@@ -39,7 +39,8 @@
     /** A one-page writing: no chapter rows or "+" in the library, and no Chapters tab. */
     article?: boolean;
     onSelect: (id: string) => void;
-    onCreate: () => void;
+    /** A new chapter: at the end of the book, or just after the chapter given (the last of a part). */
+    onCreate: (afterId?: string) => void;
     onRename: (id: string, title: string) => void;
     onDuplicate: (id: string) => void;
     onDelete: (id: string) => void;
@@ -131,13 +132,20 @@
     let lastPart = "";
     // The part a chapter is read in: the last one begun before it, as in Word, where a part runs until the next.
     let group = "";
-    return ordered.map((chapter, index) => {
+    const list = ordered.map((chapter, index) => {
       const part = chapter.part.trim();
       const showPart = part.length > 0 && part !== lastPart;
       lastPart = part;
       if (part) group = part;
-      return { chapter, index, showPart, part, group };
+      return { chapter, index, showPart, part, group, partEnd: "" };
     });
+    // Where a part begins: its last chapter, after which its "+" puts a new one.
+    for (const [at, row] of list.entries()) {
+      if (!row.showPart) continue;
+      const next = list.findIndex((other, later) => later > at && other.showPart);
+      row.partEnd = list[(next < 0 ? list.length : next) - 1].chapter.id;
+    }
+    return list;
   });
 
   $effect(() => {
@@ -208,7 +216,7 @@
       {#if shown === "library"}
         <button type="button" class="add" title={t("newInLibrary")} aria-label={t("newInLibrary")} aria-haspopup="menu" onclick={(event) => openNewMenu(event.currentTarget)}><Icon name="plus" /></button>
       {:else if !article}
-        <button type="button" class="add" title={t("newChapterTitle")} aria-label={t("newChapterTitle")} onclick={onCreate}><Icon name="plus" /></button>
+        <button type="button" class="add" title={t("newChapterTitle")} aria-label={t("newChapterTitle")} onclick={() => onCreate()}><Icon name="plus" /></button>
       {/if}
       <button type="button" class="hide" title={t(shown === "library" ? "hideLibrary" : "hideChapters")} aria-label={t(shown === "library" ? "hideLibrary" : "hideChapters")} onclick={onHide}><Icon name="panelLeftClose" /></button>
     </div>
@@ -225,11 +233,26 @@
         {#if row.showPart}
           {@const open = partOpen(row.part)}
           <li class="part">
-            <button type="button" class="tree-row" style:--depth={depth} aria-expanded={open} onclick={() => togglePart(row.part)}>
-              <span class="twist" class:open aria-hidden="true"><Icon name="chevronRight" /></span>
-              <span class="tree-icon" aria-hidden="true"><Icon name="bookmark" /></span>
-              <span class="name">{row.part}</span>
-            </button>
+            <div class="with-add">
+              <button type="button" class="tree-row" style:--depth={depth} aria-expanded={open} onclick={() => togglePart(row.part)}>
+                <span class="twist" class:open aria-hidden="true"><Icon name="chevronRight" /></span>
+                <span class="tree-icon" aria-hidden="true"><Icon name="bookmark" /></span>
+                <span class="name">{row.part}</span>
+              </button>
+              <!-- A new chapter at the part's end, which unfolds to show it (owner, 9 October). -->
+              <button
+                type="button"
+                class="row-add"
+                title={t("newChapterInPart", { part: row.part })}
+                aria-label={t("newChapterInPart", { part: row.part })}
+                onclick={() => {
+                  partChoice = { ...partChoice, [`${shown}:${row.part}`]: true };
+                  onCreate(row.partEnd);
+                }}
+              >
+                <Icon name="plus" />
+              </button>
+            </div>
           </li>
         {/if}
         {#if !row.group || partOpen(row.group)}

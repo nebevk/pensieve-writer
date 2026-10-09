@@ -340,6 +340,46 @@ textarea:focus-visible {
   height: 15px;
 }
 
+/* A "+" at a row's right end, for something new in it: a note in a group, a chapter in the book or a part. */
+.tree-list .with-add {
+  position: relative;
+  display: flex;
+  flex: none;
+}
+
+.tree-list .with-add > .tree-row {
+  padding-right: 28px;
+}
+
+.tree-list .row-add {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--pv-radius-xs);
+  background: transparent;
+  color: var(--pv-text-faint);
+}
+
+.tree-list .row-add svg {
+  width: 14px;
+  height: 14px;
+}
+
+.tree-list .with-add:hover .row-add,
+.tree-list .row-add:focus-visible {
+  color: var(--pv-accent);
+}
+
+.tree-list .row-add:hover {
+  background: var(--pv-pressed);
+}
+
 /* The window clips to one screen; a printout needs the whole document, without the candle sparks. */
 @media print {
   html,
