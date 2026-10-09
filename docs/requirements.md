@@ -90,7 +90,7 @@ Priority key (MoSCoW): **M** = Must (v1), **S** = Should (v1 if time allows), **
 | NT-4 | Todo state on notes and on standalone tasks: todo / doing / done | M |
 | NT-5 | Todo overview: list or board view grouped by state | M |
 | NT-6 | Idea connections: `[[wiki-style]]` links between notes | S |
-| NT-7 | Side panel to view notes next to the editor while writing | S |
+| NT-7 | Side panel to view notes next to the editor while writing. Since 9 October (owner), a note opened while writing (from the library, the panel or the toolbar's New note) opens in a window over the page, to read or change its kind, name, short description and text, with "Open in Notes" for the rest; the project's to-dos open the same way from the library, to add and tick off, with "Open To-dos" for the board | S |
 | NT-8 | Visual idea map / graph | C |
 
 ### 4.4 Views
@@ -120,7 +120,7 @@ Priority key (MoSCoW): **M** = Must (v1), **S** = Should (v1 if time allows), **
 | SV-1 | Autosave to local disk every few seconds after changes and on window close | M |
 | SV-2 | Crash-safe writes (write to temp file, then atomic rename) | M |
 | SV-3 | Automatic local backups: rolling snapshots (e.g. hourly, daily) with easy restore | M |
-| SV-4 | Version history per chapter (restore older text) | S |
+| SV-4 | Version history per chapter (restore older text). "Earlier versions" opens in a window like Settings (owner, 9 October): the snapshots down its side, the open chapter as it was in the one picked, and the restores of the chapter or the whole book at its foot | S |
 | SV-5 | User-selectable project location (e.g. Documents or a synced folder) | M |
 | SV-6 | Export project or chapters to .docx | M |
 | SV-7 | Export to PDF, Markdown, plain text | S |
@@ -156,6 +156,7 @@ Coziness is the top product priority. All effects must stay within the performan
 | ST-3 | Daily writing goal and simple streak display. The owner dropped the streak on 5 October. The daily goal went on 6 October and came back that evening, kept simple: the Goals list beside the page in Write shows the words written today toward it (500 to start with, 0 for none), with the chapter's words toward its own goal (CH-6) | C |
 | ST-4 | Keyboard shortcut cheat sheet | C |
 | ST-5 | Tutorial tips the first time she reaches Home, Write, Notes and the Book: each points at the part it is about and leaves the window free to use, with "Ne prikazuj več namigov" to stop them; Settings → General turns them on and off and shows them all again (owner, 8 October) | S |
+| ST-6 | Windows over the app (owner, 9 October): what opens over the page does so in a window like Settings, with its name and ✕ at the top and its buttons at the foot; Escape or a click beside it closes it, and the keyboard goes back to what opened it. Settings, Earlier versions, a note and the to-dos use it, and other things will as they come | S |
 
 ## 5. Non-Functional Requirements
 

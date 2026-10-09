@@ -17,7 +17,7 @@
     onToggleTodo,
     onAddTodo,
     onShowNote,
-    onOpenInNotes,
+    onOpenNote,
     wordsToday = 0,
     dailyGoal = 0,
     chapterWords = 0,
@@ -43,7 +43,8 @@
     onAddTodo: (text: string) => void;
     /** Unfolds a note in the list; "" folds it again. */
     onShowNote: (id: string) => void;
-    onOpenInNotes: (id: string) => void;
+    /** Opens the note in a window over the page. */
+    onOpenNote: (id: string) => void;
     /** Words written today, and the day's goal (0 for none). */
     wordsToday?: number;
     dailyGoal?: number;
@@ -196,7 +197,7 @@
             {#if note.plainText.trim()}
               <p class="body">{#each pieces(note.plainText) as piece, index (index)}{#if piece.link}{@const target = piece.link}<button type="button" class="link" onclick={() => onShowNote(target.id)}>{piece.text}</button>{:else}{piece.text}{/if}{/each}</p>
             {/if}
-            <button type="button" class="more" onclick={() => onOpenInNotes(note.id)}>{t("openInNotes")}</button>
+            <button type="button" class="more" onclick={() => onOpenNote(note.id)}>{t("openNote")}</button>
           </div>
         {/if}
       {:else}

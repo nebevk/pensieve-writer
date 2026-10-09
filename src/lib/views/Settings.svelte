@@ -5,7 +5,7 @@
   import type { KeySoundStyle } from "$lib/keySounds";
   import { ago, num, plural, t } from "$lib/ui.svelte";
   import { LONG_PAGE_WORDS } from "$lib/chapters/page";
-  import Icon from "$lib/editor/Icon.svelte";
+  import Modal from "./Modal.svelte";
 
   let {
     prefs,
@@ -171,58 +171,15 @@
   }
 
   let section = $state<Section>("Appearance");
-  let panel = $state<HTMLDivElement | undefined>(undefined);
   let dictionaryDraft = $state("");
   let dictionaryLanguage = $state<WritingLanguage>("en");
 
   $effect(() => {
     section = startSection;
-    panel?.querySelector<HTMLElement>("button, input, select, textarea")?.focus();
   });
-
-  function trap(event: KeyboardEvent) {
-    // The book's shortcuts stay out of Settings, so Escape is handled here.
-    event.stopPropagation();
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
-      return;
-    }
-    if (event.key !== "Tab" || !panel) return;
-    const items = [...panel.querySelectorAll<HTMLElement>("button, input, select, textarea")].filter(
-      (item) => !item.hasAttribute("disabled") && item.tabIndex !== -1,
-    );
-    if (items.length === 0) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
 </script>
 
-<div
-  class="scrim"
-  role="presentation"
-  onclick={onClose}
->
-  <div
-    class="window"
-    role="dialog"
-    aria-labelledby="settings-title"
-    tabindex="-1"
-    bind:this={panel}
-    onclick={(event) => event.stopPropagation()}
-    onkeydown={trap}
-  >
-    <header>
-      <span id="settings-title">{t("settings")}</span>
-      <button type="button" class="close" title={t("close")} aria-label={t("close")} onclick={onClose}><Icon name="x" /></button>
-    </header>
+<Modal title={t("settings")} {onClose}>
     <div class="body">
       <nav>
         {#each sections as item (item.id)}
@@ -712,67 +669,14 @@
         {/if}
       </div>
     </div>
-  </div>
-</div>
+</Modal>
 
 <style>
-  .scrim {
-    position: absolute;
-    inset: 0;
-    z-index: 20;
-    display: grid;
-    place-items: center;
-    background: var(--pv-scrim);
-  }
-
-  .window {
-    width: min(880px, calc(100% - 48px));
-    height: min(620px, calc(100% - 48px));
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    border-radius: var(--pv-radius-window);
-    background: var(--pv-chrome);
-    color: var(--pv-text);
-    box-shadow: var(--pv-shadow-window);
-  }
-
-  header {
-    display: flex;
-    align-items: center;
-    height: 34px;
-    padding: 0 16px;
-    border-bottom: 1px solid var(--pv-line);
-    font-size: var(--pv-text-md);
-    font-weight: 600;
-  }
-
-  header span {
-    flex: 1;
-  }
-
-  .close {
-    display: grid;
-    place-items: center;
-    border: 0;
-    background: transparent;
-    color: var(--pv-text-subtle);
-    border-radius: var(--pv-radius-xs);
-    padding: 4px;
-  }
-
-  .close :global(svg) {
-    width: 15px;
-    height: 15px;
-  }
-
-  .close:hover,
   nav button:hover,
   .actions button:hover:not(:disabled) {
     background: var(--pv-selected);
   }
 
-  .close:active,
   nav button:active,
   .actions button:active:not(:disabled),
   .file:active {

@@ -40,7 +40,7 @@
   import { notesInChapter } from "$lib/chapters/mentions";
   import { isUntitled } from "$lib/i18n";
   import { locale, snapshotName, t, ui } from "$lib/ui.svelte";
-  import { deleteNote, flushNoteSave, listNotes, listTasks, saveNote, saveTask, type Note, type NoteCategory, type Task } from "$lib/storage/organize";
+  import { deleteNote, flushNoteSave, listNotes, listTasks, saveNote, saveTask, scheduleNoteSave, type Note, type NoteCategory, type Task } from "$lib/storage/organize";
   import { noteFromComment, todoFromComment } from "$lib/storage/fromComment";
   import type { NoteTarget } from "$lib/editor/noteLinks";
   import type { CommentInfo } from "$lib/editor/comments";
@@ -57,6 +57,9 @@
   const SettingsPart = lazy(() => import("$lib/views/Settings.svelte"));
   const OutlinePart = lazy(() => import("$lib/views/Outline.svelte"));
   const BookPart = lazy(() => import("$lib/views/Book.svelte"));
+  const HistoryPart = lazy(() => import("$lib/views/History.svelte"));
+  const NoteWindowPart = lazy(() => import("$lib/views/NoteWindow.svelte"));
+  const TodosWindowPart = lazy(() => import("$lib/views/TodosWindow.svelte"));
 
   // The writing open in Write: one of the open project's writings, with all its chapters.
   let writing = $state<Writing | null>(null);
@@ -89,15 +92,16 @@
   let findScope = $state<"chapter" | "book">("chapter");
   let historyOpen = $state(false);
   let historyList = $state<SnapshotInfo[]>([]);
-  let historyPreview = $state("");
+  // The open chapter as it was in the snapshot picked; "missing" when the snapshot hasn't it.
+  let historyPreview = $state<{ title: string; text: string } | "missing" | null>(null);
   let historySnapshotId = $state("");
   let historyChapterId = $state("");
-  // Restoring the whole book asks once more before it happens.
-  let bookRestoreAsked = $state(false);
+  // A note or the project's to-dos, opened from Write in a window over the page (owner, 9 October).
+  let noteWindow = $state<{ note: Note; fresh: boolean } | null>(null);
+  let todosWindowOpen = $state(false);
   let settingsSection = $state<"Appearance" | "Ambience" | "Shortcuts" | "General" | "Writing & goals">("Appearance");
   let settingsReturn: HTMLElement | null = null;
-  // One-shot requests to the Notes view: make a note (tied to the chapter being written), or open one.
-  let noteCreate = $state<{ at: number; chapterId: string } | null>(null);
+  // A one-shot request to the Notes view: the note to open.
   let noteOpenRequest = $state<(NoteTarget & { at: number }) | null>(null);
   // The open chapter's footnotes, listed at the foot of the page.
   let pageNotes = $state<string[]>([]);
@@ -140,7 +144,7 @@
   // she stops them. Not over Settings or in Zen, and a moment after the place appears, so passing
   // through doesn't bring them and what they point at has settled.
   const tourWanted = $derived.by((): TourPlace | null => {
-    if (!prefs.tips || settingsOpen || zen || !writing) return null;
+    if (!prefs.tips || settingsOpen || historyOpen || noteWindow || todosWindowOpen || zen || !writing) return null;
     const place = view === "home" || view === "write" || view === "notes" || view === "book" ? view : null;
     return place && !prefs.tipsSeen.includes(place) ? place : null;
   });
@@ -331,7 +335,7 @@
       }
       requestIdleCallback(
         () => {
-          for (const part of [EditorPart, CommentRailPart, NotesPart, TodosPart, SettingsPart, OutlinePart, BookPart]) {
+          for (const part of [EditorPart, CommentRailPart, NotesPart, TodosPart, SettingsPart, OutlinePart, BookPart, HistoryPart, NoteWindowPart, TodosWindowPart]) {
             // A part that fails here is tried again, and reported, when it is shown.
             part.load().catch(() => undefined);
           }
@@ -576,11 +580,82 @@
     }
   }
 
-  /** Opens a note in the Notes view, from the panel. */
+  /** Opens a note in the Notes view. */
   function openNoteInView(id: string) {
     const note = bookNotes.find((item) => item.id === id);
     view = "notes";
     noteOpenRequest = { id, title: note?.title ?? "", at: Date.now() };
+  }
+
+  /** Opens a note in a window over the page; `fresh` for one just made, to be named. */
+  function openNoteWindow(id: string, fresh = false) {
+    const note = bookNotes.find((item) => item.id === id);
+    if (note) noteWindow = { note, fresh };
+  }
+
+  /**
+   * A change in the note window. The window has its own copy while she types, so the panel and the
+   * library, which read every note, aren't worked out again at each key; they have it when it closes.
+   */
+  function editNoteInWindow(id: string, patch: Partial<Note>) {
+    const current = noteWindow?.note.id === id ? noteWindow.note : bookNotes.find((note) => note.id === id);
+    if (!current) return;
+    const next = { ...current, ...patch, updatedAt: new Date().toISOString() };
+    if (noteWindow?.note.id === id) noteWindow = { ...noteWindow, note: next };
+    else bookNotes = bookNotes.map((note) => (note.id === id ? next : note));
+    scheduleNoteSave(next);
+  }
+
+  /** The note window's copy goes back to the book's notes, and the window closes or shows `then`. */
+  function leaveNoteWindow(then: Note | null = null) {
+    const left = noteWindow?.note;
+    if (left) bookNotes = bookNotes.map((note) => (note.id === left.id ? left : note));
+    noteWindow = then ? { note: then, fresh: false } : null;
+  }
+
+  /** A [[link]] in the note window opens the linked note there; a link to no note yet makes it. */
+  function openLinkedInWindow(target: NoteTarget) {
+    const title = target.title.trim();
+    const found =
+      (target.id ? bookNotes.find((note) => note.id === target.id) : undefined) ??
+      bookNotes.find((note) => note.title.trim().toLowerCase() === title.toLowerCase());
+    // A note's link to itself leaves it as it is (the book's copy is older than the window's).
+    if (found && found.id === noteWindow?.note.id) return;
+    if (found) leaveNoteWindow(found);
+    else if (title) {
+      leaveNoteWindow();
+      void newNoteIn("ideas", title);
+    }
+  }
+
+  /** From the note window to Notes, once what she typed is saved, so Notes reads it. */
+  async function noteWindowToNotes() {
+    const id = noteWindow?.note.id;
+    leaveNoteWindow();
+    if (!id) return;
+    await flushNoteSave().catch(() => undefined);
+    openNoteInView(id);
+  }
+
+  /** A to-do for the whole project, from the to-dos window. */
+  async function addProjectTodo(title: string) {
+    if (!projectId) return;
+    const task: Task = {
+      id: crypto.randomUUID(),
+      projectId,
+      title,
+      todoState: "todo",
+      updatedAt: new Date().toISOString(),
+      chapterId: "",
+      noteId: "",
+    };
+    bookTasks = [task, ...bookTasks];
+    try {
+      await saveTask(task);
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+      void loadOrganizer();
+    }
   }
 
   function reorderChapters(draggedId: string, targetId: string) {
@@ -1280,10 +1355,9 @@
   async function openHistory() {
     if (!writing) return;
     historyOpen = true;
-    historyPreview = "";
+    historyPreview = null;
     historyChapterId = "";
     historySnapshotId = "";
-    bookRestoreAsked = false;
     try {
       historyList = await sqliteStorage.listSnapshots(writing.id);
     } catch (error) {
@@ -1293,17 +1367,19 @@
 
   async function previewHistory(id: string) {
     historySnapshotId = id;
-    bookRestoreAsked = false;
+    historyPreview = null;
+    historyChapterId = "";
     try {
       const older = await readSnapshotChapters(id);
+      // A quicker click on another snapshot wins.
+      if (historySnapshotId !== id) return;
       const match = older.find((chapter) => chapter.id === activeId);
       if (!match) {
-        historyChapterId = "";
-        historyPreview = t("snapshotLacksChapter");
+        historyPreview = "missing";
         return;
       }
       historyChapterId = match.id;
-      historyPreview = `${match.title}\n\n${match.plainText}`;
+      historyPreview = { title: match.title, text: match.plainText };
     } catch (error) {
       saveStatus = { state: "error", message: errorMessage(error) };
     }
@@ -1377,8 +1453,6 @@
       historyOpen = false;
     } catch (error) {
       saveStatus = { state: "error", message: errorMessage(error) };
-    } finally {
-      bookRestoreAsked = false;
     }
   }
 
@@ -1704,8 +1778,9 @@
     historyList = [];
     historySnapshotId = "";
     historyChapterId = "";
-    historyPreview = "";
-    bookRestoreAsked = false;
+    historyPreview = null;
+    noteWindow = null;
+    todosWindowOpen = false;
     splitBack = null;
     pageSpot = null;
     panelNote = "";
@@ -2075,14 +2150,14 @@
     }
   }
 
-  /** A new note in a group of the project's notes, opened in Notes to write it. */
-  async function newNoteIn(category: NoteCategory, title: string) {
+  /** A new note in a group of the project's notes (or tied to a chapter), opened over the page to write it. */
+  async function newNoteIn(category: NoteCategory, title: string, chapterId = "") {
     if (!projectId) return;
     const now = new Date().toISOString();
     const note: Note = {
       id: crypto.randomUUID(),
       projectId,
-      title: title.trim() || t("untitled"),
+      title: title.trim() || t("newNoteTitle"),
       contentJson: { type: "doc", content: [{ type: "paragraph" }] },
       plainText: "",
       category,
@@ -2090,14 +2165,15 @@
       aliases: "",
       fields: [],
       todoState: null,
-      chapterIds: [],
+      chapterIds: chapterId ? [chapterId] : [],
       createdAt: now,
       updatedAt: now,
     };
     try {
       await saveNote(note);
       bookNotes = [note, ...bookNotes];
-      openNoteInView(note.id);
+      // A note named in the library has its name; one made from the toolbar is named first.
+      openNoteWindow(note.id, !title.trim());
     } catch (error) {
       reportSaveError(errorMessage(error));
     }
@@ -2386,8 +2462,8 @@
   const libraryActions: LibraryActions = {
     openProject: (path) => void openFromLibrary(path),
     openWriting: (path, id, chapterId) => void openFromLibrary(path, { writingId: id, chapterId }),
-    openNote: (id) => openNoteInView(id),
-    openTodos: () => (view = "todos"),
+    openNote: (id) => openNoteWindow(id),
+    openTodos: () => (todosWindowOpen = true),
     newProject,
     newLibraryFolder,
     renameLibraryEntry: (path, name) => relocateLibraryEntry(path, parentFolder(path), name),
@@ -2811,9 +2887,8 @@
     onFont={(font) => (prefs.manuscriptFont = font)}
     onSize={(size) => (prefs.manuscriptPt = size)}
     onNewNote={() => {
-      // Notes are written in the Notes view; one made from here belongs to this chapter.
-      noteCreate = { at: Date.now(), chapterId: activeId ?? "" };
-      view = "notes";
+      // A note made from here belongs to this chapter, and opens over the page to be named and written.
+      void newNoteIn("ideas", "", activeId ?? "");
     }}
     onAddTodo={() => {
       prefs = { ...prefs, panel: "todos" };
@@ -2938,38 +3013,6 @@
           ></textarea>
         </label>
         <button type="button" onclick={deleteFootnote}>{t("deleteFootnote")}</button>
-      </div>
-    {/if}
-    {#if historyOpen}
-      <div class="history">
-        <p>{t("earlierVersionsTitle")}</p>
-        <p class="hint">{t("earlierVersionsHint")}</p>
-        {#each historyList as snap (snap.id)}
-          <button type="button" aria-pressed={snap.id === historySnapshotId} onclick={() => void previewHistory(snap.id)}>
-            {snapshotName(snap.kind)} · {new Date(snap.createdAt).toLocaleString(locale(), { dateStyle: "medium", timeStyle: "short" })}
-          </button>
-        {:else}
-          <p>{t("noSnapshots")}</p>
-        {/each}
-        <!-- The restores come before the preview, so they stay in view however long the chapter is. -->
-        {#if historySnapshotId}
-          <div class="history-actions">
-            {#if bookRestoreAsked}
-              <p>{t("restoreBookConfirm")}</p>
-              <button type="button" onclick={() => void restoreHistoryBook()}>{t("restoreBook")}</button>
-              <button type="button" onclick={() => (bookRestoreAsked = false)}>{t("cancel")}</button>
-            {:else}
-              {#if historyChapterId}
-                <button type="button" onclick={() => void restoreHistoryChapter()}>{t("restoreChapter")}</button>
-              {/if}
-              <button type="button" onclick={() => (bookRestoreAsked = true)}>{t("restoreBook")}</button>
-            {/if}
-          </div>
-        {/if}
-        {#if historyPreview}
-          <pre>{historyPreview}</pre>
-        {/if}
-        <button type="button" onclick={() => (historyOpen = false)}>{t("close")}</button>
       </div>
     {/if}
     <div class="stage">
@@ -3110,7 +3153,7 @@
       onToggleTodo={(task) => void toggleChapterTodo(task)}
       onAddTodo={(title) => void addChapterTodo(title)}
       onShowNote={(id) => (panelNote = id)}
-      onOpenInNotes={openNoteInView}
+      onOpenNote={(id) => openNoteWindow(id)}
       {wordsToday}
       dailyGoal={prefs.dailyGoal}
       {chapterWords}
@@ -3176,8 +3219,6 @@
           {chapters}
           language={writing.language}
           focusChapterId={activeId ?? ""}
-          createRequest={noteCreate}
-          onCreateHandled={() => (noteCreate = null)}
           openRequest={noteOpenRequest}
           onOpenHandled={() => (noteOpenRequest = null)}
           onSaveError={reportSaveError}
@@ -3298,6 +3339,46 @@
         settingsOpen = false;
         settingsReturn?.focus();
       }}
+    />
+  {/if}
+  {#if historyOpen && writing && HistoryPart.current}
+    {@const History = HistoryPart.current}
+    <History
+      snapshots={historyList}
+      chosen={historySnapshotId}
+      preview={historyPreview}
+      family={manuscriptFamily(prefs.manuscriptFont)}
+      onPick={(id) => void previewHistory(id)}
+      onRestoreChapter={() => void restoreHistoryChapter()}
+      onRestoreBook={() => void restoreHistoryBook()}
+      onClose={() => (historyOpen = false)}
+    />
+  {/if}
+  {#if noteWindow && writing && NoteWindowPart.current}
+    {@const NoteWindow = NoteWindowPart.current}
+    <NoteWindow
+      note={noteWindow.note}
+      fresh={noteWindow.fresh}
+      language={writing.language}
+      onEdit={editNoteInWindow}
+      onOpenLinked={openLinkedInWindow}
+      onOpenInNotes={() => void noteWindowToNotes()}
+      onClose={() => leaveNoteWindow()}
+    />
+  {/if}
+  {#if todosWindowOpen && writing && TodosWindowPart.current}
+    {@const TodosWindow = TodosWindowPart.current}
+    <TodosWindow
+      tasks={bookTasks}
+      notes={bookNotes}
+      {chapters}
+      onToggle={(task) => void toggleChapterTodo(task)}
+      onAdd={(title) => void addProjectTodo(title)}
+      onOpenTodos={() => {
+        todosWindowOpen = false;
+        view = "todos";
+      }}
+      onClose={() => (todosWindowOpen = false)}
     />
   {/if}
 </div>
@@ -3495,8 +3576,7 @@
     padding: 0.3rem 0.5rem;
   }
 
-  .hits,
-  .history {
+  .hits {
     margin: 0 0.9rem 0.6rem;
     padding: 0;
     list-style: none;
@@ -3505,8 +3585,7 @@
   }
 
   .find button,
-  .hits button,
-  .history button {
+  .hits button {
     border: 0;
     border-radius: var(--pv-radius-xs);
     padding: 0.25rem 0.4rem;
@@ -3515,61 +3594,13 @@
   }
 
   .find button:hover,
-  .hits button:hover,
-  .history button:hover {
+  .hits button:hover {
     background: var(--pv-selected);
   }
 
   .find button:active,
-  .hits button:active,
-  .history button:active {
+  .hits button:active {
     background: var(--pv-pressed);
-  }
-
-  .history {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    align-items: flex-start;
-    max-height: 16rem;
-    overflow: auto;
-  }
-
-  .history pre {
-    white-space: pre-wrap;
-    margin: 0;
-    max-width: 40rem;
-    color: var(--pv-text);
-  }
-
-  .history p {
-    margin: 0;
-  }
-
-  .history .hint {
-    color: var(--pv-text-faint);
-  }
-
-  /* The snapshot being looked at, so it's clear which one a restore takes. */
-  .history button[aria-pressed="true"] {
-    background: var(--pv-selected);
-    font-weight: 600;
-  }
-
-  .history-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem 0.5rem;
-    align-items: center;
-  }
-
-  .history-actions p {
-    flex-basis: 100%;
-    color: var(--pv-text);
-  }
-
-  .history .history-actions button {
-    color: var(--pv-accent);
   }
 
   @media print {
@@ -3579,8 +3610,7 @@
     :global(.statusbar),
     :global(.panel),
     .find,
-    .hits,
-    .history {
+    .hits {
       display: none !important;
     }
 
