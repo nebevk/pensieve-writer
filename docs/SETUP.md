@@ -1,47 +1,57 @@
-# Setup guide (Windows + Cursor + GitHub)
+# Setup
 
-## 1. Prerequisites on the development machine
-- Git, and a GitHub account
-- Node.js LTS (22 or newer)
-- Rust via https://rustup.rs
-- Microsoft C++ Build Tools ("Desktop development with C++" workload)
-- WebView2 runtime (already on Windows 11; installer bundles it for Windows 10)
-- Cursor (https://cursor.com)
+How to build, run and check Pensieve on a Windows development computer. What the app must do is in
+[requirements.md](requirements.md), what is open in [backlog.md](backlog.md), and how to publish a version
+in [releasing.md](releasing.md).
 
-Check Tauri's official prerequisites page for Windows if anything fails: https://v2.tauri.app/start/prerequisites/
+## Prerequisites
 
-## 2. Create the repository
-```
-git init
-git add .
-git commit -m "chore: add Cursor starter (rules, MCP, CI, docs)"
-gh repo create pensieve --private --source=. --push   # or create it on github.com
-```
+- Git, and access to the GitHub repository
+- Node.js 22 or newer
+- Rust, through https://rustup.rs
+- Microsoft C++ Build Tools, with the "Desktop development with C++" workload (Rust needs it to link the app)
+- The WebView2 runtime (part of Windows 11; the installer brings it to Windows 10)
 
-## 3. Open in Cursor
-1. Open the folder in Cursor. Rules in `.cursor/rules/` and `AGENTS.md` load automatically.
-2. Check **Customize / Settings > MCP**: `context7` and `tauri` should appear. Enable them.
-3. Paste `docs/phase-0-prompt.md` into the Agent chat.
+If something fails, Tauri's prerequisites page for Windows has the details:
+https://v2.tauri.app/start/prerequisites/
 
-## 4. About the Tauri MCP server (`tauri`)
-It lets the agent take screenshots of the running app, read DOM and console logs, and click around. It needs the MCP bridge plugin inside the app (dev only):
-- Rust crate: `tauri-plugin-mcp-bridge`, registered in `src-tauri/src/lib.rs` only for debug builds (`#[cfg(debug_assertions)]`)
-- Never ship the bridge in release builds.
-If you do not want this yet, remove the `tauri` entry from `.cursor/mcp.json`; Context7 alone is enough to start.
+## Commands
 
-## 5. Releases (installers on GitHub)
-- Tag a version: `git tag v0.1.0 && git push --tags`. The Release workflow builds the Windows installer and attaches it to a DRAFT release; review and publish it.
-- Install by downloading the `*-setup.exe` from the release on the wife's laptop.
+| Command | What it does |
+|---------|--------------|
+| `npm install` | Installs the dependencies |
+| `npm run tauri dev` | Runs the desktop app while developing; it never looks for updates |
+| `npm run check` | Type-checks (svelte-check), including accessibility warnings |
+| `npm test` | Runs the unit tests (Vitest) |
+| `npm run build` | Builds the web part only |
+| `npm run tauri build` | Builds an installer, without the update files |
+| `npm run release -- 0.2.0 --notes "…"` | Builds a signed release for GitHub Releases ([releasing.md](releasing.md)) |
 
-## 6. Auto-update (optional, Phase 5)
-1. `npm run tauri add updater`
-2. Generate a signing key: `npm run tauri signer generate -- -w ~/.tauri/pensieve.key`
-   - Public key goes in `tauri.conf.json` (`plugins.updater.pubkey`).
-   - Private key + password go into GitHub repo secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Never commit it.
-3. In `tauri.conf.json`: `bundle.createUpdaterArtifacts: true` and updater endpoint
-   `https://github.com/<you>/pensieve/releases/latest/download/latest.json`
-4. IMPORTANT: that URL is only reachable without login if the repo (or a separate releases repo) is PUBLIC. For a private repo, either keep updating manually from the installer, or publish releases in a small public "pensieve-releases" repo (installers only, no source).
-5. After a release, confirm `latest.json` is attached to the release; if it is missing, check the tauri-action logs for a "signature not found" message.
+Before a change is done: it runs, `npm run check` reports nothing, the tests pass, the console shows no
+errors, and text still saves after a forced close.
 
-## 7. Google Drive backup
-Install Google Drive for desktop on the writer's laptop, then pick a folder inside the "Google Drive" folder as the backup location inside Pensieve. The live project stays outside it.
+## Where things are
+
+| Folder | What is in it |
+|--------|---------------|
+| `src/routes/+page.svelte` | The app's shell: views, windows, saving, projects |
+| `src/lib/editor/` | The editor and its extensions, the toolbar, the window and floating bars |
+| `src/lib/chapters/` | The library tree, the chapter list, chapters and parts on the page |
+| `src/lib/views/` | Home, Notes, To-dos, Outline, Book, Settings and the windows |
+| `src/lib/storage/` | SQLite, notes and to-dos, backups |
+| `src/lib/i18n.ts` | Every interface text, in English and Slovenian |
+| `src-tauri/` | The Rust side: files, the library on disk, backups, spell check |
+| `static/` | Fonts, ambience and keystroke recordings (with their credits), brand images |
+| `design-system/` | The design: tokens, components, UI kit |
+
+## For coding agents
+
+`AGENTS.md` holds the project's rules, and `.cursor/rules/` the detailed ones: data safety, the cozy
+interface's speed budget, languages and spell check, and Tauri and Rust. `.cursor/mcp.json` sets up
+Context7 (current Tauri, Svelte and TipTap docs) and a Tauri MCP server; the latter needs a debug-only bridge
+plugin in the app, which isn't installed.
+
+## Google Drive backups
+
+On Eva's laptop, install Google Drive for desktop, then choose a folder inside the "Google Drive" folder in
+Settings → Backup & export. The projects themselves stay in the library folder, outside it.

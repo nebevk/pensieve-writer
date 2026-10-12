@@ -1,274 +1,261 @@
-# Requirements White Paper: A Cozy Desktop Writing Studio
+# Pensieve requirements
 
-**Name:** *Pensieve* (see Section 12)
-**Version:** 0.3 (draft) | **Date:** 1 October 2026
-**Platform:** Windows 10 or newer desktop (Tauri) | **Status:** Requirements phase
+**What:** a cozy, minimal desktop writing app for one writer, Eva, the owner's wife.
+**Platform:** Windows 10 or newer (Tauri).
+**Status:** in daily use; installed copies update from GitHub Releases ([releasing.md](releasing.md)).
+**Last reviewed:** 12 October 2026.
 
----
+Open work (design gaps, improvements, checks still to do by hand) is in [backlog.md](backlog.md). How the
+app is built and run is in [SETUP.md](SETUP.md).
 
 ## 1. Purpose
 
-Build a small, calm desktop application for writing and editing long-form text (books, stories, essays). It should feel as familiar as Microsoft Word for basic editing, but with far fewer features and a quiet, distraction-free interface. It borrows the best organizing ideas from tools like Scrivener and Atticus: chapters, notes, and a "whole book" view, without their complexity.
+A calm place to write and finish long texts (novels, story collections, non-fiction) and short ones (blog
+posts, articles), in English and Slovenian. Editing feels as familiar as Microsoft Word, with far fewer
+features. It borrows the best organising ideas of Scrivener and Atticus (chapters, notes, a whole-book
+view) without their complexity. It is for personal use and is not distributed.
 
-The primary user is a single writer who is comfortable with Word and wants a cozy place to write, organize, and finish a manuscript. The app is for personal use and is not planned for distribution. It must handle both long manuscripts (novels, short stories, non-fiction) and short pieces such as blog posts and articles, in English and Slovenian.
+## 2. Goals and non-goals
 
-## 2. Goals and Non-Goals
+**Goals**
 
-### Goals
-- Feel instantly familiar to a Word user (toolbar, shortcuts, behavior).
-- Never lose the user's work (autosave and backups are core, not optional).
-- Help organize a manuscript as a whole: chapters, notes, progress.
-- Offer a distraction-free zen mode.
-- Be genuinely **cozy**: smooth transitions, a calm and pleasant writing experience, and optional ambience, while staying as intuitive as Word.
-- Install quickly, start fast, run smoothly on an older Windows laptop.
+- Familiar to a Word user: the toolbar, the shortcuts, how text behaves.
+- Never lose her work: autosave, snapshots and backups are core.
+- Organise a manuscript as a whole: chapters, parts, notes, to-dos, progress.
+- A distraction-free Zen mode.
+- Cozy: smooth, quiet, warm, with optional sound, and never at the cost of typing speed.
+- Start fast and run smoothly on an older laptop.
 
-### Non-Goals (v1)
-- Real-time collaboration or multi-user editing.
-- Advanced Word features: mail merge, macros, tracked changes, complex tables, citations.
+**Non-goals**
+
+- Collaboration or several users.
+- Word's advanced features: mail merge, macros, tracked changes, complex tables, citations.
 - Mobile or web versions.
-- Publishing-grade typesetting (print-ready PDF/EPUB layout is a later consideration).
+- Print-ready typesetting beyond the Book view and Word export.
 - AI features.
 
-## 3. Users and Scenarios
+## 3. Scenarios
 
-**Primary persona:** a non-technical writer, experienced with Word, who writes for pleasure or toward a book.
+1. She opens Pensieve on Home and continues where she left off.
+2. She writes a chapter on a clean page with Word's basic formatting.
+3. She notes an idea, links it to a chapter, and keeps a to-do for later.
+4. She reorders chapters and parts as the story takes shape.
+5. She reads the book as printed pages in the Book view.
+6. She writes in Zen with nothing else on screen.
+7. She exports the manuscript to Word to share or print.
 
-Key scenarios:
-1. Opens the app, sees her projects, and continues where she left off.
-2. Writes a chapter in a clean editor with basic formatting.
-3. Jots an idea in a note, links it to a chapter, and marks follow-ups as todo.
-4. Reorders chapters by drag and drop as the story takes shape.
-5. Switches to book view to see how the text reads as pages.
-6. Enters zen mode to write with nothing else on screen.
-7. Exports the manuscript to Word to share or print.
+## 4. Functional requirements
 
-## 4. Functional Requirements
-
-Priority key (MoSCoW): **M** = Must (v1), **S** = Should (v1 if time allows), **C** = Could (later), **W** = Won't (for now).
+**Priority** (MoSCoW): M = must, S = should, C = could. **Status:** Done, Partial (what is missing is
+said), Not started, Dropped. IDs are fixed; code comments and the backlog refer to them.
 
 ### 4.1 Editor
 
-| ID | Requirement | Priority |
-|----|-------------|----------|
-| ED-1 | Rich text editing: bold, italic, underline, strikethrough | M |
-| ED-2 | Headings (H1-H3), paragraph styles, block quotes. Since 6 October a Heading 1 marks a part, a Heading 2 a chapter (one lower down starts a new chapter once it is named), and a Heading 3 a subheading. In a writing with "Split into chapters" off, which is one page, headings stay headings | M |
-| ED-3 | Bulleted and numbered lists | M |
-| ED-4 | Text alignment (left, center, right, justify) | M |
-| ED-5 | Font family, font size, text color, highlight | S |
-| ED-6 | Undo/redo with deep history. Undo goes back about a word at a time, as in Word (8 October): each space and new paragraph starts a step, and a paste is a step of its own | M |
-| ED-7 | Familiar shortcuts (Ctrl/Cmd + B, I, U, Z, Y, S, F) | M |
-| ED-8 | Find and replace within a chapter and across the project | S |
-| ED-9 | Live word and character count (chapter and project) | M |
-| ED-10 | Paste from Word with sensible formatting retained | S |
-| ED-11 | Spell check in **English and Slovenian** | M |
-| ED-13 | Language setting per project, chapter, or selection, with spell check switching accordingly; personal dictionary for added words | M |
-| ED-12 | Images, simple tables, footnotes | C |
-| ED-14 | Comments on selected words, as in Word: written, edited and deleted beside the page; a comment can become a to-do or a note; comments go to and from Word files | M |
+| ID | Requirement | Pri | Status |
+|----|-------------|-----|--------|
+| ED-1 | Bold, italic, underline, strikethrough | M | Done |
+| ED-2 | Headings, paragraph styles and block quotes. On a book's page a Heading 1 starts a part, a Heading 2 a chapter (once it is named) and a Heading 3 is a subheading; in a one-page writing headings stay headings | M | Done |
+| ED-3 | Bulleted and numbered lists | M | Done |
+| ED-4 | Alignment: left, centre, right, justify | M | Done |
+| ED-5 | Font, size, text colour, highlight | S | Partial: font and size apply to the whole manuscript, not the selection as in Word; text colour and highlight each apply one fixed colour (TOOL-5, TOOL-6) |
+| ED-6 | Undo and redo with deep history, about a word per step as in Word; a paste is a step of its own | M | Done |
+| ED-7 | Word's shortcuts: Ctrl+B, I, U, Z, Y, S, F; also Ctrl+Alt+M for a comment and Ctrl+/ for the list of shortcuts | M | Done |
+| ED-8 | Find and replace in the chapter or across the book, with a list of matches | S | Done |
+| ED-9 | Live word counts for the chapter, the writing and the project | M | Done |
+| ED-10 | Paste from Word keeps headings, italics and paragraphs | S | Partial: works, but not tried with a real manuscript (IMP-18) |
+| ED-11 | Spell check in English and Slovenian | M | Done |
+| ED-12 | Images and footnotes; simple tables | C | Partial: images and footnotes; no tables |
+| ED-13 | A writing language per project, chapter or selection, which spell check follows; a personal dictionary | M | Done |
+| ED-14 | Comments on selected words, as in Word, written beside the page; a comment can become a to-do or a note; comments go to and from Word files | M | Done |
 
-### 4.2 Project and Chapter Organization
+### 4.2 Projects, writings and chapters
 
-| ID | Requirement | Priority |
-|----|-------------|----------|
-| CH-1 | A project holds writings (books, stories, articles; since 7 October), and a writing an ordered list of chapters | M |
-| CH-2 | Sidebar "binder" showing chapters; click to open. The Chapters tab stays beside the library, to keep to the writing at hand, and its rows look like the library's tree (owner, 8 October): parts fold, a right-click or F2 renames. The Library tab comes first. In the library, what unfolds shows its own rows folded (writing folders, note groups, parts), except the way to the chapter on the page; the Chapters tab shows every part unfolded | M |
-| CH-3 | Create, rename, delete, duplicate chapters. In the tree (owner, 9 October), the open book's row has a + for a new chapter at its end, and each part one for a new chapter at the part's end, in that part; the new chapter opens on the page | M |
-| CH-4 | Drag-and-drop reordering | M |
-| CH-5 | Optional grouping (parts/sections containing chapters, or scenes within chapters) | S |
-| CH-6 | Per-chapter metadata: status (draft / revising / final), synopsis, word goal (set in the Goals list beside the page since 6 October). The status is hidden for now (owner, 8 October): it is kept with each chapter, but nothing shows or sets it | S |
-| CH-7 | Collapsible sidebar | M |
-| CH-8 | No project types since 7 October: each writing has a "Split into chapters" switch instead. On, a Heading 2 starts a new chapter; off, the writing is one page (an article or blog post), and its headings stay headings. Turning it off joins the chapters (an earlier version keeps them as they were), and for a writing over 20,000 words the question warns that typing in one page that long is slower; turning it on splits the page at its headings | S |
-| CH-9 | A library folder, chosen in Settings (Documents\Pensieve by default, never inside a synced folder such as OneDrive or Google Drive), holds the projects, each in its own folder with one file. The library beside the page shows it as a tree: folders, projects, a project's writing folders and writings, a writing's parts and chapters, its Notes (by group) and To-dos, and a Deleted folder for writings taken out. Projects kept elsewhere are listed under "Elsewhere" and can be moved in (owner, 7 October). As in Explorer, folders and projects are renamed and dragged into other folders on disk, and empty folders deleted; a project goes by its folder's name. Writings are dragged into writing folders or into order, notes into groups. Her other files (pictures, PDFs, Word files) show in their folders and in a project's Files, open in their own program with a double click, and a Word file can come in as a new writing (owner, 7 October) | M |
-| CH-10 | Notes and to-dos belong to the project and are shared by its writings. A note clicked in the tree opens in a window over the page, with "Open in Notes" for the full view (9 October, NT-7); the tree can make, rename, duplicate, move and delete notes, and Notes and each of its groups have a + for a new note there (8 October) (owner, 7 October) | M |
+| ID | Requirement | Pri | Status |
+|----|-------------|-----|--------|
+| CH-1 | A project holds writings (books, stories, articles), and a writing an ordered list of chapters | M | Done |
+| CH-2 | A Chapters tab beside the Library tab (which comes first), for the writing at hand, its rows drawn like the library's tree: parts fold, a right-click or F2 renames | M | Done |
+| CH-3 | Create, rename, delete and duplicate chapters. The open book's row in the library has a + for a chapter at its end, and each part one for a chapter at the part's end; the new chapter opens on the page | M | Done |
+| CH-4 | Drag chapters into order | M | Done |
+| CH-5 | Parts that hold chapters; scenes within chapters | S | Partial: parts (a Heading 1 on the page); no scenes |
+| CH-6 | Per chapter: a synopsis, a word goal and a status (draft, revising, final) | S | Partial: synopsis and goal are shown (Outline, Goals list); the status is kept with each chapter but hidden for now |
+| CH-7 | The side lists can be hidden and brought back | M | Done |
+| CH-8 | No project types: each writing has a "Split into chapters" switch. On, a Heading 2 starts a chapter; off, the writing is one page and its headings stay headings. Turning it off joins the chapters (an earlier version keeps them as they were), with a warning over 20,000 words that one long page types slower; turning it on splits the page at its headings | S | Done |
+| CH-9 | A library folder, chosen in Settings (Documents\Pensieve to start; a cloud-synced folder is refused), holds the projects, each in its own folder with one file. Beside the page it is a tree, as in Explorer: folders, projects, a project's writing folders and writings, a writing's parts and chapters, its Notes by group, To-dos, a Deleted folder, and the project's own files, which open in their program. Projects kept elsewhere are listed under Elsewhere and can be moved in. Folders and projects are renamed and dragged on disk; writings are dragged into folders and order, notes into groups; a Word file can come in as a new writing | M | Done |
+| CH-10 | Notes and to-dos belong to the project and are shared by its writings. The tree makes, renames, duplicates, moves and deletes notes, with a + on Notes and on each of its groups | M | Done |
 
-### 4.3 Notes and Todo System
+### 4.3 Notes and to-dos
 
-| ID | Requirement | Priority |
-|----|-------------|----------|
-| NT-1 | Create free-form notes (rich text, same editor core) | M |
-| NT-2 | Tags and simple categories (characters, places, ideas, research) | S |
-| NT-3 | Link a note to one or more chapters | M |
-| NT-4 | Todo state on notes and on standalone tasks: todo / doing / done | M |
-| NT-5 | Todo overview: list or board view grouped by state | M |
-| NT-6 | Idea connections: `[[wiki-style]]` links between notes | S |
-| NT-7 | Side panel to view notes next to the editor while writing. Since 9 October (owner), a note opened while writing (from the library, the panel or the toolbar's New note) opens in a window over the page, to read or change its kind, name, short description and text, with "Open in Notes" for the rest; the project's to-dos open the same way from the library, to add and tick off, with "Open To-dos" for the board. Either window can be pinned beside the page (its pin by the ✕), taking the panel's place so she writes with it open; the keyboard goes back to the page, a note opened meanwhile (or a linked name clicked on the page) shows in the pinned note's place, and the toolbar's Notes, To-dos and Goals take the panel back. Only the right side, where the panel already is: the library keeps the left (owner's choice, 9 October) | S |
-| NT-8 | Visual idea map / graph | C |
+| ID | Requirement | Pri | Status |
+|----|-------------|-----|--------|
+| NT-1 | Free-form notes, in the same editor as the page | M | Done |
+| NT-2 | Groups (characters, places, research, ideas), a short description, fields, and other names that count as mentions | S | Done |
+| NT-3 | A note linked to chapters; "Appears in" lists the chapters that mention it | M | Done |
+| NT-4 | A to-do state (to do, doing, done) on notes and on to-dos of their own, for a chapter, a note or the whole project | M | Done |
+| NT-5 | A to-dos board grouped by state, with filters and quick add | M | Done |
+| NT-6 | `[[Links]]` between notes, and from words on the page to notes, with "Linked from" | S | Done |
+| NT-7 | Notes and to-dos while writing. A panel beside the page shows the chapter's to-dos, the notes it mentions, or the word goals, one at a time. A note opened while writing (from the library, the panel or the toolbar's New note) opens in a window over the page, to read or change its kind, name, description and text, with "Open in Notes" for the rest; the project's to-dos open the same way. Either window can be pinned beside the page, in the panel's place, to write with it open | S | Done |
+| NT-8 | A visual map of ideas | C | Not started |
 
 ### 4.4 Views
 
-| ID | Requirement | Priority |
-|----|-------------|----------|
-| VW-1 | **Writing view:** editor with optional sidebar and notes panel. The full toolbar is open until she closes it (8 October). Settings → Paper chooses one continuous page or sheets of A4 or A5 (owner, 8 October): on sheets the text flows from one to the next where it would print, with the desk between them and each one numbered; Zen stays one continuous page, and the Word file takes the same paper. The toolbar's View group ("Pogled") chooses the paper too and opens Zen, in the full toolbar and the short one; on a laptop's screen the full toolbar folds its alignments into one menu, as Word's ribbon does, so it stays one row | M |
-| VW-2 | **Book view:** read-only paginated preview with configurable page size (e.g. 5x8 in, A5), facing pages. Since 8 October it is set as a printed book (owner): page 1 on the right, the narrower margin at the spine and the deeper one at the foot, justified text with first-line indents flowing from page to page with no single line left alone at a page's foot or head, each chapter opening a new page, running heads (the book's title on the left, the chapter's on the right) and page numbers | S |
-| VW-3 | **Outline view:** chapters as cards with synopsis and status (the status hidden for now, see CH-6). Since 8 October (owner): cards or a list (remembered), each with its number, title, words toward its goal, synopsis, part and goal; chapters dragged into order or moved with the arrow keys on their handle, renamed with a double click, opened in Write; a new chapter named where it appears; parts as headings | S |
-| VW-4 | **Dashboard:** project cards, progress, todo summary, recently edited | M |
-| VW-5 | Editable book view (type directly in paginated layout) | C |
+| ID | Requirement | Pri | Status |
+|----|-------------|-----|--------|
+| VW-1 | Write: the page with the library or chapter list, the toolbar (the full one until she closes it; on a laptop's screen it folds the alignments into one menu, as Word does) and the panel. The paper is one continuous page, or A4 or A5 sheets on which the text flows from sheet to sheet, each numbered; it is chosen in Settings and in the toolbar's View group, which also opens Zen. The Word file takes the same paper | M | Done |
+| VW-2 | Book: read-only, set as a printed book: facing pages with page 1 on the right, a book's margins, justified text with first-line indents and no line left alone at a page's foot or head, each chapter on a new page, running heads and page numbers | S | Done |
+| VW-3 | Outline: chapters as cards or a list (remembered), each with its number, title, words toward its goal, synopsis and part; dragged into order or moved with the arrow keys, renamed in place, opened in Write; a new chapter named where it appears; parts as headings | S | Done |
+| VW-4 | Home: a greeting naming the chapter Continue opens, Continue writing (what was open last), words today, open to-dos, recent notes, projects with their writings and progress | M | Done; to be redone around projects later (owner) |
+| VW-5 | A Book view she can type in | C | Not started; Pages in Write (VW-1) may be enough |
 
-### 4.5 Zen Mode
+### 4.5 Zen
 
-| ID | Requirement | Priority |
-|----|-------------|----------|
-| ZN-1 | Toggle fullscreen with all UI hidden except the text. Since 6 October, at the owner's Grammarly example, a quiet bar stays at the bottom (ZN-5) | M |
-| ZN-2 | Centered text column with adjustable width | M |
-| ZN-3 | Themes: light, sepia, dark | M |
-| ZN-4 | Optional typewriter scrolling (cursor stays vertically centered) | C |
-| ZN-5 | Hover at screen edge to reveal minimal controls; Esc to exit. The owner chose an always-visible quiet bar instead (6 October): bold, italic, underline, headings, lists, the word count, the column width and Leave zen | M |
+| ID | Requirement | Pri | Status |
+|----|-------------|-----|--------|
+| ZN-1 | Full screen with only the text, on the paper's colour from edge to edge, like Grammarly | M | Done |
+| ZN-2 | A centred column with an adjustable width | M | Done |
+| ZN-3 | Light and dark looks | M | Done (the app's themes, AT-2) |
+| ZN-4 | Typewriter scrolling: the line being written stays in the middle (Settings) | C | Done |
+| ZN-5 | A quiet bar at the bottom: bold, italic, underline, headings, lists, the word count, the column width, the pomodoro's time and Leave Zen; Esc leaves too | M | Done |
 
-### 4.6 Saving, Backup, and Export
+### 4.6 Saving, backup and export
 
-| ID | Requirement | Priority |
-|----|-------------|----------|
-| SV-1 | Autosave to local disk every few seconds after changes and on window close | M |
-| SV-2 | Crash-safe writes (write to temp file, then atomic rename) | M |
-| SV-3 | Automatic local backups: rolling snapshots (e.g. hourly, daily) with easy restore | M |
-| SV-4 | Version history per chapter (restore older text). "Earlier versions" opens in a window like Settings (owner, 9 October): the snapshots down its side, the open chapter as it was in the one picked, and the restores of the chapter or the whole book at its foot | S |
-| SV-5 | User-selectable project location (e.g. Documents or a synced folder) | M |
-| SV-6 | Export project or chapters to .docx | M |
-| SV-7 | Export to PDF, Markdown, plain text | S |
-| SV-11 | "Copy as clean HTML / Markdown" and HTML export, for pasting finished articles into a blog | S |
-| SV-8 | Import from .docx (split into chapters by headings) | S |
-| SV-9 | Backup of snapshots to a Google Drive-synced folder (see Section 8) | S |
-| SV-12 | Direct Google Drive backup through the Drive API | C |
-| SV-10 | EPUB export | C |
+| ID | Requirement | Pri | Status |
+|----|-------------|-----|--------|
+| SV-1 | Autosave a few seconds after a change, and on close | M | Done |
+| SV-2 | Crash-safe writes | M | Done |
+| SV-3 | Automatic snapshots (hourly, daily) with an easy restore | M | Done |
+| SV-4 | Earlier versions: a window listing the snapshots, showing the open chapter as it was, and restoring that chapter or the whole book (after keeping the book as it is as a "Before restore" snapshot) | S | Done |
+| SV-5 | Projects live in the library folder (CH-9), never in a cloud-synced folder | M | Done |
+| SV-6 | Export to Word as the page looks (parts, chapters and subheadings as Heading 1, 2 and 3), and an optional Word copy in a chosen folder, kept up to date until it is changed in Word | M | Done |
+| SV-7 | PDF (printing from the Book view), Markdown and plain text | S | Done |
+| SV-8 | Import from Word, split into chapters at its headings | S | Done |
+| SV-9 | Backups to a folder that Google Drive syncs, hourly and on close, and a restore from one (Section 7) | S | Done |
+| SV-10 | EPUB export | C | Not started |
+| SV-11 | Copy as clean HTML for a blog, and a Markdown export | S | Done |
+| SV-12 | Backups straight to Google Drive through its API | C | Not started |
 
-### 4.7 Atmosphere and Cozy UX
+### 4.7 Atmosphere
 
-Coziness is the top product priority. All effects must stay within the performance budget in Section 5.
+Coziness is the top product priority, within the performance budget in Section 5.
 
-| ID | Requirement | Priority |
-|----|-------------|----------|
-| AT-1 | Smooth transitions between views, panels, and zen mode (soft fades and slides) | M |
-| AT-2 | Warm themes (paper, sepia, dark, candlelit) with bundled serif writing fonts. The app has Daylight, Sunset (owner, 7 October), Candlelit and Moonlit, and Day and night, which is Daylight by day and Candlelit after dark | M |
-| AT-3 | Ambient sound: a few looping tracks (rain, fireplace, cafe, soft piano) with volume and fade controls. Pensieve always starts quiet; the volume starts at 10 of 100, and the slider's 100 plays at half of full loudness, never more (owner, 8 October) | S |
-| AT-4 | Subtle visual ambience: slow gradients, vignette, paper texture, optional drifting particles or candle flicker | S |
-| AT-5 | Theme bundles pairing colors, font, and ambience (e.g. "Rainy Library", "Fireside") | C |
-| AT-6 | "Gentle mode" toggle that disables particles and heavy effects; honors the Windows "reduce animations" setting. It leaves the chosen ambience playing (7 October): Silence is how the sound goes off | M |
-| AT-7 | Optional Harry Potter-flavored labels for features (e.g. Zen mode = "Nox", Notes = "Pensieve" panel, Todos = "Remembrall"); off by default, switchable in settings | C |
-| AT-8 | A pomodoro in the floating bar (owner, 8 October): a click starts the writing time with a clock's tick-tock, then a soft chime, a word on the page and a break, and a chime when the break ends. While it runs, icons pause or resume it, start the phase again and stop it, and Zen shows its time. Its lengths (25 and 5 minutes to start with) are in Settings → Writing & goals. The floating bar no longer shows the words in the book, the language or Saved (the title bar says when all is saved; a problem saving still shows in the bar) | S |
-| AT-9 | Keystroke sounds as she types on the page (owner, 8 October): off to start with; Settings → Ambience chooses a typewriter (keys strike, space thumps, Enter returns the carriage with its bell), a mechanical keyboard or a soft one, each a recording the owner chose (Mechvibes packs, static/keys/CREDITS.txt), a keyboard with a sound for each key; its own volume at up to half. Shortcuts and arrows stay quiet, and a key is no slower with them on | C |
-| AT-10 | Smooth typing (owner, 8 October; Settings → Appearance, on to start with; its own switch, which Gentle mode leaves alone, 9 October): the caret glides to where the next letter goes and blinks only once she pauses, and each letter inks in under a fading veil of paper, as in Word. Drawn over the page, never in the text, so a key is no slower even on a long chapter; it moves even where Windows animations are off, since she chose it | S |
+| ID | Requirement | Pri | Status |
+|----|-------------|-----|--------|
+| AT-1 | Soft transitions between views, panels, windows and Zen | M | Done |
+| AT-2 | Warm themes with bundled serif fonts: Daylight, Sunset, Candlelit and Moonlit, and Day and night (Daylight by day, Candlelit after dark); Literata, EB Garamond and a typewriter face | M | Done |
+| AT-3 | Ambient sound (rain, fireplace, café, piano), looping, with a volume and fades. It always starts quiet: the volume starts at 10 of 100, and the slider's top is half of full loudness | S | Done |
+| AT-4 | Quiet visual ambience: lamp glow, vignette, paper grain, and sparks drifting over the desk in Candlelit | S | Done |
+| AT-5 | Theme bundles pairing colours, font and sound | C | Dropped: sound stays its own choice |
+| AT-6 | Gentle mode: no sparks and no motion; Windows' "animations off" setting does the same. Sound and smooth typing keep their own switches | M | Done |
+| AT-7 | Harry Potter-flavoured labels (Nox for Zen, Remembrall for to-dos), off by default | C | Not started |
+| AT-8 | A pomodoro in the floating bar: a click starts the writing time with a clock's tick-tock, then a chime, a word on the page and a break, and a chime when the break ends; icons pause, restart and stop it; Zen shows its time; the lengths (25 and 5 minutes to start with) are in Settings → Writing & goals | S | Done |
+| AT-9 | Keystroke sounds, off to start with: a typewriter (with its carriage return and bell), a mechanical keyboard or a soft one, each recorded, with a sound for each key and a volume of up to half. Shortcuts and arrows stay quiet | C | Done |
+| AT-10 | Smooth typing (on to start with): the caret glides to where the next letter goes and blinks only once she pauses, and each letter inks in under a fading veil, as in Word; drawn over the page, never in the text | S | Done |
 
-### 4.8 Settings and Polish
+### 4.8 Settings and polish
 
-| ID | Requirement | Priority |
-|----|-------------|----------|
-| ST-1 | Default font, size, line spacing, page margins. Since 6 October the text starts at 12 pt, with sizes in points as in Word, lines 1.5 apart, and paragraphs a little apart with no first-line indent | S |
-| ST-2 | Language selection. The interface starts in Slovenian (owner, 6 October); English is in Settings | S |
-| ST-3 | Daily writing goal and simple streak display. The owner dropped the streak on 5 October. The daily goal went on 6 October and came back that evening, kept simple: the Goals list beside the page in Write shows the words written today toward it (500 to start with, 0 for none), with the chapter's words toward its own goal (CH-6) | C |
-| ST-4 | Keyboard shortcut cheat sheet | C |
-| ST-5 | Tutorial tips the first time she reaches Home, Write, Notes and the Book: each points at the part it is about and leaves the window free to use, with "Ne prikazuj več namigov" to stop them; Settings → General turns them on and off and shows them all again (owner, 8 October) | S |
-| ST-6 | Windows over the app (owner, 9 October): what opens over the page does so in a window like Settings, with its name and ✕ at the top and its buttons at the foot; Escape or a click beside it closes it, and the keyboard goes back to what opened it. Settings, Earlier versions, a note and the to-dos use it, and other things will as they come | S |
+| ID | Requirement | Pri | Status |
+|----|-------------|-----|--------|
+| ST-1 | The manuscript's font and size in points (12 to start with), lines 1.5 apart, paragraphs flush left with a little space between them, and the page's width | S | Done |
+| ST-2 | The interface in Slovenian (to start with) or English | S | Done |
+| ST-3 | A daily word goal and the chapter's goal in the Goals list beside the page; the words written today on Home and in the floating bar. No streak | C | Done |
+| ST-4 | A list of the shortcuts (Settings → Shortcuts, Ctrl+/) | C | Done |
+| ST-5 | Tutorial tips the first time she reaches Home, Write, Notes and Book, each pointing at what it is about, with "Ne prikazuj več namigov" to stop them; Settings → General turns them on and off and shows them again | S | Done |
+| ST-6 | What opens over the page is a window like Settings: its name and ✕ at the top, its buttons at the foot; Escape or a click beside it closes it, and the keyboard goes back to what opened it | S | Done |
+| ST-7 | Updates: Pensieve looks for a newer signed version on GitHub Releases, offers it quietly in the window bar, and installs it with one click, keeping her projects and settings | S | Done |
+| ST-8 | Example books, and a long test book of about 151,000 words for checking speed (Settings → General) | C | Done |
 
-## 5. Non-Functional Requirements
+## 5. Non-functional requirements
 
-- **Performance:** target an older Windows 10 laptop. Cold start under 3 seconds; typing latency imperceptible; manuscripts of 150,000+ words stay responsive (chapters load lazily). Animate only `opacity` and `transform`; avoid animating blur or shadows and limit `backdrop-filter`. Particles and canvas effects are throttled (about 30 fps) and run separately from the editor so ambience never slows typing.
-- **Reliability:** no data loss on crash, power loss, or forced quit; autosave failures are surfaced clearly.
-- **Install size and speed:** installer in the low tens of MB; one-click install, no admin-heavy setup or runtime prerequisites for the end user.
-- **Privacy:** all data local by default; no telemetry; no account required.
-- **Usability:** a Word user can write and format within minutes without a tutorial; every action discoverable from the toolbar or menu.
-- **Accessibility:** keyboard navigable, adjustable text size, sufficient contrast in all themes.
-- **Portability:** Windows 10 or newer is the target (Tauri uses the system WebView2 runtime, included in Windows 11 and installable on Windows 10, ideally bundled in the installer). macOS and Linux remain possible later from the same codebase.
-- **Maintainability:** small, well-structured codebase that a single developer can maintain.
+- **Speed:** the target is Eva's laptop, an HP ProBook 650 G2 (2016, a 6th-generation Core i5), at 1366×768
+  or about 1536×864. Layouts are checked at 1366 and 1536 pixels wide and speed with the processor slowed
+  four times. Typing feels instant, also in a 10,000-word chapter of a 150,000-word book: about 40 ms a key
+  there, the same with a panel open, a note pinned, key sounds or smooth typing. Home appears before the
+  editor's code is read. Only `opacity` and `transform` are animated, and nothing decorative runs on the
+  typing path.
+- **Reliability:** no lost text after a crash, a power cut or a forced close; a failed save or backup says so.
+- **Install:** one small installer with no prerequisites to install by hand; updates as in ST-7.
+- **Privacy:** everything stays on her computer; no telemetry and no account.
+- **Usability:** a Word user can write and format within minutes; every action can be found in the toolbar
+  or a menu.
+- **Accessibility:** usable from the keyboard, readable contrast in every theme, adjustable text size.
+- **Languages:** English and Slovenian everywhere, in UTF-8 (č, š, ž).
+- **Maintainability:** small, readable code that one developer can look after.
 
-## 6. Proposed Architecture
+## 6. Architecture
 
-| Layer | Choice | Reason |
-|-------|--------|--------|
-| Shell | **Tauri** | Small installers, fast startup, native file access |
-| UI framework | **Svelte** (TypeScript) | Ships less code and runs faster on older hardware; built-in transitions suit the cozy goal |
-| Ambience | CSS animations, small throttled canvas, HTML audio | Cheap on CPU and GPU |
-| Editor core | **TipTap** (ProseMirror) | Mature rich text, extensible, Word-like behavior |
-| Pagination (book view, Pages in Write) | Measured in the page itself: the Book view cuts each chapter's blocks into pages, and Write adds empty blocks where a sheet ends, worked out once typing pauses | No dependency; typing never waits for it |
-| Local storage | SQLite (via Tauri SQL plugin) or a folder of JSON/HTML files | See Section 7 |
-| DOCX export | `docx` library | Programmatic Word generation |
-| Spell check | WebView2 built-in spell check if it supports Slovenian; otherwise Hunspell dictionaries (en, sl) via a JS library such as nspell | Must be verified early (see risks) |
-| Native backend | Rust (Tauri commands) | File I/O, backups, window control |
+| Part | Choice |
+|------|--------|
+| Shell | Tauri 2. The Rust side stays thin: files, the library on disk, backups, the window, the spell-check dictionary |
+| Interface | Svelte 5 and TypeScript; the views load once Home is on screen |
+| Editor | TipTap 3 (ProseMirror) with the app's own extensions: the chapter page, sheets (pagination), smooth typing, undo steps, comments, footnotes, note links |
+| Storage | SQLite through Tauri's SQL plugin, one file per project; the settings in the window's storage and in `prefs.json` |
+| Spell check | Windows' own spell checker through WebView2, following the `lang` of the text. A test on 1 October found English and Slovenian (č, š, ž) both work; a computer without the Slovenian language pack would need bundled Hunspell dictionaries |
+| Word | `docx` to write (loaded on first use) and `mammoth` to read |
+| Pages | Measured in the page itself: the Book view cuts chapters into pages, and Pages in Write adds room where a sheet ends once typing pauses |
+| Sound | Ambience: looping recordings in `static/ambience/`. Keystrokes: Web Audio playing parts of one recording per keyboard, in `static/keys/` |
+| Updates and files | Tauri's updater plugin (signed updates) and opener plugin (used from Rust only) |
 
-Principle: keep the Rust side thin (file system, backups, windows) and put app logic in TypeScript.
+## 7. Data and backups
 
-## 7. Data Model and Storage
+- **The library** is a folder of project folders. Each project folder holds one SQLite file, `pensieve.db`,
+  and whatever files she keeps there.
+- **In a project file:** the project (`shelf`), its writings (`projects`, a name from before a project held
+  several), chapters, notes and their chapter links, to-dos, snapshots and the personal dictionary. A
+  chapter is kept as ProseMirror JSON with a plain-text copy for counts, search and export. The file has a
+  schema version, and older files are upgraded after a copy of them is kept beside them.
+- **Snapshots** hold a writing with the project's notes and to-dos as they were. A restore never changes
+  notes and to-dos that still exist; it brings back the ones deleted since.
+- **Backups:** the live file never sits in a synced folder, where a sync could copy it mid-write. Instead
+  Pensieve writes a backup file of each project into a folder she picks inside Google Drive (Drive for
+  desktop syncs it), hourly while open and on close, keeping each project's latest 20. Settings → Backup &
+  export restores from one.
 
-**Entities:** Project, Chapter (ordered, optional parent), Note, Task, Tag, Link (note to chapter / note to note), Snapshot (version history), Settings.
+## 8. UX principles
 
-**Storage options:**
+- **Calm first:** a muted palette, room to breathe, one main action per screen.
+- **Familiar:** Word's icons, names and shortcuts where possible.
+- **Gentle motion:** short and soft, never sudden.
+- **Quiet:** no nagging; problems are said gently but never hidden.
+- **The text first:** panels fold away and the page is the hero.
 
-1. **SQLite single file per project** (recommended). One portable file; transactions give strong crash safety; easy queries for search, tags, and todos; simple to back up and, later, to sync.
-2. **Folder of files** (one file per chapter, plus JSON for metadata). Human-readable and friendly to existing sync tools, but weaker consistency and harder to query.
+## 9. Decisions
 
-Chapter content is stored as TipTap/ProseMirror JSON (lossless) with a derived HTML or plain-text copy for search and export. Add a schema version number from day one to allow future migrations.
+The owner's decisions that shaped the app, newest first. Each replaced what the original plan or the
+design system said.
 
-## 8. Cloud Backup (Google Drive)
+- **9 Oct:** Earlier versions, a note and the to-dos open in windows like Settings. A note or the to-dos can
+  be pinned beside the page, on the right only, as the library keeps the left. The tree has a + for
+  chapters. Smooth typing has its own switch, apart from Gentle mode.
+- **8 Oct:** Chapter statuses hidden for now. The Library tab first. The full toolbar open to start with.
+  Pages (A4 or A5) instead of a second sheet drawn under the page. The Book view set as a printed book. Undo
+  a word at a time. Tutorial tips, a pomodoro, recorded keystroke sounds and smooth typing. Updates through
+  GitHub Releases. The laptop is an HP ProBook 650 G2.
+- **7 Oct:** Projects hold several writings, with no project types but a "Split into chapters" switch. A
+  library folder of projects, drawn like VS Code's file explorer, with her own files in it. Notes and to-dos
+  belong to the project. A Sunset theme, with the old Follow sunset renamed Day and night. Gentle mode no
+  longer mutes the sound.
+- **6 Oct:** A plain page: no running head, chapter label, drop cap or first-line indents; a chapter's
+  title is its first line (Heading 2) and a part's a Heading 1. Text at 12 pt with lines 1.5 apart. Wider
+  pages. Zen like Grammarly. The interface in Slovenian from the start. No streak; the daily goal only in the
+  Goals list beside the page. Sound stays a choice apart from the theme. One list at a time in the panel.
+- **5 Oct:** Pensieve opens on Home. Sparks drift over the desk in Candlelit while writing.
+- **1 Oct:** Windows 10 or newer, personal use only, English and Slovenian, backups through Google Drive.
 
-The writer already uses Google Drive, so backups target it.
+## 10. Open questions
 
-**Important rule:** the live project file stays on the **local disk** (in the app's data folder or Documents), *not* inside the Google Drive folder. Sync clients can upload a database file mid-write or create "conflicted copy" duplicates, which risks corruption. Instead, the app writes **snapshots** (a compressed copy of the project) into a backup folder that Google Drive for desktop syncs.
+1. The laptop's Windows version and memory, which set how much ambience it can afford (the model is known).
+2. Which Word features beyond this list are must-haves.
+3. Does she use Word's page numbers, headers or a table of contents in her manuscripts?
+4. Home's redo around projects: when, and how it should look (owner).
+5. Chapter statuses: bring them back or drop them?
 
-Plan:
+## 11. Name
 
-1. **v1: Drive-synced backup folder.** The user picks a folder inside her "Google Drive" folder (Drive for desktop must be installed). The app writes timestamped snapshot files there, keeps the last N, and shows "last backup: time, success or failure". No cloud code needed.
-2. **Later: direct Drive API** (OAuth, restricted to the app's own folder) so backups work without Drive for desktop. Optional.
-3. **Optional:** encrypt snapshots before they leave the machine.
+**Pensieve:** in Harry Potter, the basin where thoughts and memories are kept and looked at again, which
+is what the app does with ideas and text. It is a trademarked term from the books, which is fine for a
+personal gift; a public release would need another name.
 
-Design hooks for the future: all persistence sits behind a storage interface (`save`, `load`, `list snapshots`, `restore`); snapshots are immutable; restore from a snapshot is a tested feature, not an afterthought.
+## 12. Success
 
-## 9. UX Principles
-
-- **Calm first:** muted palette, generous whitespace, one primary action per screen.
-- **Familiar:** toolbar icons and menu names match Word where possible.
-- **Cozy motion:** gentle, short transitions; nothing flashy or sudden.
-- **Quiet defaults:** no pop-ups, no nagging; errors are gentle but never hidden.
-- **Content over chrome:** panels collapse; the text is always the hero.
-- **Dashboard:** project cards, a "continue writing" button, small progress bars, todo count.
-
-## 10. Roadmap
-
-| Phase | Scope | Outcome |
-|-------|-------|---------|
-| **0. Foundations** | Tauri + TipTap scaffold, project structure, SQLite storage, autosave, spell-check test for English and Slovenian | Typing is saved safely; spell check approach confirmed |
-| **1. Writing core** | Toolbar, formatting, word count, chapters sidebar, zen mode, warm themes, smooth transitions | Usable daily writing tool |
-| **2. Organization** | Dashboard, notes, tags, chapter links, todo board, local snapshots | Whole-manuscript workflow |
-| **3. Views and export** | Book view, outline view, .docx and PDF export, .docx import | Complete v1 |
-| **4. Cloud** | Snapshots to a Google Drive-synced folder; optional direct Drive API later | Off-site safety |
-| **5. Polish** | Ambient sound and visuals, Gentle mode, version history UI, goals, settings, installer | Release quality |
-
-## 11. Risks and Open Questions
-
-**Risks**
-- *Book view pagination* is technically the hardest feature; mitigate by shipping a read-only preview first.
-- *Word fidelity:* .docx round-trips are never perfect; set expectations and test with real documents.
-- *Slovenian spell check:* the built-in WebView2 spell checker depends on installed Windows languages and may not cover Slovenian reliably. Verify in Phase 0; fall back to bundled Hunspell dictionaries (English and Slovenian).
-- *Scope creep:* the main risk to a "cozy and simple" product; enforce the MoSCoW list.
-- *Data loss:* mitigate with atomic writes, snapshots, and tested restore.
-
-**Resolved**
-- Target OS: Windows 10 or newer.
-- Interface language: switchable between English and Slovenian, starting in Slovenian (owner, 6 October).
-- Writing languages: English and Slovenian, with spell check.
-- Content types: novels, short stories, non-fiction, plus blog posts and articles, as writings of a project, with no types (owner, 7 October).
-- Projects and the library (owner, 7 October): a library folder of projects; a project holds as many writings as she wants, optionally in writing folders ("Drafts", "Published"); notes and to-dos belong to the project; Home's Continue writing opens the item opened last. Home itself is to be redone later, around projects.
-- Cloud: Google Drive.
-- Distribution: personal use only, so installer signing and licensing are not needed.
-- The chapter list stays as a tab beside the library, looking like the library's tree (owner, 8 October).
-
-**Still open**
-1. Windows version (10 or 11) and RAM of the laptop, to set the effects budget. The laptop is an HP ProBook 650 G2 (owner, 8 October): a 2016 15.6-inch laptop, usually with a 6th-generation Core i5, whose screen is 1366×768 or 1920×1080 (about 1536×864 at Windows' usual 125%), so layouts are checked at 1366 and 1536 pixels wide.
-2. Which Word features beyond the current list are must-haves (shortlist provided separately).
-3. Does the writer use Word's page numbers, headers, or a table of contents in her manuscripts?
-
-## 12. Naming
-
-**Chosen name: Pensieve.** In Harry Potter, the Pensieve is the basin where thoughts and memories are stored and revisited, which matches what the app does: gathering, storing, and connecting ideas and text.
-
-Notes:
-- Other Harry Potter-inspired labels (Nox for zen mode, Remembrall for todos, Common Room for the cozy ambience) are optional and off by default (AT-7).
-- *Pensieve* is a trademarked term from the books. That is fine for a personal gift. If the app is ever distributed publicly, consider a generic name instead.
-- Earlier candidates considered: Selah, Patmos, Ezra, Baruch, Siloam, Kairos, Manna, Bezalel, Genesis, Flourish, The Common Room.
-
-## 13. Success Criteria
-
-- She can write, organize, and export a chapter in her first session without help.
-- No lost work over months of use, including after crashes.
-- The app launches quickly, runs smoothly on her computer, and she chooses it over Word for her writing.
-
----
-
-*End of document.*
+- She can write, organise and export a chapter in her first session without help.
+- No lost work over months of use, crashes included.
+- It starts quickly, runs smoothly on her laptop, and she chooses it over Word for her writing.

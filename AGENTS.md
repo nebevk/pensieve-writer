@@ -2,6 +2,7 @@
 
 Pensieve is a cozy, minimalist desktop writing app (a lightweight Word alternative with chapters, notes/todos, book view, and zen mode) for one personal user. Not distributed publicly.
 Full requirements: `docs/requirements.md` (read it before big features; requirement IDs like ED-1, CH-4, SV-1 refer to it).
+Open work, and where the app differs from `design-system/` on purpose: `docs/backlog.md`.
 
 ## Stack
 - Tauri v2 (Rust backend, thin) + Svelte + TypeScript (app logic) + TipTap editor
@@ -20,6 +21,7 @@ Full requirements: `docs/requirements.md` (read it before big features; requirem
 - `npm install` : install dependencies
 - `npm run tauri dev` : run the desktop app in development
 - `npm run check` : type-check (svelte-check / tsc)
+- `npm test` : unit tests (Vitest)
 - `npm run build` / `npm run tauri build` : production build / installer
 - `npm run release -- 0.2.0 --notes "…"` : a signed release for GitHub Releases, which installed copies update from (see `docs/releasing.md`; needs the key in `%USERPROFILE%\.tauri`)
 
@@ -29,3 +31,4 @@ Full requirements: `docs/requirements.md` (read it before big features; requirem
 - Ask before adding a dependency; prefer well-maintained, small ones.
 - Commit-sized changes with clear messages (conventional commits: `feat:`, `fix:`, `docs:`, `chore:`).
 - Definition of done: runs, type-checks, no console errors, matches the requirement ID, text still saves after a forced app close.
+- Keep the docs current: when a feature lands or the owner decides something, update the requirement's text and status in `docs/requirements.md` (a decision also goes in its Decisions list), and take finished items out of `docs/backlog.md`.
