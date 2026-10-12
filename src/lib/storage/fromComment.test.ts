@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CommentInfo } from "$lib/editor/comments";
-import { noteFromComment, todoFromComment } from "./fromComment";
+import { namesANote, noteFromComment, noteFromWords, todoFromComment } from "./fromComment";
 
 const now = "2026-10-05T12:00:00.000Z";
 const comment = (text: string, quote: string): CommentInfo => ({ id: "c", text, createdAt: now, from: 1, to: 2, quote });
@@ -35,5 +35,30 @@ describe("turning a comment into a to-do or a note", () => {
     const note = noteFromComment(comment("", passage), "p", "ch1", now);
     expect(note.title.endsWith("…")).toBe(true);
     expect(note.title.length).toBeLessThanOrEqual(60);
+  });
+});
+
+describe("a note from selected words", () => {
+  it("is named by a short selection, such as a name, and left empty to write in", () => {
+    const note = noteFromWords("  Marija Kos ", "p", "ch1", now);
+    expect(note).toMatchObject({ title: "Marija Kos", plainText: "", category: "ideas", chapterIds: ["ch1"] });
+    expect(note.contentJson.content).toEqual([{ type: "paragraph" }]);
+  });
+
+  it("quotes a passage, named by its first words, with room to write under it", () => {
+    const passage = "Ana read it twice at the workbench, between a chair with a cracked rail and a cabinet.\nShe had not been back in twelve years.";
+    const note = noteFromWords(passage, "p", "ch1", now);
+    expect(note.title).toBe("Ana read it twice at the workbench, between a chair with a…");
+    expect(note.plainText).toBe("Ana read it twice at the workbench, between a chair with a cracked rail and a cabinet.\n\nShe had not been back in twelve years.");
+    expect(note.contentJson.content?.[0]).toMatchObject({ type: "blockquote" });
+    expect((note.contentJson.content?.[0] as { content?: unknown[] }).content).toHaveLength(2);
+    expect(note.contentJson.content?.[1]).toEqual({ type: "paragraph" });
+  });
+
+  it("takes words over two lines, or past 60 letters, as a passage; č, š and ž count as letters", () => {
+    expect(namesANote("Ana\nMarija")).toBe(false);
+    expect(namesANote("a".repeat(61))).toBe(false);
+    expect(namesANote("Čez reko, Špela in Žiga")).toBe(true);
+    expect(noteFromWords("Ana\nMarija", "p", "", now)).toMatchObject({ title: "Ana…", chapterIds: [] });
   });
 });

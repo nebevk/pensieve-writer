@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Editor } from "@tiptap/core";
   import { isLeadLine } from "$lib/chapters/page";
-  import { plural, t } from "$lib/ui.svelte";
+  import { num, plural, t } from "$lib/ui.svelte";
   import { clock, pomodoro, pomodoroLeft } from "$lib/pomodoro.svelte";
   import Icon from "./Icon.svelte";
 
@@ -9,6 +9,7 @@
     editor,
     revision,
     words,
+    selected = 0,
     column = $bindable(44),
     onLeave,
     onRefused,
@@ -18,6 +19,8 @@
     revision: number;
     /** The open chapter's words. */
     words: number;
+    /** Words selected on the page, counted as "12 of 1,240 words". */
+    selected?: number;
     /** The width of the text, in rem. */
     column?: number;
     onLeave: () => void;
@@ -58,7 +61,7 @@
   <button type="button" class:on={active("bulletList")} aria-pressed={active("bulletList")} title={t("bulletedList")} aria-label={t("bulletedList")} onmousedown={(event) => event.preventDefault()} onclick={() => restyle((chain) => chain.toggleBulletList())}><Icon name="list" /></button>
   <button type="button" class:on={active("orderedList")} aria-pressed={active("orderedList")} title={t("numberedList")} aria-label={t("numberedList")} onmousedown={(event) => event.preventDefault()} onclick={() => restyle((chain) => chain.toggleOrderedList())}><Icon name="listOrdered" /></button>
   <span class="rule"></span>
-  <span class="words">{plural("words", words)}</span>
+  <span class="words">{selected > 0 ? `${num(selected)} ${plural("wordsOf", words)}` : plural("words", words)}</span>
   <!-- A pomodoro started in the floating bar goes on counting here. -->
   {#if pomodoro.phase !== "idle"}
     <span class="words" title={t("pomodoro")}>{pomodoroTime}</span>

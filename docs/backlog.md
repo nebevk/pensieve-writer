@@ -25,7 +25,7 @@ Each item keeps its ID so it can be asked for by name; a new one gets the next f
 | **IMP-18** Paste from Word (ED-10) | Paste a chapter from a real manuscript and check headings, italics and paragraphs survive; an automatic test would need a browser-like document in the tests (a test-only package such as `happy-dom`) | Open | P3 |
 | **IMP-25** Keyboard and screen reader | Settings and the windows trap the keyboard and give it back; buttons have spoken names; svelte-check reports no accessibility warnings. Still to do: someone tabbing through the running app | Partial | P3 |
 | **IMP-28** Split `+page.svelte` | At about 4,000 lines it is by far the largest file. Move find and replace, earlier versions, the windows, projects, backups, the Word copy and Zen into their own modules | Partial | P3 |
-| **LOOK-4** A design pass | The design system doesn't draw these yet, so they were built in the app's own way: the library tree, Outline, Book, Zen, Settings other than Appearance, the find bar, footnotes, comments, the windows (earlier versions, a note, the to-dos), a pinned panel, the pomodoro, error states, and Home in the dark themes | Open | P3 |
+| **LOOK-4** A design pass | The design system doesn't draw these yet, so they were built in the app's own way: the library tree, Outline, Book, Zen, Settings other than Appearance, the find bar, footnotes, comments, the windows (earlier versions, a note, the to-dos), a pinned panel, the selection bar, the pomodoro, error states, and Home in the dark themes | Open | P3 |
 
 Requirements marked *Not started* (NT-8, VW-5, SV-10, SV-12, AT-7, tables in ED-12, scenes in CH-5) wait
 until the owner asks for them.

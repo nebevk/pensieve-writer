@@ -7,6 +7,7 @@
 
   let {
     words,
+    selected = 0,
     error = "",
     zen = false,
     onZen,
@@ -19,6 +20,8 @@
     breakMinutes = 5,
   }: {
     words: number;
+    /** Words selected on the page: the bar then says "12 of 1,240 words", as Word's does. */
+    selected?: number;
     /** A problem saving; the title bar says when all is saved. */
     error?: string;
     zen?: boolean;
@@ -91,7 +94,7 @@
     {ambienceLabel}
   </button>
   <span class="rule"></span>
-  <span>{plural("words", words)}</span>
+  <span>{selected > 0 ? `${num(selected)} ${plural("wordsOf", words)}` : plural("words", words)}</span>
   <span class="rule"></span>
   <span class="today">{t("today")} {num(today)}</span>
   <span class="rule"></span>

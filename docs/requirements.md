@@ -60,13 +60,14 @@ said), Not started, Dropped. IDs are fixed; code comments and the backlog refer 
 | ED-5 | Font, size, text colour, highlight | S | Partial: font and size apply to the whole manuscript, not the selection as in Word; text colour and highlight each apply one fixed colour (TOOL-5, TOOL-6) |
 | ED-6 | Undo and redo with deep history, about a word per step as in Word; a paste is a step of its own | M | Done |
 | ED-7 | Word's shortcuts: Ctrl+B, I, U, Z, Y, S, F; also Ctrl+Alt+M for a comment and Ctrl+/ for the list of shortcuts | M | Done |
-| ED-8 | Find and replace in the chapter or across the book, with a list of matches | S | Done |
-| ED-9 | Live word counts for the chapter, the writing and the project | M | Done |
+| ED-8 | Find and replace in the chapter or across the book, with a list of matches; it starts with the selected words, as in Word | S | Done |
+| ED-9 | Live word counts for the chapter, the writing and the project; with words selected, the floating bar says "12 of 1,240 words", as Word's does | M | Done |
 | ED-10 | Paste from Word keeps headings, italics and paragraphs | S | Partial: works, but not tried with a real manuscript (IMP-18) |
 | ED-11 | Spell check in English and Slovenian | M | Done |
 | ED-12 | Images and footnotes; simple tables | C | Partial: images and footnotes; no tables |
 | ED-13 | A writing language per project, chapter or selection, which spell check follows; a personal dictionary | M | Done |
 | ED-14 | Comments on selected words, as in Word, written beside the page; a comment can become a to-do or a note; comments go to and from Word files | M | Done |
+| ED-15 | A small bar above selected text, as Word's mini toolbar, shown once the selection settles: bold, italic, underline and highlight; a comment; Make a note (a name becomes a note linked to those words, or is linked to the note of that name; a passage is quoted in a new note); and Find in the book. A title line offers only Find, Zen only the formatting. Ctrl+Shift+V pastes plain text | S | Done |
 
 ### 4.2 Projects, writings and chapters
 
@@ -224,7 +225,8 @@ The owner's decisions that shaped the app, newest first. Each replaced what the 
 design system said.
 
 - **12 Oct:** Chapter statuses dropped, so a writing's progress on Home is its words against its target.
-  Eva's laptop runs Windows 10 with 8 GB of memory.
+  Eva's laptop runs Windows 10 with 8 GB of memory. A bar above selected text, with formatting, a comment,
+  a note and find, and the selected words counted, as in Word.
 - **9 Oct:** Earlier versions, a note and the to-dos open in windows like Settings. A note or the to-dos can
   be pinned beside the page, on the right only, as the library keeps the left. The tree has a + for
   chapters. Smooth typing has its own switch, apart from Gentle mode.

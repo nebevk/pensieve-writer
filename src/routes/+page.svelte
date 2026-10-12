@@ -41,7 +41,7 @@
   import { isUntitled } from "$lib/i18n";
   import { locale, snapshotName, t, ui } from "$lib/ui.svelte";
   import { deleteNote, flushNoteSave, listNotes, listTasks, saveNote, saveTask, scheduleNoteSave, type Note, type NoteCategory, type Task } from "$lib/storage/organize";
-  import { noteFromComment, todoFromComment } from "$lib/storage/fromComment";
+  import { namesANote, noteFromComment, noteFromWords, todoFromComment } from "$lib/storage/fromComment";
   import type { NoteTarget } from "$lib/editor/noteLinks";
   import type { CommentInfo } from "$lib/editor/comments";
   import { addWriting, checkpointDatabase, duplicateWriting, eraseWriting, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, moveProjectFile, readSnapshotChapters, rememberPersonalWord, renameWritingFolder, restoreChapter, restoreFromBackup, setShelf, setWritingFields, setWritingOrder, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
@@ -60,6 +60,7 @@
   const HistoryPart = lazy(() => import("$lib/views/History.svelte"));
   const NoteWindowPart = lazy(() => import("$lib/views/NoteWindow.svelte"));
   const TodosWindowPart = lazy(() => import("$lib/views/TodosWindow.svelte"));
+  const SelectionBarPart = lazy(() => import("$lib/editor/SelectionBar.svelte"));
 
   // The writing open in Write: one of the open project's writings, with all its chapters.
   let writing = $state<Writing | null>(null);
@@ -108,6 +109,8 @@
   // The open chapter's footnotes, listed at the foot of the page.
   let pageNotes = $state<string[]>([]);
   let findInput = $state<HTMLInputElement | undefined>(undefined);
+  // Words selected on the page, which the floating bar counts ("12 of 1,240 words").
+  let selectedWords = $state(0);
   const startPrefs = loadPrefs();
   let prefs = $state(startPrefs);
   // Set before the first paint, so a Slovenian interface never flashes English.
@@ -339,7 +342,7 @@
       }
       requestIdleCallback(
         () => {
-          for (const part of [EditorPart, CommentRailPart, NotesPart, TodosPart, SettingsPart, OutlinePart, BookPart, HistoryPart, NoteWindowPart, TodosWindowPart]) {
+          for (const part of [EditorPart, CommentRailPart, NotesPart, TodosPart, SettingsPart, OutlinePart, BookPart, HistoryPart, NoteWindowPart, TodosWindowPart, SelectionBarPart]) {
             // A part that fails here is tried again, and reported, when it is shown.
             part.load().catch(() => undefined);
           }
@@ -431,8 +434,10 @@
     }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
       event.preventDefault();
+      findSelected();
       findOpen = true;
       findMissing = false;
+      void tick().then(() => findInput?.select());
     }
     if (event.ctrlKey && event.altKey && event.code === "KeyM" && !event.getModifierState("AltGraph") && view === "write") {
       event.preventDefault();
@@ -582,6 +587,77 @@
       reportSaveError(errorMessage(error));
       void loadOrganizer();
     }
+  }
+
+  /** The words selected on the page, if any are on one line, become what find looks for, as in Word. */
+  function findSelected() {
+    const editor = textEditor;
+    if (!editor || editor.isDestroyed || editor.state.selection.empty) return;
+    const { from, to } = editor.state.selection;
+    const words = editor.state.doc.textBetween(from, to, "\n").trim();
+    if (words && !words.includes("\n") && words.length <= 100) findQuery = words;
+  }
+
+  /** The selection bar's find: the selected words, looked for through the whole book. */
+  function findInBook(words: string) {
+    const first = words.split("\n")[0].trim().slice(0, 100);
+    if (!first) return;
+    findQuery = first;
+    findScope = "book";
+    replaceMode = false;
+    findMissing = false;
+    findOpen = true;
+    void tick().then(() => {
+      findInput?.focus();
+      findInput?.select();
+    });
+  }
+
+  /**
+   * The selection bar's note (owner, 12 October). Words that are a name are linked to the note of that
+   * name (or other name), made if there is none yet; a longer passage is quoted in a new note, to be named.
+   * Either is tied to the chapter and opens in the note window, or where a note is pinned.
+   */
+  async function noteFromSelection() {
+    const editor = textEditor;
+    if (!editor || editor.isDestroyed || !writing || !activeId || !projectId) return;
+    const selection = editor.state.selection;
+    const { from, to } = selection;
+    const words = selection.empty ? "" : editor.state.doc.textBetween(from, to, "\n").trim();
+    if (!words) return;
+    const now = new Date().toISOString();
+    if (!namesANote(words)) {
+      const note = noteFromWords(words, projectId, activeId, now);
+      try {
+        await saveNote(note);
+      } catch (error) {
+        reportSaveError(errorMessage(error));
+        return;
+      }
+      bookNotes = [note, ...bookNotes];
+      openNoteWindow(note.id, true);
+      return;
+    }
+    const name = words.toLowerCase();
+    let note = bookNotes.find(
+      (item) => item.title.trim().toLowerCase() === name || item.aliases.split(",").some((alias) => alias.trim().toLowerCase() === name),
+    );
+    if (!note) {
+      note = noteFromWords(words, projectId, activeId, now);
+      try {
+        await saveNote(note);
+      } catch (error) {
+        reportSaveError(errorMessage(error));
+        return;
+      }
+      bookNotes = [note, ...bookNotes];
+    }
+    // The words link to it, unless they are a title line's (plain text) or changed meanwhile.
+    const unchanged = !editor.isDestroyed && editor.state.doc.textBetween(from, to, "\n").trim() === words;
+    if (unchanged && !isLeadLine(editor.state.doc, selection.$from.index(0))) {
+      editor.chain().setTextSelection({ from, to }).setMark("noteLink", { noteId: note.id, title: note.title }).run();
+    }
+    openNoteWindow(note.id);
   }
 
   /** Opens a note in the Notes view. */
@@ -2934,6 +3010,7 @@
     onToggleTodos={() => togglePanel("todos")}
     onToggleGoals={() => togglePanel("goals")}
     onFind={() => {
+      findSelected();
       replaceMode = false;
       findOpen = true;
       findMissing = false;
@@ -2952,6 +3029,7 @@
       panelAddFocus = 1;
     }}
     onReplace={() => {
+      findSelected();
       replaceMode = true;
       findOpen = true;
       findMissing = false;
@@ -3152,6 +3230,17 @@
                   }}
                 />
               {/if}
+              {#if textEditor && SelectionBarPart.current}
+                {@const SelectionBar = SelectionBarPart.current}
+                <SelectionBar
+                  editor={textEditor}
+                  {zen}
+                  onComment={newComment}
+                  onNote={() => void noteFromSelection()}
+                  onFind={findInBook}
+                  onWords={(count) => (selectedWords = count)}
+                />
+              {/if}
               {#if pageNotes.length > 0}
                 <!-- On sheets, the footnotes have a sheet of their own after the chapter's. -->
                 <ol
@@ -3197,10 +3286,11 @@
         onTheme={(theme) => (prefs.theme = theme)}
         focusMinutes={prefs.pomodoroFocus}
         breakMinutes={prefs.pomodoroBreak}
+        selected={selectedWords}
       />
     </div>
     {#if zen}
-      <ZenBar editor={textEditor} revision={editorRevision} words={chapterWords} bind:column={prefs.columnRem} onLeave={() => void setZen(false)} onRefused={notice} />
+      <ZenBar editor={textEditor} revision={editorRevision} words={chapterWords} selected={selectedWords} bind:column={prefs.columnRem} onLeave={() => void setZen(false)} onRefused={notice} />
     {/if}
   </section>
   {#if panelOpen && writing && activeChapter && dockedOpen}
