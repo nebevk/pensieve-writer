@@ -663,6 +663,7 @@
             <li><kbd>Ctrl</kbd> + <kbd>Y</kbd> {t("redo")}</li>
             <li><kbd>Ctrl</kbd> + <kbd>S</kbd> {t("save")}</li>
             <li><kbd>Ctrl</kbd> + <kbd>F</kbd> {t("find")}</li>
+            <li><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>F</kbd> {t("searchEverything")}</li>
             <li><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>M</kbd> {t("comment")}</li>
             <li><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd> {t("quickIdea")}</li>
             <li><kbd>Ctrl</kbd> + <kbd>/</kbd> {t("shortcutThisList")}</li>

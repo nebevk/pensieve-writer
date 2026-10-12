@@ -51,7 +51,7 @@ On purpose: keep them when matching the design.
 
 ## Parked ideas
 
-From the design's early rounds, until the owner asks for one: one search for chapters and notes, headings
+From the design's early rounds, until the owner asks for one: headings
 listed under each chapter, a synopsis and goal bar on the open chapter, a styles gallery, Paste, Cut and
 Copy buttons, a ruler, to-do counts on the To-dos button and the Home cards.
 

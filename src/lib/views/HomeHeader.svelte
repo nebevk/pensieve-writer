@@ -16,6 +16,7 @@
     onLanguage,
     onSettings,
     onTheme,
+    onSearch,
     update = null,
     onUpdate = () => undefined,
   }: {
@@ -30,6 +31,8 @@
     onSettings: () => void;
     /** Picks a theme from Home, as the design's theme switch does (round 6). */
     onTheme: (theme: ThemeName) => void;
+    /** Opens the search across every project. */
+    onSearch: () => void;
     /** A newer Pensieve to install, when there is one. */
     update?: UpdateOffer | null;
     onUpdate?: () => void;
@@ -60,6 +63,7 @@
     <span class="name">Pensieve</span>
   </span>
   <span class="spacer"></span>
+  <button type="button" class="find" title="{t("searchEverything")} (Ctrl+Shift+F)" onclick={onSearch}><Icon name="search" />{t("searchEverything")}</button>
   {#if update}
     <UpdatePill offer={update} {onUpdate} />
   {/if}
@@ -219,6 +223,34 @@
   .themes :global(svg) {
     width: 15px;
     height: 15px;
+  }
+
+  .find {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-xs);
+    padding: 0 10px;
+    background: transparent;
+    color: var(--pv-text-muted);
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .find :global(svg) {
+    width: 14px;
+    height: 14px;
+  }
+
+  .find:hover {
+    background: var(--pv-selected);
+  }
+
+  .find:active {
+    background: var(--pv-pressed);
   }
 
   .lang {

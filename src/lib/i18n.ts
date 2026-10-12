@@ -532,6 +532,13 @@ const en = {
   ideaGoesTo: "It goes among the ideas of {project}. From anywhere: Ctrl+Shift+N",
   ideaSaved: "Saved among the ideas of {project}.",
   noIdeasYet: "No ideas yet.",
+  searchEverything: "Search everything",
+  searchEverythingHint: "Every project's writings, chapters and notes.",
+  searchReading: "Reading the projects… {done} of {total}",
+  searchNothing: "Nothing found.",
+  searchCapped: "Showing the first {n}; another word narrows it.",
+  searchUnread: "Couldn't read: {names}",
+  searchAllProjects: "In all projects",
   updateReady: "New version {version} · Update",
   updateHint: "Pensieve {version} is ready: your writing is saved first, then Pensieve installs it and opens again.",
   updateInstalling: "Updating… {n}%",
@@ -1154,6 +1161,13 @@ const sl: Record<UiKey, string> = {
   ideaGoesTo: "Shrani se med ideje projekta {project}. Od koderkoli: Ctrl+Shift+N",
   ideaSaved: "Shranjeno med ideje projekta {project}.",
   noIdeasYet: "Idej še ni.",
+  searchEverything: "Išči po vsem",
+  searchEverythingHint: "Besedila, poglavja in zapiski vseh projektov.",
+  searchReading: "Berem projekte … {done} od {total}",
+  searchNothing: "Ni zadetkov.",
+  searchCapped: "Prikazanih je prvih {n}; z novo besedo jih bo manj.",
+  searchUnread: "Ni bilo mogoče prebrati: {names}",
+  searchAllProjects: "Po vseh projektih",
   updateReady: "Nova različica {version} · Posodobi",
   updateHint: "Pensieve {version} je pripravljen: najprej se shrani vaše besedilo, nato se Pensieve namesti in znova odpre.",
   updateInstalling: "Posodabljam … {n} %",
@@ -1255,6 +1269,9 @@ const PLURALS = {
   wordsOf: { en: ["of {n} word", "of {n} words"], sl: ["od {n} besede", "od {n} besed", "od {n} besed", "od {n} besed"] },
   openCount: { en: ["{n} open", "{n} open"], sl: ["{n} odprto", "{n} odprti", "{n} odprta", "{n} odprtih"] },
   fileCount: { en: ["{n} file", "{n} files"], sl: ["{n} datoteka", "{n} datoteki", "{n} datoteke", "{n} datotek"] },
+  matchCount: { en: ["{n} match", "{n} matches"], sl: ["{n} zadetek", "{n} zadetka", "{n} zadetki", "{n} zadetkov"] },
+  /** "In 3 projects": Slovenian "v" takes the locative. */
+  inProjects: { en: ["in {n} project", "in {n} projects"], sl: ["v {n} projektu", "v {n} projektih", "v {n} projektih", "v {n} projektih"] },
 } satisfies Record<string, { en: [string, string]; sl: [string, string, string, string] }>;
 
 export type PluralKey = keyof typeof PLURALS;

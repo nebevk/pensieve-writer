@@ -710,6 +710,53 @@ export function openShelf(writingId: string, fresh: NewProject): Promise<OpenedP
   });
 }
 
+/** What the search across projects reads of one: its writings' chapters, and its notes, as text. */
+export type ProjectText = {
+  writings: { id: string; title: string; chapters: { id: string; title: string; text: string }[] }[];
+  notes: { id: string; title: string; text: string }[];
+};
+
+async function readText(db: Database): Promise<ProjectText> {
+  // Every column, as a file from an older Pensieve may not have them all yet.
+  const rows = await db.select<Record<string, unknown>[]>("SELECT * FROM projects");
+  const writings = rows
+    // A writing in Deleted isn't searched.
+    .filter((row) => !row.deleted_at)
+    .sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0))
+    .map((row) => ({ id: String(row.id), title: String(row.title ?? ""), chapters: [] as ProjectText["writings"][number]["chapters"] }));
+  const byId = new Map(writings.map((writing) => [writing.id, writing]));
+  const chapters = await db.select<{ id: string; project_id: string; title: string; plain_text: string | null }[]>(
+    "SELECT id, project_id, title, plain_text FROM chapters ORDER BY position",
+  );
+  for (const chapter of chapters) byId.get(chapter.project_id)?.chapters.push({ id: chapter.id, title: chapter.title, text: chapter.plain_text ?? "" });
+  let notes: ProjectText["notes"] = [];
+  try {
+    const noteRows = await db.select<{ id: string; title: string; plain_text: string | null }[]>("SELECT id, title, plain_text FROM notes ORDER BY title");
+    notes = noteRows.map((note) => ({ id: note.id, title: note.title, text: note.plain_text ?? "" }));
+  } catch {
+    // A file from before notes.
+  }
+  return { writings, notes };
+}
+
+/**
+ * A project's text, for the search across projects. The open one is read through its own connection, as
+ * opening its file again would take that over; any other is opened, read and let go at once, as Windows
+ * won't move a folder while a file in it is open. Only a file that is there is asked for: one that isn't
+ * would be made.
+ */
+export async function readProjectText(path: string): Promise<ProjectText> {
+  const key = (value: string) => value.trim().replace(/\//g, "\\").toLowerCase();
+  if (key(path) === key(openPath ?? loadPrefs().projectPath)) return enqueue(async () => readText(await database()));
+  const url = `sqlite:${path}`;
+  const db = await Database.load(url);
+  try {
+    return await readText(db);
+  } finally {
+    await db.close(url).catch(() => undefined);
+  }
+}
+
 /** The open project's shelf as saved now, after a writing was added, moved, renamed or deleted. */
 export function readOpenShelf(): Promise<Shelf> {
   return enqueue(async () => readShelf(await database()));

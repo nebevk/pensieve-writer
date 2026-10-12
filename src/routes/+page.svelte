@@ -36,7 +36,7 @@
   import { chapterTitle } from "$lib/chapters/welcome";
   import { applyPage, chapterBreak, composePage, heldHeading, isLeadLine, joinWriting, leadLines, readPage, splitWriting, startsPart, textStart, withoutBreaks } from "$lib/chapters/page";
   import { summarize, summarizeOutline, summarizeProject } from "$lib/chapters/progress";
-  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, joinPath, lastName, looksSynced, parentFolder, projectFile, projectFiles, projectFolders, projectName, rebasePath, sameFolder, type LibraryActions, type LibraryEntry, type LibraryView } from "$lib/chapters/library";
+  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, joinPath, lastName, looksSynced, parentFolder, projectFile, projectFiles, projectFolders, projectName, rebasePath, sameFolder, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "$lib/chapters/library";
   import { moveOpen } from "$lib/chapters/treeState.svelte";
   import { notesInChapter } from "$lib/chapters/mentions";
   import { panelNotes, panelOrder } from "$lib/views/panelNotes";
@@ -47,7 +47,8 @@
   import type { NoteTarget } from "$lib/editor/noteLinks";
   import type { CommentInfo } from "$lib/editor/comments";
   import type { ProjectRequest } from "$lib/views/NewProjectWindow.svelte";
-  import { addWriting, checkpointDatabase, duplicateWriting, eraseWriting, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, moveProjectFile, readSnapshotChapters, rememberPersonalWord, renameWritingFolder, restoreChapter, restoreFromBackup, setShelf, setWritingFields, setWritingOrder, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
+  import type { SearchPlace, SearchSource } from "$lib/views/searchAll";
+  import { addWriting, checkpointDatabase, duplicateWriting, eraseWriting, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readProjectText, moveProjectFile, readSnapshotChapters, rememberPersonalWord, renameWritingFolder, restoreChapter, restoreFromBackup, setShelf, setWritingFields, setWritingOrder, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
   import type { Editor as TiptapEditor } from "@tiptap/core";
   import type { NodeSelection } from "@tiptap/pm/state";
   import { lazy } from "$lib/lazy.svelte";
@@ -65,6 +66,7 @@
   const SelectionBarPart = lazy(() => import("$lib/editor/SelectionBar.svelte"));
   const NewProjectPart = lazy(() => import("$lib/views/NewProjectWindow.svelte"));
   const QuickIdeaPart = lazy(() => import("$lib/views/QuickIdea.svelte"));
+  const SearchPart = lazy(() => import("$lib/views/SearchWindow.svelte"));
 
   // The writing open in Write: one of the open project's writings, with all its chapters.
   let writing = $state<Writing | null>(null);
@@ -346,7 +348,7 @@
       }
       requestIdleCallback(
         () => {
-          for (const part of [EditorPart, CommentRailPart, NotesPart, TodosPart, SettingsPart, OutlinePart, BookPart, HistoryPart, NotePanePart, SelectionBarPart, NewProjectPart, QuickIdeaPart]) {
+          for (const part of [EditorPart, CommentRailPart, NotesPart, TodosPart, SettingsPart, OutlinePart, BookPart, HistoryPart, NotePanePart, SelectionBarPart, NewProjectPart, QuickIdeaPart, SearchPart]) {
             // A part that fails here is tried again, and reported, when it is shown.
             part.load().catch(() => undefined);
           }
@@ -441,6 +443,12 @@
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
       event.preventDefault();
       void autosave.flush().catch(() => undefined);
+    }
+    // Search across every project (owner, 12 October); Ctrl+F stays the book's find.
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "f") {
+      event.preventDefault();
+      openSearch(findOpen ? findQuery : "");
+      return;
     }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
       event.preventDefault();
@@ -2010,6 +2018,91 @@
     return taken.some((item) => item.trim().toLowerCase() === wanted) ? t("nameTaken") : null;
   }
 
+  /** The search across every project, while open: the words it started with. */
+  let searchAsk = $state<{ query: string } | null>(null);
+  /** The words to find on a chapter's page once it opens, from the search across projects. */
+  let pageFind: { id: string; query: string } | null = null;
+  /** A note to open beside the page once its project's notes are read, from the search across projects. */
+  let noteToShow = $state("");
+
+  function openSearch(query = "") {
+    searchAsk = { query: query.trim() };
+  }
+
+  /**
+   * Every project for the search: the open one first, with what she has just written saved, then the
+   * library's, then those kept elsewhere. One that can't be read is named, and the others are still searched.
+   */
+  async function readEveryProject(progress: (done: number, total: number) => void): Promise<{ sources: SearchSource[]; unread: string[] }> {
+    await autosave.flush().catch(() => undefined);
+    await flushNoteSave().catch(() => undefined);
+    const open = projectLocation || prefs.projectPath;
+    const paths: string[] = [];
+    const seen = new Set<string>();
+    const add = (path: string) => {
+      const key = path.trim().toLowerCase();
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        paths.push(path);
+      }
+    };
+    add(open);
+    for (const path of projectFiles(sortEntries(libraryEntries, locale()))) add(path);
+    for (const known of prefs.knownProjects) add(known.path);
+    const sources: SearchSource[] = [];
+    const unread: string[] = [];
+    for (const [index, path] of paths.entries()) {
+      progress(index, paths.length);
+      try {
+        // A project that isn't there any more is left out: opening its file would make an empty one.
+        if (path !== open && !(await invoke<boolean>("project_file_exists", { path }))) continue;
+        sources.push({ path, name: projectName(path), text: await readProjectText(path) });
+      } catch {
+        unread.push(projectName(path));
+      }
+    }
+    progress(paths.length, paths.length);
+    return { sources, unread };
+  }
+
+  /** A place found by the search: the chapter opens with the find bar on the words, a note opens beside the page. */
+  async function openSearchPlace(place: SearchPlace, query: string) {
+    searchAsk = null;
+    const here = place.path.toLowerCase() === (projectLocation || prefs.projectPath).toLowerCase();
+    if (place.kind === "note") {
+      if (!here) await openFromLibrary(place.path);
+      view = "write";
+      noteToShow = place.noteId;
+      return;
+    }
+    if (here && place.writingId === writingId && place.chapterId === editorChapter && textEditor && !textEditor.isDestroyed) {
+      view = "write";
+      showFound(textEditor, query);
+      return;
+    }
+    pageFind = { id: place.chapterId, query };
+    await openFromLibrary(place.path, { writingId: place.writingId, chapterId: place.chapterId });
+    view = "write";
+  }
+
+  /** The words found on the page from its start, with the find bar open on them, as Ctrl+F shows them. */
+  function showFound(editor: TiptapEditor, query: string) {
+    findQuery = query;
+    findScope = "chapter";
+    replaceMode = false;
+    findOpen = true;
+    editor.commands.focus("start");
+    findMissing = !findNext(editor, query);
+  }
+
+  // A note from the search opens once its project's notes are there.
+  $effect(() => {
+    const id = noteToShow;
+    if (!id || !bookNotes.some((note) => note.id === id)) return;
+    noteToShow = "";
+    untrack(() => showNote(id));
+  });
+
   /** The Quick idea window, open from anywhere with Ctrl+Shift+N. */
   let quickIdeaOpen = $state(false);
 
@@ -3035,6 +3128,7 @@
     {settingsOpen}
     onLanguage={() => (prefs = { ...prefs, uiLanguage: prefs.uiLanguage === "sl" ? "en" : "sl" })}
     onTheme={(theme) => (prefs = { ...prefs, theme })}
+    onSearch={() => openSearch()}
     onSettings={() => {
       settingsSection = "Appearance";
       settingsReturn = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -3169,6 +3263,7 @@
           {findScope === "book" ? t("wholeBook") : t("thisChapter")}
         </button>
         <button type="submit">{t("find")}</button>
+        <button type="button" onclick={() => openSearch(findQuery)}>{t("searchAllProjects")}</button>
         {#if replaceMode}
           <input bind:value={replaceQuery} aria-label={t("replaceWith")} placeholder={t("replaceWith")} />
           <button type="button" onclick={runReplace}>{t("replace")}</button>
@@ -3273,6 +3368,11 @@
                       editorSplit = writing?.split ?? true;
                     }
                     refreshFootnotes();
+                    const finding = pageFind;
+                    if (next && finding?.id === chapter.id) {
+                      pageFind = null;
+                      showFound(next, finding.query);
+                    }
                     const opened = pageSpot;
                     if (next && opened?.id === chapter.id) {
                       pageSpot = null;
@@ -3605,6 +3705,16 @@
         return problem;
       }}
       onClose={() => (newProjectAsk = null)}
+    />
+  {/if}
+  {#if searchAsk && SearchPart.current}
+    {@const SearchWindow = SearchPart.current}
+    <SearchWindow
+      initial={searchAsk.query}
+      openPath={projectLocation || prefs.projectPath}
+      load={readEveryProject}
+      onOpen={(place, query) => void openSearchPlace(place, query)}
+      onClose={() => (searchAsk = null)}
     />
   {/if}
   {#if quickIdeaOpen && QuickIdeaPart.current}
