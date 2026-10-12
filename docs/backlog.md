@@ -12,13 +12,11 @@ Each item keeps its ID so it can be asked for by name; a new one gets the next f
 
 | ID | What | Status | Pri |
 |----|------|--------|-----|
-| **IMP-10** Speed on the real laptop | Time typing in a chapter of the long test book on her laptop, in Candlelit with the sparks on, with the panel open and a note pinned; time the start with that book open. The browser checks (processor slowed four times) give about 40 ms a key; this confirms it on the hardware that matters, and answers open question 1 in the requirements | Open | P2 |
+| **IMP-10** Speed on the real laptop | Time typing in a chapter of the long test book on her laptop, in Candlelit with the sparks on, with the panel open and a note pinned; time the start with that book open. The browser checks (processor slowed four times) give about 40 ms a key; this confirms it on the hardware that matters (Windows 10, 8 GB of memory) | Open | P2 |
 | **IMP-6** Pictures stored once | Pictures are shrunk to 1600 px when put in, but still kept inside the chapter, so every save and each of the up to 78 automatic snapshots copies them again. Keep them in a table of their own that chapters and snapshots refer to | Partial | P2 |
 | **IMP-7** A restore drill | Tests cover the restore logic and backup files (with č, š, ž), but none writes a book to a real database, restores a snapshot and a Drive backup, and compares the text | Partial | P2 |
 | **WIN-1** One window bar | The app draws its own window bar (Windows' is off). Check it in the desktop window: dragging, a double-click to maximise, the three buttons, and resizing from the edges | Check | P2 |
 | **IMP-83** Projects, what is left | Home is to be redone around projects (VW-4, owner, later), and the Word copy is named after the writing only, so two projects with a writing of the same name would share one | Partial | P2 |
-| **IMP-89** CI never runs on a push | `.github/workflows/ci.yml` runs on pushes to `main`, but the branch is `master`, so the type check, tests and `cargo check` run only on pull requests | Open | P3 |
-| **IMP-90** One way to release | `.github/workflows/release.yml` builds a draft release when a `v*` tag is pushed (with signing secrets that may not be set), while [releasing.md](releasing.md) builds and signs on this computer with `npm run release`, whose publishing makes the same tag and may start the workflow too. Keep one | Open | P3 |
 | **TOOL-5** Text colour and highlight (ED-5) | The design has Word's "A" with a colour bar and a highlight swatch; each applies one fixed colour, with no choice | Partial | P3 |
 | **TOOL-6** Font and size (ED-5) | The toolbar's font and size change the whole manuscript (as Settings does), not the selected text as in Word | Differs | P3 |
 | **WIN-3** Language badge | The design's badge shows the project's writing language; the app's marks the selected text, or the open chapter, as EN or SL. Decide which | Differs | P3 |
@@ -43,7 +41,7 @@ On purpose: keep them when matching the design.
 - **The floating bar:** a theme menu and the pomodoro; no book total, language or save state.
 - **Themes and sound:** a Sunset theme and "Day and night"; sound is its own choice in any theme (no Night
   rain).
-- **Write:** the panel shows one list at a time; chapter statuses are hidden; both side lists have a hide
+- **Write:** the panel shows one list at a time; no chapter statuses; both side lists have a hide
   button; scrollbars are slim; the library's + has a menu in words; sparks drift over the desk in Candlelit.
 - **The brand:** the phoenix in the app's bars, not a "P" square.
 
@@ -77,7 +75,8 @@ itself. Most worth doing once on Eva's laptop, with the installed release:
    (Pensieve stops updating it and says why).
 10. **Print / PDF** prints every chapter.
 11. **Spell check** underlines in both languages; a word removed from the dictionary in Settings → Language
-    is underlined again.
+    is underlined again. Windows 10 checks Slovenian only with its Slovenian language added (Settings → Time
+    & Language → Language); without it, Slovenian words aren't underlined.
 12. **Sound:** ambience starts with the first click and keeps playing in Gentle mode; keystroke sounds
     follow the keys.
 13. **The library:** rename and drag the open project's folder; her files open with a double click; a Word

@@ -77,7 +77,7 @@ said), Not started, Dropped. IDs are fixed; code comments and the backlog refer 
 | CH-3 | Create, rename, delete and duplicate chapters. The open book's row in the library has a + for a chapter at its end, and each part one for a chapter at the part's end; the new chapter opens on the page | M | Done |
 | CH-4 | Drag chapters into order | M | Done |
 | CH-5 | Parts that hold chapters; scenes within chapters | S | Partial: parts (a Heading 1 on the page); no scenes |
-| CH-6 | Per chapter: a synopsis, a word goal and a status (draft, revising, final) | S | Partial: synopsis and goal are shown (Outline, Goals list); the status is kept with each chapter but hidden for now |
+| CH-6 | Per chapter: a synopsis and a word goal, shown in the Outline and the Goals list. No status (draft, revising, final): dropped | S | Done |
 | CH-7 | The side lists can be hidden and brought back | M | Done |
 | CH-8 | No project types: each writing has a "Split into chapters" switch. On, a Heading 2 starts a chapter; off, the writing is one page and its headings stay headings. Turning it off joins the chapters (an earlier version keeps them as they were), with a warning over 20,000 words that one long page types slower; turning it on splits the page at its headings | S | Done |
 | CH-9 | A library folder, chosen in Settings (Documents\Pensieve to start; a cloud-synced folder is refused), holds the projects, each in its own folder with one file. Beside the page it is a tree, as in Explorer: folders, projects, a project's writing folders and writings, a writing's parts and chapters, its Notes by group, To-dos, a Deleted folder, and the project's own files, which open in their program. Projects kept elsewhere are listed under Elsewhere and can be moved in. Folders and projects are renamed and dragged on disk; writings are dragged into folders and order, notes into groups; a Word file can come in as a new writing | M | Done |
@@ -165,8 +165,8 @@ Coziness is the top product priority, within the performance budget in Section 5
 
 ## 5. Non-functional requirements
 
-- **Speed:** the target is Eva's laptop, an HP ProBook 650 G2 (2016, a 6th-generation Core i5), at 1366×768
-  or about 1536×864. Layouts are checked at 1366 and 1536 pixels wide and speed with the processor slowed
+- **Speed:** the target is Eva's laptop, an HP ProBook 650 G2 (2016, a 6th-generation Core i5) with
+  Windows 10 and 8 GB of memory, at 1366×768 or about 1536×864. Layouts are checked at 1366 and 1536 pixels wide and speed with the processor slowed
   four times. Typing feels instant, also in a 10,000-word chapter of a 150,000-word book: about 40 ms a key
   there, the same with a panel open, a note pinned, key sounds or smooth typing. Home appears before the
   editor's code is read. Only `opacity` and `transform` are animated, and nothing decorative runs on the
@@ -199,7 +199,8 @@ Coziness is the top product priority, within the performance budget in Section 5
 - **The library** is a folder of project folders. Each project folder holds one SQLite file, `pensieve.db`,
   and whatever files she keeps there.
 - **In a project file:** the project (`shelf`), its writings (`projects`, a name from before a project held
-  several), chapters, notes and their chapter links, to-dos, snapshots and the personal dictionary. A
+  several), chapters, notes and their chapter links, to-dos, snapshots and the personal dictionary.
+  Chapters still carry the status they had before statuses were dropped; nothing reads it. A
   chapter is kept as ProseMirror JSON with a plain-text copy for counts, search and export. The file has a
   schema version, and older files are upgraded after a copy of them is kept beside them.
 - **Snapshots** hold a writing with the project's notes and to-dos as they were. A restore never changes
@@ -222,10 +223,12 @@ Coziness is the top product priority, within the performance budget in Section 5
 The owner's decisions that shaped the app, newest first. Each replaced what the original plan or the
 design system said.
 
+- **12 Oct:** Chapter statuses dropped, so a writing's progress on Home is its words against its target.
+  Eva's laptop runs Windows 10 with 8 GB of memory.
 - **9 Oct:** Earlier versions, a note and the to-dos open in windows like Settings. A note or the to-dos can
   be pinned beside the page, on the right only, as the library keeps the left. The tree has a + for
   chapters. Smooth typing has its own switch, apart from Gentle mode.
-- **8 Oct:** Chapter statuses hidden for now. The Library tab first. The full toolbar open to start with.
+- **8 Oct:** Chapter statuses hidden (dropped on 12 October). The Library tab first. The full toolbar open to start with.
   Pages (A4 or A5) instead of a second sheet drawn under the page. The Book view set as a printed book. Undo
   a word at a time. Tutorial tips, a pomodoro, recorded keystroke sounds and smooth typing. Updates through
   GitHub Releases. The laptop is an HP ProBook 650 G2.
@@ -242,11 +245,9 @@ design system said.
 
 ## 10. Open questions
 
-1. The laptop's Windows version and memory, which set how much ambience it can afford (the model is known).
-2. Which Word features beyond this list are must-haves.
-3. Does she use Word's page numbers, headers or a table of contents in her manuscripts?
-4. Home's redo around projects: when, and how it should look (owner).
-5. Chapter statuses: bring them back or drop them?
+1. Which Word features beyond this list are must-haves.
+2. Does she use Word's page numbers, headers or a table of contents in her manuscripts?
+3. Home's redo around projects: when, and how it should look (owner).
 
 ## 11. Name
 
