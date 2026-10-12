@@ -27,8 +27,6 @@
     manuscriptPt,
     onFont,
     onSize,
-    onNewNote,
-    onAddTodo,
     loadNotes,
     onReplace,
     onComment,
@@ -60,8 +58,6 @@
     manuscriptPt: number;
     onFont: (font: ManuscriptFont) => void;
     onSize: (size: number) => void;
-    onNewNote: () => void;
-    onAddTodo: () => void;
     onReplace: () => void;
     /** The book's notes, for "Link a note". */
     loadNotes: () => Promise<{ id: string; title: string; aliases: string }[]>;
@@ -450,8 +446,6 @@
     </section>
     <section class="group">
       <div class="tools">
-        <button type="button" class="tool" title={t("newNote")} aria-label={t("newNote")} onclick={onNewNote}><Icon name="newNote" /></button>
-        <button type="button" class="tool" title={t("addTodo")} aria-label={t("addTodo")} onclick={onAddTodo}><Icon name="listTodo" /></button>
         <span class="picker-wrap">
           <button type="button" class="tool note-link" class:active={notePicker || onNoteLink} title={t("linkNote")} aria-label={t("linkNote")} aria-expanded={notePicker} onmousedown={(event) => event.preventDefault()} onclick={() => void openNotePicker()}>[[ ]]</button>
           {#if notePicker}

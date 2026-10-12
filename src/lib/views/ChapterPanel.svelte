@@ -1,23 +1,27 @@
 <script lang="ts">
-  import { tick } from "svelte";
   import Icon from "$lib/editor/Icon.svelte";
-  import type { NoteHere } from "$lib/chapters/mentions";
-  import type { Note, Task } from "$lib/storage/organize";
+  import type { Chapter } from "$lib/model";
+  import type { Note, Task, TodoState } from "$lib/storage/organize";
+  import type { UiKey } from "$lib/i18n";
   import { num, plural, t } from "$lib/ui.svelte";
   import ChecklistItem from "./ChecklistItem.svelte";
+  import type { PanelNotes } from "./panelNotes";
 
   let {
     list,
     todos,
+    chapterId,
+    chapters,
+    todoScope,
+    onTodoScope,
     notes,
     book,
-    openNoteId = "",
-    addFocus = 0,
-    onAddFocused,
+    query = $bindable(""),
+    onNewNote,
+    onOpenNote,
     onToggleTodo,
     onAddTodo,
-    onShowNote,
-    onOpenNote,
+    onOpenBoard,
     wordsToday = 0,
     dailyGoal = 0,
     chapterWords = 0,
@@ -26,25 +30,30 @@
     onChapterGoal,
     onClose,
   }: {
-    /** The one list the panel shows; the toolbar's To-dos, Notes and Goals buttons switch between them. */
+    /** The one list the panel shows; the toolbar's Notes, To-dos and Goals buttons switch between them. */
     list: "todos" | "notes" | "goals";
-    /** The open chapter's to-dos. */
+    /** Every to-do of the project. */
     todos: Task[];
-    /** The notes the chapter mentions, most mentioned first. */
-    notes: NoteHere[];
-    /** Every note in the book, for "From note" lines and the links in a note's text. */
+    /** The chapter on the page, and the writing's chapters, for where a to-do belongs. */
+    chapterId: string;
+    chapters: Chapter[];
+    /** The open chapter's to-dos, or all of the project's (owner, 12 October). */
+    todoScope: "chapter" | "all";
+    onTodoScope: (scope: "chapter" | "all") => void;
+    /** The notes listed: the chapter's and the others, or what a search found. */
+    notes: PanelNotes;
+    /** Every note in the project, for "From note" lines. */
     book: Note[];
-    /** The note unfolded in the list, or "" when none is. */
-    openNoteId?: string;
-    /** Above 0, the keyboard goes to the add field; then onAddFocused, so it happens once. */
-    addFocus?: number;
-    onAddFocused?: () => void;
-    onToggleTodo: (task: Task) => void;
-    onAddTodo: (text: string) => void;
-    /** Unfolds a note in the list; "" folds it again. */
-    onShowNote: (id: string) => void;
-    /** Opens the note in a window over the page. */
+    /** The words the notes are searched for. */
+    query?: string;
+    onNewNote: () => void;
+    /** Shows a note in the panel, to read and write. */
     onOpenNote: (id: string) => void;
+    onToggleTodo: (task: Task) => void;
+    /** A new to-do: for the chapter or the whole project, as the list shows. */
+    onAddTodo: (text: string) => void;
+    /** The To-dos view, with its board. */
+    onOpenBoard: () => void;
     /** Words written today, and the day's goal (0 for none). */
     wordsToday?: number;
     dailyGoal?: number;
@@ -57,43 +66,31 @@
     onClose: () => void;
   } = $props();
 
-  // Doing first, then what is left to do, then what is done.
-  const ORDER = { doing: 0, todo: 1, done: 2 } as const;
+  const GROUPS: { id: TodoState; key: UiKey }[] = [
+    { id: "doing", key: "columnDoing" },
+    { id: "todo", key: "columnTodo" },
+    { id: "done", key: "columnDone" },
+  ];
 
   let draft = $state("");
-  let addInput = $state<HTMLInputElement | undefined>(undefined);
+  // What is done stays folded away until she asks for it.
+  let showDone = $state(false);
 
-  const ordered = $derived([...todos].sort((a, b) => ORDER[a.todoState] - ORDER[b.todoState]));
-  const open = $derived(todos.filter((task) => task.todoState !== "done").length);
-
-  $effect(() => {
-    if (addFocus <= 0) return;
-    void tick().then(() => {
-      addInput?.focus();
-      onAddFocused?.();
-    });
-  });
+  const ordered = $derived([...chapters].sort((a, b) => a.position - b.position));
+  const shown = $derived(todoScope === "chapter" ? todos.filter((task) => task.chapterId === chapterId) : todos);
+  const open = $derived(shown.filter((task) => task.todoState !== "done").length);
 
   function noteTitle(id: string): string {
     return book.find((note) => note.id === id)?.title ?? "";
   }
 
-  function fields(note: Note) {
-    return note.fields.filter((field) => field.key.trim() || field.value.trim()).slice(0, 4);
-  }
-
-  /** A note's first paragraph, with its [[links]] as pieces that unfold the linked note. */
-  function pieces(text: string): { text: string; link?: Note }[] {
-    const first = text.trim().split(/\n\s*\n/)[0] ?? "";
-    return first
-      .split(/(\[\[[^\]\n]+\]\])/)
-      .filter(Boolean)
-      .map((part) => {
-        const match = /^\[\[([^\]\n]+)\]\]$/.exec(part);
-        if (!match) return { text: part };
-        const name = match[1].trim();
-        return { text: name, link: book.find((note) => note.title.trim().toLowerCase() === name.toLowerCase()) };
-      });
+  /** Under a to-do: its note, and, among all the project's, its chapter or "Whole project". */
+  function meta(task: Task): string {
+    const note = task.noteId && noteTitle(task.noteId) ? t("fromNote", { title: noteTitle(task.noteId) }) : "";
+    if (todoScope === "chapter") return note;
+    const index = ordered.findIndex((chapter) => chapter.id === task.chapterId);
+    const place = !task.chapterId ? t("wholeProject") : index >= 0 ? `${index + 1} · ${ordered[index].title}` : t("chapter");
+    return note ? `${place} · ${note}` : place;
   }
 
   /** A goal as typed: a whole number of words, where a dot only groups thousands, as in "12.000". */
@@ -111,12 +108,24 @@
     onAddTodo(text);
     draft = "";
   }
+
+  /** Enter in the search opens the first note found. */
+  function searchKeys(event: KeyboardEvent) {
+    if (event.key !== "Enter" || !notes.searching || notes.found.length === 0) return;
+    event.preventDefault();
+    onOpenNote(notes.found[0].id);
+  }
 </script>
 
-{#snippet heading(title: string, aside: string)}
+{#snippet heading(title: string, aside: string, onAdd?: () => void)}
   <div class="heading">
     <h3>{title}</h3>
     {#if aside}<span class="aside">{aside}</span>{/if}
+    {#if onAdd}
+      <button type="button" class="close" title={t("newNoteTitle")} aria-label={t("newNoteTitle")} onclick={onAdd}>
+        <Icon name="plus" />
+      </button>
+    {/if}
     <button type="button" class="close" title={t("hidePanel")} aria-label={t("hidePanel")} onclick={onClose}>
       <Icon name="panelRightClose" />
     </button>
@@ -150,24 +159,53 @@
   </section>
 {/snippet}
 
-<!-- Beside the page in Write: one list at a time, the open chapter's to-dos, the notes it mentions or the word goals. -->
+{#snippet noteRow(note: Note, count: number)}
+  <button type="button" class="row" onclick={() => onOpenNote(note.id)}>
+    <span class="name">{note.title}</span>
+    {#if count > 0}<span class="times">{t("timesShort", { n: count })}</span>{/if}
+  </button>
+{/snippet}
+
+<!-- Beside the page in Write: the notes, the to-dos or the word goals, one at a time. -->
 <aside class="panel" aria-label={t("chapterPanel")}>
   {#if list === "todos"}
     {@render heading(t("todos"), plural("openCount", open))}
-    <div class="items">
-      {#each ordered as task (task.id)}
-        <ChecklistItem
-          text={task.title}
-          state={task.todoState}
-          meta={task.noteId && noteTitle(task.noteId) ? t("fromNote", { title: noteTitle(task.noteId) }) : ""}
-          onToggle={() => onToggleTodo(task)}
-        />
-      {/each}
-      <form class="add" onsubmit={add}>
-        <span aria-hidden="true">+</span>
-        <input bind:this={addInput} bind:value={draft} placeholder={t("addChapterTodo")} aria-label={t("addChapterTodo")} />
-      </form>
+    <!-- The chapter's to-dos or all of the project's, in one list (owner, 12 October). -->
+    <div class="scope" role="tablist" aria-label={t("todos")}>
+      <button type="button" role="tab" aria-selected={todoScope === "chapter"} class:on={todoScope === "chapter"} onclick={() => onTodoScope("chapter")}>{t("thisChapter")}</button>
+      <button type="button" role="tab" aria-selected={todoScope === "all"} class:on={todoScope === "all"} onclick={() => onTodoScope("all")}>{t("wholeProject")}</button>
     </div>
+    <form class="add" onsubmit={add}>
+      <span aria-hidden="true">+</span>
+      <input
+        bind:value={draft}
+        placeholder={todoScope === "chapter" ? t("addChapterTodo") : t("addTodoHint")}
+        aria-label={todoScope === "chapter" ? t("addChapterTodo") : t("addTodoHint")}
+      />
+    </form>
+    <div class="items">
+      {#each GROUPS as group (group.id)}
+        {@const items = shown.filter((task) => task.todoState === group.id)}
+        {#if items.length > 0}
+          {#if group.id === "done"}
+            <button type="button" class="eyebrow fold" aria-expanded={showDone} onclick={() => (showDone = !showDone)}>
+              {t(group.key)} <span>{items.length}</span>
+            </button>
+          {:else}
+            <p class="eyebrow">{t(group.key)} <span>{items.length}</span></p>
+          {/if}
+          {#if group.id !== "done" || showDone}
+            {#each items as task (task.id)}
+              <ChecklistItem text={task.title} state={task.todoState} meta={meta(task)} onToggle={() => onToggleTodo(task)} />
+            {/each}
+          {/if}
+        {/if}
+      {/each}
+      {#if shown.length === 0}
+        <p class="empty">{t("noTodosYet")}</p>
+      {/if}
+    </div>
+    <button type="button" class="more board" onclick={onOpenBoard}>{t("openTodosView")} →</button>
   {:else if list === "goals"}
     {@render heading(t("wordGoals"), "")}
     <div class="items goals">
@@ -175,34 +213,36 @@
       {@render goal(t("thisChapter"), chapterWords, chapterGoal, t("chapterGoal"), onChapterGoal)}
     </div>
   {:else}
-    {@render heading(t("notes"), "")}
+    {@render heading(t("notes"), "", onNewNote)}
+    <!-- The chapter's notes first, then all the others; a search looks through every note (owner, 12 October). -->
+    <label class="search">
+      <Icon name="search" />
+      <input type="search" bind:value={query} placeholder={t("findNote")} aria-label={t("findNote")} onkeydown={searchKeys} />
+    </label>
     <div class="items">
-      {#each notes as here (here.note.id)}
-        {@const note = here.note}
-        {@const unfolded = note.id === openNoteId}
-        <button type="button" class="row" aria-expanded={unfolded} onclick={() => onShowNote(unfolded ? "" : note.id)}>
-          <span class="name">{note.title}</span>
-          {#if here.count > 0}<span class="times">{t("timesShort", { n: here.count })}</span>{/if}
-        </button>
-        {#if unfolded}
-          <div class="details">
-            {#if fields(note).length > 0}
-              <dl class="fields">
-                {#each fields(note) as field, index (index)}
-                  <dt>{field.key}</dt>
-                  <dd>{field.value}</dd>
-                {/each}
-              </dl>
-            {/if}
-            {#if note.plainText.trim()}
-              <p class="body">{#each pieces(note.plainText) as piece, index (index)}{#if piece.link}{@const target = piece.link}<button type="button" class="link" onclick={() => onShowNote(target.id)}>{piece.text}</button>{:else}{piece.text}{/if}{/each}</p>
-            {/if}
-            <button type="button" class="more" onclick={() => onOpenNote(note.id)}>{t("openNote")}</button>
-          </div>
-        {/if}
+      {#if notes.searching}
+        {#each notes.found as note (note.id)}
+          {@render noteRow(note, 0)}
+        {:else}
+          <p class="empty">{t("notFound")}</p>
+        {/each}
       {:else}
-        <p class="empty">{t("noNotesHere")}</p>
-      {/each}
+        {#if notes.here.length > 0}
+          <p class="eyebrow">{t("thisChapter")}</p>
+          {#each notes.here as here (here.note.id)}
+            {@render noteRow(here.note, here.count)}
+          {/each}
+        {/if}
+        {#if notes.others.length > 0}
+          <p class="eyebrow">{t("otherNotes")}</p>
+          {#each notes.others as note (note.id)}
+            {@render noteRow(note, 0)}
+          {/each}
+        {/if}
+        {#if notes.here.length === 0 && notes.others.length === 0}
+          <p class="empty">{t("noNotesYet")}</p>
+        {/if}
+      {/if}
     </div>
   {/if}
 </aside>
@@ -220,7 +260,7 @@
   .heading {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     flex: none;
     padding: 16px 14px 10px 20px;
   }
@@ -236,6 +276,10 @@
   .aside {
     font-size: var(--pv-text-sm);
     color: var(--pv-text-faint);
+  }
+
+  .heading .aside {
+    margin-right: 4px;
   }
 
   .close {
@@ -270,13 +314,75 @@
     padding: 0 12px 16px;
   }
 
+  .search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    height: 32px;
+    margin: 0 12px 8px 20px;
+    padding: 0 10px;
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-xs);
+    background: var(--pv-field);
+    color: var(--pv-text-faint);
+  }
+
+  .search:focus-within {
+    border-color: var(--pv-accent);
+  }
+
+  .search :global(svg) {
+    flex: none;
+    width: 14px;
+    height: 14px;
+  }
+
+  .search input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--pv-text);
+    font-size: var(--pv-text-md);
+    outline: none;
+  }
+
+  .scope {
+    display: flex;
+    gap: 2px;
+    flex: none;
+    margin: 0 12px 6px 20px;
+    padding: 2px;
+    border-radius: var(--pv-radius-sm);
+    background: var(--pv-line);
+  }
+
+  .scope button {
+    flex: 1;
+    border: 0;
+    border-radius: var(--pv-radius-xs);
+    padding: 4px 8px;
+    background: transparent;
+    color: var(--pv-text-muted);
+    font-size: var(--pv-text-md);
+  }
+
+  .scope button.on {
+    background: var(--pv-chrome);
+    color: var(--pv-text);
+    font-weight: 600;
+    box-shadow: var(--pv-shadow-field);
+  }
+
   .add {
     display: flex;
     align-items: center;
     gap: 10px;
     flex: none;
     height: 32px;
-    margin: 6px 8px 0;
+    margin: 4px 12px 8px 20px;
     padding: 0 10px;
     border: 1px dashed var(--pv-line-strong);
     border-radius: var(--pv-radius-xs);
@@ -304,6 +410,43 @@
     outline: none;
   }
 
+  .eyebrow {
+    margin: 12px 8px 4px;
+    font-size: var(--pv-text-xs);
+    font-weight: 600;
+    letter-spacing: var(--pv-track-eyebrow);
+    text-transform: uppercase;
+    color: var(--pv-text-faint);
+  }
+
+  .eyebrow span {
+    margin-left: 4px;
+    font-weight: 400;
+  }
+
+  .fold {
+    display: block;
+    flex: none;
+    border: 0;
+    border-radius: var(--pv-radius-xs);
+    padding: 3px 6px;
+    margin-left: 2px;
+    background: transparent;
+    text-align: left;
+  }
+
+  .fold::before {
+    content: "▸ ";
+  }
+
+  .fold[aria-expanded="true"]::before {
+    content: "▾ ";
+  }
+
+  .fold:hover {
+    background: var(--pv-selected);
+  }
+
   /* A note is one line: its name, and how often the chapter mentions it. */
   .row {
     display: flex;
@@ -327,10 +470,6 @@
     background: var(--pv-pressed);
   }
 
-  .row[aria-expanded="true"] {
-    font-weight: 600;
-  }
-
   .name {
     flex: 1;
     min-width: 0;
@@ -344,58 +483,6 @@
     font-size: var(--pv-text-sm);
     font-weight: 400;
     color: var(--pv-text-faint);
-  }
-
-  .details {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    flex: none;
-    padding: 2px 8px 12px;
-  }
-
-  .fields {
-    display: grid;
-    grid-template-columns: 56px 1fr;
-    row-gap: 4px;
-    column-gap: 8px;
-    margin: 0;
-    font-size: var(--pv-text-md);
-  }
-
-  .fields dt {
-    color: var(--pv-text-faint);
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .fields dd {
-    margin: 0;
-    min-width: 0;
-    color: var(--pv-text-2);
-  }
-
-  .body {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 6;
-    line-clamp: 6;
-    overflow: hidden;
-    margin: 0;
-    font-family: var(--pv-font-manuscript);
-    font-size: 13px;
-    line-height: 1.6;
-    color: var(--pv-text-2);
-  }
-
-  .link {
-    border: 0;
-    padding: 0;
-    background: none;
-    color: var(--pv-accent);
-    font: inherit;
-    text-decoration: underline;
-    text-underline-offset: 2px;
   }
 
   .more {
@@ -412,9 +499,14 @@
     text-decoration: underline;
   }
 
+  .board {
+    flex: none;
+    margin: 4px 20px 16px;
+  }
+
   .empty {
     margin: 0;
-    padding: 0 8px;
+    padding: 4px 8px;
     font-size: var(--pv-text-md);
     color: var(--pv-text-faint);
   }

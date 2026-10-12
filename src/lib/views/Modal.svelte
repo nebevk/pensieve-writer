@@ -6,24 +6,15 @@
   let {
     title,
     size = "large",
-    docked = false,
     onClose,
-    onPin,
-    onUnpin,
     children,
     foot,
   }: {
     /** The window's name, in its bar. */
     title: string;
-    /** large: Settings' size, for a window with a list down its side; small: one thing, such as a note. */
+    /** large: Settings' size, for a window with a list down its side; small: one thing at a time. */
     size?: "large" | "small";
-    /** Pinned in the panel beside the page instead of over it, so she can write with it open (owner, 9 October). */
-    docked?: boolean;
     onClose: () => void;
-    /** Given, the window has a button that pins it beside the page. */
-    onPin?: () => void;
-    /** Given, the pinned window has a button that makes it a window again. */
-    onUnpin?: () => void;
     children: Snippet;
     /** Buttons along the window's foot, on the right as in Windows. */
     foot?: Snippet;
@@ -39,8 +30,6 @@
   const FOCUSABLE = "button, input, select, textarea, [contenteditable='true']";
 
   onMount(() => {
-    // Pinned beside the page, it leaves the keyboard where it is: she is writing.
-    if (docked) return;
     // The keyboard goes to the field marked autofocus (Svelte's own only takes it from nobody), or the
     // first control, unless something inside has it already.
     if (panel && !panel.contains(document.activeElement)) {
@@ -78,54 +67,38 @@
   }
 </script>
 
-{#snippet frame()}
-  <header>
-    <span id={titleId}>{title}</span>
-    {#if docked && onUnpin}
-      <button type="button" class="icon" title={t("unpinWindow")} aria-label={t("unpinWindow")} onclick={onUnpin}><Icon name="maximize" /></button>
-    {:else if !docked && onPin}
-      <button type="button" class="icon" title={t("pinBeside")} aria-label={t("pinBeside")} onclick={onPin}><Icon name="panelRight" /></button>
-    {/if}
-    <button type="button" class="icon" title={t("close")} aria-label={t("close")} onclick={onClose}><Icon name="x" /></button>
-  </header>
-  <div class="content">
-    {@render children()}
-  </div>
-  {#if foot}
-    <footer>
-      {@render foot()}
-    </footer>
-  {/if}
-{/snippet}
-
-{#if docked}
-  <!-- Pinned: the panel beside the page, which stays free to write in. -->
-  <aside class="window docked" aria-labelledby={titleId} bind:this={panel}>
-    {@render frame()}
-  </aside>
-{:else}
-  <!-- A window over the dimmed app, as Settings is: its name and ✕ at the top, Escape or a click beside it closes it. -->
+<!-- A window over the dimmed app, as Settings is: its name and ✕ at the top, Escape or a click beside it closes it. -->
+<div
+  class="scrim"
+  role="presentation"
+  onpointerdown={(event) => (downOnScrim = event.target === event.currentTarget)}
+  onclick={(event) => {
+    if (downOnScrim && event.target === event.currentTarget) onClose();
+  }}
+>
   <div
-    class="scrim"
-    role="presentation"
-    onpointerdown={(event) => (downOnScrim = event.target === event.currentTarget)}
-    onclick={(event) => {
-      if (downOnScrim && event.target === event.currentTarget) onClose();
-    }}
+    class="window {size}"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby={titleId}
+    tabindex="-1"
+    bind:this={panel}
+    onkeydown={keys}
   >
-    <div
-      class="window {size}"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={titleId}
-      tabindex="-1"
-      bind:this={panel}
-      onkeydown={keys}
-    >
-      {@render frame()}
+    <header>
+      <span id={titleId}>{title}</span>
+      <button type="button" class="icon" title={t("close")} aria-label={t("close")} onclick={onClose}><Icon name="x" /></button>
+    </header>
+    <div class="content">
+      {@render children()}
     </div>
+    {#if foot}
+      <footer>
+        {@render foot()}
+      </footer>
+    {/if}
   </div>
-{/if}
+</div>
 
 <style>
   .scrim {
@@ -157,16 +130,6 @@
   .window.small {
     width: min(640px, calc(100% - 48px));
     max-height: min(660px, calc(100% - 48px));
-  }
-
-  /* Pinned: the panel's place beside the page, as the chapter's notes and to-dos have. */
-  .window.docked {
-    min-width: 0;
-    min-height: 0;
-    border-radius: 0;
-    border-left: 1px solid var(--pv-line);
-    box-shadow: none;
-    animation: dock-in 180ms cubic-bezier(0.2, 0.8, 0.3, 1);
   }
 
   .window:focus {
@@ -234,10 +197,6 @@
     border-top: 1px solid var(--pv-line);
   }
 
-  .docked footer {
-    padding: 10px 12px;
-  }
-
   /* The window's buttons: plain ones, and the one it is mostly for in the accent. */
   footer :global(button) {
     height: 32px;
@@ -289,13 +248,6 @@
     from {
       opacity: 0;
       transform: translateY(6px) scale(0.985);
-    }
-  }
-
-  @keyframes dock-in {
-    from {
-      opacity: 0;
-      transform: translateX(12px);
     }
   }
 </style>

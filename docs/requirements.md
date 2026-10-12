@@ -94,7 +94,7 @@ said), Not started, Dropped. IDs are fixed; code comments and the backlog refer 
 | NT-4 | A to-do state (to do, doing, done) on notes and on to-dos of their own, for a chapter, a note or the whole project | M | Done |
 | NT-5 | A to-dos board grouped by state, with filters and quick add | M | Done |
 | NT-6 | `[[Links]]` between notes, and from words on the page to notes, with "Linked from" | S | Done |
-| NT-7 | Notes and to-dos while writing. A panel beside the page shows the chapter's to-dos, the notes it mentions, or the word goals, one at a time. A note opened while writing (from the library, the panel or the toolbar's New note) opens in a window over the page, to read or change its kind, name, description and text, with "Open in Notes" for the rest; the project's to-dos open the same way. Either window can be pinned beside the page, in the panel's place, to write with it open | S | Done |
+| NT-7 | Notes and to-dos while writing, in one panel beside the page, so the page stays free: Notes, To-dos or Goals, one at a time. Notes lists the chapter's notes first (with how often it mentions them), then every other note, with a search through all of them and a + for a new one. A note opens there to read and change its kind, name, description and text, with back to the list, the previous and next note, and "Open in Notes" for the rest; a note opened anywhere while writing (the library, a linked name on the page, the selection bar) opens there too, never in a window. To-dos lists the chapter's or the whole project's, each with an add field, the board a link away; the library's To-dos opens it on the whole project's | S | Done |
 | NT-8 | A visual map of ideas | C | Not started |
 
 ### 4.4 Views
@@ -160,7 +160,7 @@ Coziness is the top product priority, within the performance budget in Section 5
 | ST-3 | A daily word goal and the chapter's goal in the Goals list beside the page; the words written today on Home and in the floating bar. No streak | C | Done |
 | ST-4 | A list of the shortcuts (Settings → Shortcuts, Ctrl+/) | C | Done |
 | ST-5 | Tutorial tips the first time she reaches Home, Write, Notes and Book, each pointing at what it is about, with "Ne prikazuj več namigov" to stop them; Settings → General turns them on and off and shows them again | S | Done |
-| ST-6 | What opens over the page is a window like Settings: its name and ✕ at the top, its buttons at the foot; Escape or a click beside it closes it, and the keyboard goes back to what opened it | S | Done |
+| ST-6 | What opens over the page is a window like Settings: its name and ✕ at the top, its buttons at the foot; Escape or a click beside it closes it, and the keyboard goes back to what opened it. Settings and Earlier versions do; notes and to-dos open in the panel beside the page instead (NT-7) | S | Done |
 | ST-7 | Updates: Pensieve looks for a newer signed version on GitHub Releases, offers it quietly in the window bar, and installs it with one click, keeping her projects and settings | S | Done |
 | ST-8 | Example books, and a long test book of about 151,000 words for checking speed (Settings → General) | C | Done |
 
@@ -226,10 +226,13 @@ design system said.
 
 - **12 Oct:** Chapter statuses dropped, so a writing's progress on Home is its words against its target.
   Eva's laptop runs Windows 10 with 8 GB of memory. A bar above selected text, with formatting, a comment,
-  a note and find, and the selected words counted, as in Word.
+  a note and find, and the selected words counted, as in Word. Notes and to-dos open in the panel beside
+  the page, never in a window, so nothing needs pinning: notes with a search and the previous and next
+  note, to-dos the chapter's or the project's in one list. The toolbar keeps Notes, To-dos, Goals and Link
+  a note.
 - **9 Oct:** Earlier versions, a note and the to-dos open in windows like Settings. A note or the to-dos can
-  be pinned beside the page, on the right only, as the library keeps the left. The tree has a + for
-  chapters. Smooth typing has its own switch, apart from Gentle mode.
+  be pinned beside the page, on the right only, as the library keeps the left (since 12 October they open
+  there always). The tree has a + for chapters. Smooth typing has its own switch, apart from Gentle mode.
 - **8 Oct:** Chapter statuses hidden (dropped on 12 October). The Library tab first. The full toolbar open to start with.
   Pages (A4 or A5) instead of a second sheet drawn under the page. The Book view set as a printed book. Undo
   a word at a time. Tutorial tips, a pomodoro, recorded keystroke sounds and smooth typing. Updates through

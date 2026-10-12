@@ -31,6 +31,8 @@ export const LUCIDE: Record<string, IconPart[]> = {
   sun: [["circle", { cx: 12, cy: 12, r: 4 }], "M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"],
   x: ["M18 6 6 18M6 6l12 12"],
   arrowRight: ["M5 12h14M12 5l7 7-7 7"],
+  arrowLeft: ["M19 12H5M12 19l-7-7 7-7"],
+  chevronLeft: ["m15 18-6-6 6-6"],
   plus: ["M12 5v14M5 12h14"],
   comment: ["M7.9 20A9 9 0 1 0 4 16.1L2 22Z"],
   chevronDown: ["m6 9 6 6 6-6"],
@@ -46,8 +48,6 @@ export const LUCIDE: Record<string, IconPart[]> = {
   panelLeftClose: [["rect", { width: 18, height: 18, x: 3, y: 3, rx: 2 }], "M9 3v18M16 15l-3-3 3-3"],
   panelLeftOpen: [["rect", { width: 18, height: 18, x: 3, y: 3, rx: 2 }], "M9 3v18M14 9l3 3-3 3"],
   panelRightClose: [["rect", { width: 18, height: 18, x: 3, y: 3, rx: 2 }], "M15 3v18M8 9l3 3-3 3"],
-  panelRight: [["rect", { width: 18, height: 18, x: 3, y: 3, rx: 2 }], "M15 3v18"],
-  maximize: ["M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"],
   undo: ["M3 7v6h6", "M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"],
   redo: ["M21 7v6h-6", "M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"],
   // The library's tree, drawn as a file explorer draws one (not in the design yet).
