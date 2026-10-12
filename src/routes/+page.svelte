@@ -43,7 +43,7 @@
   import { isUntitled } from "$lib/i18n";
   import { locale, snapshotName, t, ui } from "$lib/ui.svelte";
   import { deleteNote, flushNoteSave, listNotes, listTasks, saveNote, saveTask, scheduleNoteSave, type Note, type NoteCategory, type Task } from "$lib/storage/organize";
-  import { namesANote, noteFromComment, noteFromWords, todoFromComment } from "$lib/storage/fromComment";
+  import { ideaNote, namesANote, noteFromComment, noteFromWords, todoFromComment } from "$lib/storage/fromComment";
   import type { NoteTarget } from "$lib/editor/noteLinks";
   import type { CommentInfo } from "$lib/editor/comments";
   import type { ProjectRequest } from "$lib/views/NewProjectWindow.svelte";
@@ -64,6 +64,7 @@
   const NotePanePart = lazy(() => import("$lib/views/NotePane.svelte"));
   const SelectionBarPart = lazy(() => import("$lib/editor/SelectionBar.svelte"));
   const NewProjectPart = lazy(() => import("$lib/views/NewProjectWindow.svelte"));
+  const QuickIdeaPart = lazy(() => import("$lib/views/QuickIdea.svelte"));
 
   // The writing open in Write: one of the open project's writings, with all its chapters.
   let writing = $state<Writing | null>(null);
@@ -345,7 +346,7 @@
       }
       requestIdleCallback(
         () => {
-          for (const part of [EditorPart, CommentRailPart, NotesPart, TodosPart, SettingsPart, OutlinePart, BookPart, HistoryPart, NotePanePart, SelectionBarPart, NewProjectPart]) {
+          for (const part of [EditorPart, CommentRailPart, NotesPart, TodosPart, SettingsPart, OutlinePart, BookPart, HistoryPart, NotePanePart, SelectionBarPart, NewProjectPart, QuickIdeaPart]) {
             // A part that fails here is tried again, and reported, when it is shown.
             part.load().catch(() => undefined);
           }
@@ -431,6 +432,12 @@
   });
 
   function onKeydown(event: KeyboardEvent) {
+    // A quick idea from anywhere (owner, 12 October); Word's Ctrl+Shift+N, a style, isn't Pensieve's.
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "n") {
+      event.preventDefault();
+      if (projectId) quickIdeaOpen = true;
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
       event.preventDefault();
       void autosave.flush().catch(() => undefined);
@@ -2003,6 +2010,24 @@
     return taken.some((item) => item.trim().toLowerCase() === wanted) ? t("nameTaken") : null;
   }
 
+  /** The Quick idea window, open from anywhere with Ctrl+Shift+N. */
+  let quickIdeaOpen = $state(false);
+
+  /** A quick idea, kept among the open project's Ideas without leaving what she is doing (owner, 12 October). */
+  async function addIdea(text: string): Promise<boolean> {
+    if (!projectId || !text.trim()) return false;
+    const note = ideaNote(text, projectId, new Date().toISOString());
+    try {
+      await saveNote(note);
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+      return false;
+    }
+    bookNotes = [note, ...bookNotes];
+    notice(t("ideaSaved", { project: shelf?.title ?? "" }));
+    return true;
+  }
+
   /** The New project window, while it is open: the folder it was asked for in. */
   let newProjectAsk = $state<{ parent: string } | null>(null);
 
@@ -3410,6 +3435,8 @@
             } else void continueWriting(true);
           }}
           onOpenTodos={() => (view = "todos")}
+          onIdea={addIdea}
+          onOpenIdeas={() => (view = "notes")}
           onAmbience={() => {
             settingsSection = "Ambience";
             settingsReturn = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -3579,6 +3606,10 @@
       }}
       onClose={() => (newProjectAsk = null)}
     />
+  {/if}
+  {#if quickIdeaOpen && QuickIdeaPart.current}
+    {@const QuickIdea = QuickIdeaPart.current}
+    <QuickIdea project={shelf?.title ?? ""} onSave={addIdea} onClose={() => (quickIdeaOpen = false)} />
   {/if}
 </div>
 

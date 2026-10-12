@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CommentInfo } from "$lib/editor/comments";
-import { namesANote, noteFromComment, noteFromWords, todoFromComment } from "./fromComment";
+import { ideaNote, namesANote, noteFromComment, noteFromWords, todoFromComment } from "./fromComment";
 
 const now = "2026-10-05T12:00:00.000Z";
 const comment = (text: string, quote: string): CommentInfo => ({ id: "c", text, createdAt: now, from: 1, to: 2, quote });
@@ -60,5 +60,29 @@ describe("a note from selected words", () => {
     expect(namesANote("a".repeat(61))).toBe(false);
     expect(namesANote("Čez reko, Špela in Žiga")).toBe(true);
     expect(noteFromWords("Ana\nMarija", "p", "", now)).toMatchObject({ title: "Ana…", chapterIds: [] });
+  });
+});
+
+describe("a quick idea", () => {
+  it("is a note among Ideas, tied to no chapter, named by a short idea", () => {
+    const idea = ideaNote("  Stara hiša ob reki  ", "p", now);
+    expect(idea).toMatchObject({ projectId: "p", title: "Stara hiša ob reki", category: "ideas", chapterIds: [], plainText: "", createdAt: now });
+    expect(idea.contentJson).toEqual({ type: "doc", content: [{ type: "paragraph" }] });
+  });
+
+  it("keeps the lines under a short first line as its text", () => {
+    const idea = ideaNote("Čarovnica\nŽivi pri mlinu.\n\nNihče ne ve, od kdaj.", "p", now);
+    expect(idea.title).toBe("Čarovnica");
+    expect(idea.plainText).toBe("Živi pri mlinu.\n\nNihče ne ve, od kdaj.");
+    expect(idea.contentJson.content).toHaveLength(2);
+  });
+
+  it("names a long one by its first words, cut at a word, and keeps all of it", () => {
+    const long = "Kaj če bi Ana našla pismo, ki ga je babica skrila za ogledalo v spalnici, in ga prebrala šele po pogrebu";
+    const idea = ideaNote(long, "p", now);
+    expect(idea.title.endsWith("…")).toBe(true);
+    expect(idea.title.length).toBeLessThanOrEqual(60);
+    expect(long.startsWith(idea.title.slice(0, -1))).toBe(true);
+    expect(idea.plainText).toBe(long);
   });
 });

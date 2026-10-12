@@ -21,6 +21,37 @@ export function namesANote(words: string): boolean {
 }
 
 /**
+ * A quick idea (owner, 12 October), among the project's Ideas and tied to no chapter. A short one is the
+ * note's name, left to be written in; a longer one names it by its first line, and the rest is its text.
+ */
+export function ideaNote(words: string, projectId: string, now: string): Note {
+  const text = words.trim();
+  const paragraphs = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const first = paragraphs[0] ?? "";
+  // A first line short enough to be a name is one; a longer one is cut at a word, and stays in the text.
+  const named = first.length <= 60;
+  const body = named ? paragraphs.slice(1) : paragraphs;
+  return {
+    id: crypto.randomUUID(),
+    projectId,
+    title: named ? first : `${first.slice(0, 59).replace(/\s+\S*$/, "")}…`,
+    contentJson: {
+      type: "doc",
+      content: body.length > 0 ? body.map((line) => ({ type: "paragraph", content: [{ type: "text", text: line }] })) : [{ type: "paragraph" }],
+    },
+    plainText: body.join("\n\n"),
+    category: "ideas",
+    tags: "",
+    aliases: "",
+    fields: [],
+    todoState: null,
+    chapterIds: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+/**
  * A note from words selected on the page (owner, 12 October), tied to the chapter. Words short enough to
  * be a name name it and leave it empty to be written in; a longer passage is quoted in it, and its first
  * words name it.

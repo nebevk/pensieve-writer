@@ -59,7 +59,7 @@ said), Not started, Dropped. IDs are fixed; code comments and the backlog refer 
 | ED-4 | Alignment: left, centre, right, justify | M | Done |
 | ED-5 | Font, size, text colour, highlight | S | Partial: font and size apply to the whole manuscript, not the selection as in Word; text colour and highlight each apply one fixed colour (TOOL-5, TOOL-6) |
 | ED-6 | Undo and redo with deep history, about a word per step as in Word; a paste is a step of its own | M | Done |
-| ED-7 | Word's shortcuts: Ctrl+B, I, U, Z, Y, S, F; also Ctrl+Alt+M for a comment and Ctrl+/ for the list of shortcuts | M | Done |
+| ED-7 | Word's shortcuts: Ctrl+B, I, U, Z, Y, S, F; also Ctrl+Alt+M for a comment, Ctrl+Shift+N for a quick idea and Ctrl+/ for the list of shortcuts | M | Done |
 | ED-8 | Find and replace in the chapter or across the book, with a list of matches; it starts with the selected words, as in Word | S | Done |
 | ED-9 | Live word counts for the chapter, the writing and the project; with words selected, the floating bar says "12 of 1,240 words", as Word's does | M | Done |
 | ED-10 | Paste from Word keeps headings, italics and paragraphs | S | Partial: works, but not tried with a real manuscript (IMP-18) |
@@ -97,6 +97,7 @@ said), Not started, Dropped. IDs are fixed; code comments and the backlog refer 
 | NT-6 | `[[Links]]` between notes, and from words on the page to notes, with "Linked from" | S | Done |
 | NT-7 | Notes and to-dos while writing, in one panel beside the page, so the page stays free: Notes, To-dos or Goals, one at a time. Notes lists the chapter's notes first (with how often it mentions them), then every other note, with a search through all of them and a + for a new one. A note opens there to read and change its kind, name, description and text, with back to the list, the previous and next note, and "Open in Notes" for the rest; a note opened anywhere while writing (the library, a linked name on the page, the selection bar) opens there too, never in a window. To-dos lists the chapter's or the whole project's, each with an add field, the board a link away; the library's To-dos opens it on the whole project's | S | Done |
 | NT-8 | A visual map of ideas | C | Not started |
+| NT-9 | Quick ideas (owner, 12 October): jotted down in Home's Ideas box, or in a small window that Ctrl+Shift+N opens from anywhere, and kept as notes among the open project's Ideas, tied to no chapter. Home lists the newest three; one opens beside the page, and All ideas opens Notes | S | Done |
 
 ### 4.4 Views
 
