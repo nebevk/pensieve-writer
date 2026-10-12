@@ -3176,6 +3176,8 @@
     paperSize={prefs.paperSize}
     onPaper={(paper, size) => (prefs = { ...prefs, paper, paperSize: size })}
     onZen={() => void setZen(true)}
+    repetitions={prefs.repetitions}
+    onRepetitions={(on) => (prefs = { ...prefs, repetitions: on })}
     revision={editorRevision}
     chaptersOpen={!collapsed}
     notesOpen={prefs.panel === "notes"}
@@ -3349,6 +3351,7 @@
                   {sheet}
                   keySounds={prefs.keySounds}
                   smoothTyping={prefs.smoothTyping}
+                  repetitions={prefs.repetitions && !zen}
                   keyVolume={prefs.keySoundVolume}
                   onSheets={(count) => {
                     sheetCount = count;

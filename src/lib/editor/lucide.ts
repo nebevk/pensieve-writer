@@ -6,6 +6,7 @@ export type IconPart = string | [string, Record<string, number>];
 
 export const LUCIDE: Record<string, IconPart[]> = {
   check: ["M20 6 9 17l-5-5"],
+  repeat: ["m17 2 4 4-4 4", "M3 11v-1a4 4 0 0 1 4-4h14", "m7 22-4-4 4-4", "M21 13v1a4 4 0 0 1-4 4H3"],
   cloudOff: ["m2 2 20 20M5.782 5.782A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.307-.193M21.532 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7.008 7.008 0 0 0 10 5.07"],
   sliders: ["M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"],
   outdent: ["M21 12H11M21 18H11M21 6H11M7 8l-4 4 4 4"],

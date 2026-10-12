@@ -68,6 +68,7 @@ said), Not started, Dropped. IDs are fixed; code comments and the backlog refer 
 | ED-13 | A writing language per project, chapter or selection, which spell check follows; a personal dictionary | M | Done |
 | ED-14 | Comments on selected words, as in Word, written beside the page; a comment can become a to-do or a note; comments go to and from Word files | M | Done |
 | ED-15 | A small bar above selected text, as Word's mini toolbar, shown once the selection settles: bold, italic, underline and highlight; a comment; Make a note (a name becomes a note linked to those words, or is linked to the note of that name; a passage is quoted in a new note); and Find in the book. A title line offers only Find, Zen only the formatting. Ctrl+Shift+V pastes plain text | S | Done |
+| ED-16 | Repetitions (owner, 12 October), switched on in the toolbar's View group: a word said again within forty words (both times, and a long word in another form) is dotted under, and a sentence of more than forty words faintly tinted, each saying what it is when pointed at. Small words and the verbs of dialogue are left out; English and Slovenian, all on her computer. Off to start with, and hidden in Zen. Only what she sees is marked, at most 150 words at once, worked out when she pauses and not in the paragraph she types in, so typing stays as quick | S | Done |
 
 ### 4.2 Projects, writings and chapters
 
@@ -235,7 +236,8 @@ design system said.
   a note. Home redone around projects: hers on the left (greeting, the Continue card, a short to-do
   list), every project on the right as cards or the library's tree; no chapter strip, progress bars or
   recent notes. New project is a window, and a project can start from a Word, text or Markdown file or a
-  folder of them (each file a writing, or one book with a chapter for each). Home's verse in Slovenian
+  folder of them (each file a writing, or one book with a chapter for each). Quick ideas, a search across
+  every project, and gentle marks for repetitions. Home's verse in Slovenian
   from the SSP. Home's two sides as wide as each other. A Forest theme, and the owner's new icon set: the
   Basin mark for each theme (the app's icon is Daylight's), the theme switch and Home's New project button
   as it draws them.

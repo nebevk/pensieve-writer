@@ -37,6 +37,8 @@
     paperSize = "a4",
     onPaper = () => undefined,
     onZen = () => undefined,
+    repetitions = false,
+    onRepetitions = () => undefined,
   }: {
     editor: Editor | null;
     revision: number;
@@ -73,6 +75,9 @@
     paperSize?: PaperSize;
     onPaper?: (paper: PaperMode, size: PaperSize) => void;
     onZen?: () => void;
+    /** Whether repetitions are marked on the page, and the switch for them. */
+    repetitions?: boolean;
+    onRepetitions?: (on: boolean) => void;
   } = $props();
 
   /** One list for the page: continuous, or sheets of A4 or A5. */
@@ -361,6 +366,7 @@
       <option value="a4">{t("pagesA4")}</option>
       <option value="a5">{t("pagesA5")}</option>
     </select>
+    <button type="button" class="tool" class:active={repetitions} title={t("repetitionsHint")} aria-label={t("repetitions")} aria-pressed={repetitions} onclick={() => onRepetitions(!repetitions)}><Icon name="repeat" /></button>
     <button type="button" class="tool" title={t("zen")} aria-label={t("zen")} onclick={onZen}><Icon name="moon" /></button>
   {:else}
     {@render group(t("groupHistory"), history)}
@@ -486,6 +492,7 @@
           <option value="a4">{t("pagesA4")}</option>
           <option value="a5">{t("pagesA5")}</option>
         </select>
+        <button type="button" class="tool" class:active={repetitions} title={t("repetitionsHint")} aria-label={t("repetitions")} aria-pressed={repetitions} onclick={() => onRepetitions(!repetitions)}><Icon name="repeat" /></button>
         <button type="button" class="tool" title={t("zen")} aria-label={t("zen")} onclick={onZen}><Icon name="moon" /></button>
       </div>
       <p>{t("groupView")}</p>

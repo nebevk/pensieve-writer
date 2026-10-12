@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { t } from "$lib/ui.svelte";
+  import { plural, t } from "$lib/ui.svelte";
   import { onDestroy, onMount } from "svelte";
   import { Editor, type JSONContent } from "@tiptap/core";
   import { Selection } from "@tiptap/pm/state";
@@ -15,6 +15,7 @@
   import { Pagination, setSheet, type SheetGeometry } from "./pagination";
   import { UndoSteps } from "./undoSteps";
   import { SmoothTyping, refreshSmoothTyping } from "./smoothTyping";
+  import { RepetitionMarks, refreshRepetitions } from "./repetitions";
   import { keySound, prepareKeySounds, type KeySoundStyle } from "$lib/keySounds";
 
   let {
@@ -37,6 +38,7 @@
     keySounds = "off",
     keyVolume = 0.5,
     smoothTyping = false,
+    repetitions = false,
   }: {
     /** The chapter or note this editor opened. Every change is handed back with it. */
     docId?: string;
@@ -67,6 +69,8 @@
     keyVolume?: number;
     /** The caret glides and new letters ink in (Settings → Appearance). */
     smoothTyping?: boolean;
+    /** Words said again close by, and very long sentences, marked (the toolbar's Repetitions). */
+    repetitions?: boolean;
   } = $props();
 
   let typewriterOn = false;
@@ -86,6 +90,7 @@
   let keysSound: KeySoundStyle = "off";
   let keysVolume = 0.5;
   let smoothOn = false;
+  let repetitionsOn = false;
   // The sheet the editor was last told about, so a new one goes in only when it differs.
   let sheetApplied = "null";
 
@@ -111,6 +116,13 @@
     if (on === smoothOn) return;
     smoothOn = on;
     if (editor && !editor.isDestroyed) refreshSmoothTyping(editor.view);
+  });
+
+  $effect(() => {
+    const on = page && repetitions;
+    if (on === repetitionsOn) return;
+    repetitionsOn = on;
+    if (editor && !editor.isDestroyed) refreshRepetitions(editor.view);
   });
 
   $effect(() => {
@@ -149,6 +161,10 @@
               ChapterPage.configure({ titleHint: t("chapterTitleHint"), partHint: t("partTitleHint") }),
               Pagination.configure({ onSheets: (count) => countSheets?.(count) }),
               SmoothTyping.configure({ isOn: () => smoothOn }),
+              RepetitionMarks.configure({
+                isOn: () => repetitionsOn,
+                labels: { again: (word) => t("wordAgain", { word }), long: (words) => plural("longSentence", words) },
+              }),
             ]
           : []),
         NoteLinks.configure({ brackets: noteLinkBrackets, onOpen: (target) => openNote?.(target) }),
@@ -265,6 +281,20 @@
     50% {
       opacity: 0;
     }
+  }
+
+  /* Repetitions (repetitions.ts): a word said again close by is dotted under; a very long sentence is faintly tinted. */
+  .editor-host :global(.pv-echo) {
+    text-decoration-line: underline;
+    text-decoration-style: dotted;
+    text-decoration-color: #c9962f;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+  }
+
+  .editor-host :global(.pv-long-sentence) {
+    border-radius: 2px;
+    background: rgba(201, 150, 47, 0.1);
   }
 
   /* A veil of paper over letters just typed, faded away by smoothTyping.ts, so they seem to ink in. */

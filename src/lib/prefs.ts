@@ -62,6 +62,8 @@ export type Prefs = {
   typewriter: boolean;
   /** The caret glides and new letters ink in; its own switch, which Gentle mode leaves alone (owner, 9 October). */
   smoothTyping: boolean;
+  /** Words said again close by, and very long sentences, marked on the page (the toolbar's Repetitions). */
+  repetitions: boolean;
   /** The list beside the page in Write: the chapter's to-dos, the notes it mentions, the word goals, or none. */
   panel: "" | "todos" | "notes" | "goals";
   sidebarView: SidebarView;
@@ -156,6 +158,7 @@ export const defaultPrefs = (): Prefs => ({
   runningHead: true,
   typewriter: false,
   smoothTyping: true,
+  repetitions: false,
   panel: "",
   sidebarView: "chapters",
   outlineLayout: "grid",
@@ -207,6 +210,7 @@ function fromStored(raw: string): Prefs {
     toolsExpanded: rest.toolsExpanded !== false,
     tips: rest.tips !== false,
     smoothTyping: rest.smoothTyping !== false,
+    repetitions: rest.repetitions === true,
     keySounds: rest.keySounds === "typewriter" || rest.keySounds === "mechanical" || rest.keySounds === "soft" ? rest.keySounds : "off",
     keySoundVolume: typeof rest.keySoundVolume === "number" && Number.isFinite(rest.keySoundVolume) ? Math.min(1, Math.max(0, rest.keySoundVolume)) : 0.5,
     pomodoroFocus: minutes(rest.pomodoroFocus, 25, 5, 90),

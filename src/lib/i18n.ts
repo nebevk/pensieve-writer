@@ -539,6 +539,9 @@ const en = {
   searchCapped: "Showing the first {n}; another word narrows it.",
   searchUnread: "Couldn't read: {names}",
   searchAllProjects: "In all projects",
+  repetitions: "Repetitions",
+  repetitionsHint: "Words repeated close together, and long sentences",
+  wordAgain: "“{word}” again, close by",
   updateReady: "New version {version} · Update",
   updateHint: "Pensieve {version} is ready: your writing is saved first, then Pensieve installs it and opens again.",
   updateInstalling: "Updating… {n}%",
@@ -1168,6 +1171,9 @@ const sl: Record<UiKey, string> = {
   searchCapped: "Prikazanih je prvih {n}; z novo besedo jih bo manj.",
   searchUnread: "Ni bilo mogoče prebrati: {names}",
   searchAllProjects: "Po vseh projektih",
+  repetitions: "Ponovitve",
+  repetitionsHint: "Besede, ponovljene blizu skupaj, in dolgi stavki",
+  wordAgain: "»{word}« znova, blizu",
   updateReady: "Nova različica {version} · Posodobi",
   updateHint: "Pensieve {version} je pripravljen: najprej se shrani vaše besedilo, nato se Pensieve namesti in znova odpre.",
   updateInstalling: "Posodabljam … {n} %",
@@ -1272,6 +1278,7 @@ const PLURALS = {
   matchCount: { en: ["{n} match", "{n} matches"], sl: ["{n} zadetek", "{n} zadetka", "{n} zadetki", "{n} zadetkov"] },
   /** "In 3 projects": Slovenian "v" takes the locative. */
   inProjects: { en: ["in {n} project", "in {n} projects"], sl: ["v {n} projektu", "v {n} projektih", "v {n} projektih", "v {n} projektih"] },
+  longSentence: { en: ["A long sentence: {n} word", "A long sentence: {n} words"], sl: ["Dolg stavek: {n} beseda", "Dolg stavek: {n} besedi", "Dolg stavek: {n} besede", "Dolg stavek: {n} besed"] },
 } satisfies Record<string, { en: [string, string]; sl: [string, string, string, string] }>;
 
 export type PluralKey = keyof typeof PLURALS;
