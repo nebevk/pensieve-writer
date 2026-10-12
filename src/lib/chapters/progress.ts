@@ -1,5 +1,5 @@
 import { wordsFor } from "$lib/editor/counts";
-import type { ChapterStatus, Writing, WritingLanguage, WritingOutline } from "$lib/model";
+import type { Writing, WritingLanguage, WritingOutline } from "$lib/model";
 
 /** What a writing's card and row show. Kept with the remembered projects, so closed ones show it too. */
 export type WritingSummary = {
@@ -12,10 +12,6 @@ export type WritingSummary = {
   /** Words planned: the writing's target, or else the chapter goals added up; 0 when there's neither. */
   target: number;
   chapters: number;
-  /** Chapters marked final. */
-  finished: number;
-  /** The first chapter's status, which is a one-page writing's. */
-  status: ChapterStatus;
   editedAt: string;
 };
 
@@ -38,8 +34,6 @@ export function summarize(writing: Writing): WritingSummary {
     words: chapters.reduce((sum, chapter) => sum + wordsFor(chapter.id, chapter.plainText), 0),
     target: writing.wordGoal > 0 ? writing.wordGoal : goals,
     chapters: chapters.length,
-    finished: chapters.filter((chapter) => chapter.status === "final").length,
-    status: chapters[0]?.status ?? "draft",
     editedAt: chapters.reduce((latest, chapter) => (chapter.updatedAt > latest ? chapter.updatedAt : latest), ""),
   };
 }
@@ -55,8 +49,6 @@ export function summarizeOutline(outline: WritingOutline): WritingSummary {
     words: chapters.reduce((sum, chapter) => sum + chapter.words, 0),
     target: outline.wordGoal,
     chapters: chapters.length,
-    finished: chapters.filter((chapter) => chapter.status === "final").length,
-    status: chapters[0]?.status ?? "draft",
     editedAt: outline.updatedAt,
   };
 }
@@ -70,15 +62,9 @@ export function summarizeProject(writings: WritingSummary[]): ProjectSummary {
 }
 
 /**
- * How far along a writing is, from 0 to 1: words against the target when there is one. Without a target,
- * a writing in chapters counts its finished chapters, and a one-page writing goes by its status.
+ * How far along a writing is, from 0 to 1: its words against its target, or 0 when it has none. Chapter
+ * statuses, which it once counted too, are dropped (owner, 12 October).
  */
-export function bookProgress(summary: Pick<WritingSummary, "split" | "target" | "words" | "status" | "chapters" | "finished">): number {
-  if (summary.target > 0) return Math.min(1, summary.words / summary.target);
-  if (!summary.split) {
-    if (summary.status === "final") return 1;
-    if (summary.status === "revised") return 2 / 3;
-    return summary.words > 0 ? 1 / 3 : 0;
-  }
-  return summary.chapters === 0 ? 0 : summary.finished / summary.chapters;
+export function bookProgress(summary: Pick<WritingSummary, "target" | "words">): number {
+  return summary.target > 0 ? Math.min(1, summary.words / summary.target) : 0;
 }

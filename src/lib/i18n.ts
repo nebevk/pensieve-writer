@@ -120,9 +120,6 @@ const en = {
   keepsOneChapter: "A writing keeps at least one chapter",
   deleteChapter: "Delete this chapter",
   deleteQuestion: "Delete “{title}”?",
-  statusDraft: "Draft",
-  statusRevised: "Revising",
-  statusFinal: "Final",
 
   // Writing page
   chapterText: "Chapter text",
@@ -340,7 +337,6 @@ const en = {
 
   // Outline and Book
   wordGoal: "Word goal",
-  status: "Status",
   synopsis: "Synopsis",
   synopsisHint: "What happens in this chapter…",
   outlineLayout: "Show chapters as",
@@ -716,9 +712,6 @@ const sl: Record<UiKey, string> = {
   keepsOneChapter: "Besedilo ima vedno vsaj eno poglavje",
   deleteChapter: "Izbriši to poglavje",
   deleteQuestion: "Izbrišem »{title}«?",
-  statusDraft: "Osnutek",
-  statusRevised: "V popravljanju",
-  statusFinal: "Končano",
 
   chapterText: "Besedilo poglavja",
   opening: "Odpiranje …",
@@ -930,7 +923,6 @@ const sl: Record<UiKey, string> = {
   noNote: "Brez zapiska",
 
   wordGoal: "Cilj besed",
-  status: "Stanje",
   synopsis: "Povzetek",
   synopsisHint: "Kaj se zgodi v tem poglavju …",
   outlineLayout: "Prikaži poglavja kot",

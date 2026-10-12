@@ -26,17 +26,11 @@ describe("a writing's progress on Home", () => {
     expect(bookProgress(summary)).toBe(3 / 8);
   });
 
-  it("counts finished chapters when there is no target", () => {
-    const summary = summarize(book(true, [{ status: "final" }, { status: "revised" }, { status: "final" }, {}]));
-    expect(summary.finished).toBe(2);
-    expect(summary.chapters).toBe(4);
-    expect(bookProgress(summary)).toBe(0.5);
-  });
-
-  it("follows a one-page writing's status", () => {
-    expect(bookProgress(summarize(book(false, [{ plainText: "draft words" }])))).toBeCloseTo(1 / 3);
-    expect(bookProgress(summarize(book(false, [{ plainText: "done", status: "final" }])))).toBe(1);
-    expect(bookProgress(summarize(book(false, [{}])))).toBe(0);
+  it("shows none without a target, whatever statuses older chapters still carry", () => {
+    const summary = summarize(book(true, [{ status: "final", plainText: "one" }, { status: "revised" }, {}]));
+    expect(summary.chapters).toBe(3);
+    expect(bookProgress(summary)).toBe(0);
+    expect(bookProgress(summarize(book(false, [{ plainText: "done", status: "final" }])))).toBe(0);
   });
 
   it("adds a project's writings up, closed ones from their outline", () => {
@@ -58,7 +52,7 @@ describe("a writing's progress on Home", () => {
         { id: "b", title: "Drugo", part: "", position: 1, status: "draft", words: 4, empty: false },
       ],
     });
-    expect(closed).toMatchObject({ words: 7, chapters: 2, finished: 1, title: "Svetilnik" });
+    expect(closed).toMatchObject({ words: 7, chapters: 2, title: "Svetilnik" });
     const project = summarizeProject([open, closed]);
     expect(project.words).toBe(9);
     expect(project.writings.map((item) => item.title)).toEqual([open.title, "Svetilnik"]);
