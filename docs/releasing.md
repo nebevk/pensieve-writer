@@ -42,6 +42,9 @@ built with a new key.
 
 ## Notes
 
+- This is the only way releases are made. GitHub builds none: a workflow that built one for each pushed
+  version tag was removed on 12 October, as it would have needed the key on GitHub. GitHub's CI only checks
+  each push to `master` (type check, tests, `cargo check`).
 - `npm run tauri build` still builds an installer without the update files (no key needed). Only
   `npm run release` adds `--config src-tauri/tauri.release.conf.json`, which turns them on.
 - The repository is public, so the installers on GitHub Releases can be downloaded by anyone. They hold the
