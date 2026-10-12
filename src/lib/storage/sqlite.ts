@@ -663,8 +663,16 @@ function blankWriting(title: string, split: boolean, language: WritingLanguage, 
 
 export type OpenedProject = { shelf: Shelf; writing: Writing };
 
-/** What a new project's file starts with: its name, and its first writing's title. */
-export type NewProject = { title: string; writingTitle: string; welcome: boolean };
+/**
+ * What a new project's file starts with: its name, and its first writing's title; with `first`, that
+ * writing's chapters, from a file brought in.
+ */
+export type NewProject = {
+  title: string;
+  writingTitle: string;
+  welcome: boolean;
+  first?: { split: boolean; chapters?: (writingId: string) => Chapter[] };
+};
 
 /**
  * Opens the project in the open file: its shelf, and the writing to show (the one asked for if it is
@@ -681,8 +689,9 @@ export function openShelf(writingId: string, fresh: NewProject): Promise<OpenedP
         `INSERT OR IGNORE INTO shelf (id, project_id, title, folders_json, created_at) VALUES (1, $1, $2, '[]', $3)`,
         [crypto.randomUUID(), fresh.title, now],
       );
-      const writing = blankWriting(fresh.writingTitle, true, language, now);
+      const writing = blankWriting(fresh.writingTitle, fresh.first?.split ?? true, language, now);
       if (fresh.welcome) writing.chapters = firstChapters(writing.id, true, writing.title, language);
+      else if (fresh.first?.chapters) writing.chapters = fresh.first.chapters(writing.id);
       await insertWritingRow(db, writing, "", await nextPosition(db));
       await writeWriting(db, writing);
     }

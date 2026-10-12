@@ -121,9 +121,9 @@ export function fileIcon(name: string): string {
   return /\.(png|jpe?g|gif|webp|bmp|svg|heic|tiff?)$/i.test(name) ? "image" : "file";
 }
 
-/** A Word file, which can come into a project as a writing. */
-export function isWordFile(name: string): boolean {
-  return /\.docx$/i.test(name);
+/** A Word, text or Markdown file, which can come into a project as a writing. */
+export function isDocumentFile(name: string): boolean {
+  return /\.(docx|txt|md|markdown)$/i.test(name);
 }
 
 /** The file a project folder keeps its project in. */
@@ -163,6 +163,24 @@ export function firstProject(entries: LibraryEntry[], locale = "en"): string | n
   return null;
 }
 
+/**
+ * The library's folders a new project can go in, by their way from the library's top ("Romani / Kratke
+ * zgodbe"), down to the depth the tree lists.
+ */
+export function projectFolders(entries: LibraryEntry[], locale: string, depth = 5): { path: string; label: string }[] {
+  const found: { path: string; label: string }[] = [];
+  const walk = (list: LibraryEntry[], above: string, level: number) => {
+    for (const entry of list) {
+      if (entry.project || entry.file) continue;
+      const label = above ? `${above} / ${entry.name}` : entry.name;
+      found.push({ path: entry.path, label });
+      if (level + 1 < depth) walk(entry.children, label, level + 1);
+    }
+  };
+  walk(sortEntries(entries, locale), "", 0);
+  return found;
+}
+
 /** Every project file in the library, at any depth. */
 export function projectFiles(entries: LibraryEntry[]): string[] {
   return entries.flatMap((entry) => (entry.project ? [projectFile(entry.path)] : projectFiles(entry.children)));
@@ -178,7 +196,8 @@ export type LibraryActions = {
   openNote(id: string): void;
   openTodos(): void;
   openAnother(): void;
-  newProject(parent: string, name: string): Promise<string | null>;
+  /** Opens the New project window, for a project in `parent` (the library's top when empty). */
+  startProject(parent: string): void;
   newLibraryFolder(parent: string, name: string): Promise<string | null>;
   /** Renames a folder of the library or a project's folder (`path`), on disk. */
   renameLibraryEntry(path: string, name: string): Promise<string | null>;
@@ -190,8 +209,8 @@ export type LibraryActions = {
   /** Opens one of her files in its own program, as Explorer does. */
   openFile(path: string): void;
   showInExplorer(path: string): void;
-  /** Brings a Word file into the open project as a new writing. */
-  importWord(path: string): void;
+  /** Brings a Word, text or Markdown file into the open project as a new writing. */
+  importAsWriting(path: string): void;
   newWriting(folder: string, name: string): Promise<string | null>;
   newWritingFolder(name: string): Promise<string | null>;
   renameWritingFolder(from: string, to: string): Promise<string | null>;
@@ -225,6 +244,4 @@ export type LibraryView = {
   shelf: Shelf | null;
   notes: Note[];
   openTodos: number;
-  /** Home's "+ New" asked to name a new project, at this time. */
-  create: { kind: "project"; parent: string; at: number } | null;
 };

@@ -31,6 +31,17 @@ export async function chooseImageFile(): Promise<string | null> {
   return typeof selected === "string" ? selected : null;
 }
 
+/** A Word, text or Markdown file to start a project from. */
+export async function chooseDocumentFile(): Promise<string | null> {
+  const selected = await open({
+    directory: false,
+    multiple: false,
+    title: t("dialogChooseDocument"),
+    filters: [{ name: t("dialogDocumentFilter"), extensions: ["docx", "txt", "md", "markdown"] }],
+  });
+  return typeof selected === "string" ? selected : null;
+}
+
 /** A folder picker; the title says what the folder is for. */
 export async function chooseBackupFolder(title = t("dialogBackupFolder")): Promise<string | null> {
   const selected = await open({

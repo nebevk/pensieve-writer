@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultLibraryFolder, folderNameProblem, folderOf, groupBooks, isInside, joinPath, lastName, looksSynced, parentFolder, rebasePath, sameFolder } from "./library";
+import { defaultLibraryFolder, folderNameProblem, folderOf, groupBooks, isInside, joinPath, lastName, looksSynced, parentFolder, projectFolders, rebasePath, sameFolder, type LibraryEntry } from "./library";
 
 describe("the library folder", () => {
   it("knows folders that a sync service keeps copying", () => {
@@ -98,5 +98,19 @@ describe("the library", () => {
     const folders = groupBooks([{ path: "C:\\Books\\Pensieve\\other.db", title: "Other" }], "C:\\Books\\Pensieve\\new.db", "Nova knjiga");
     expect(folders).toHaveLength(1);
     expect(folders[0].books.map((book) => book.title)).toEqual(["Nova knjiga", "Other"]);
+  });
+});
+
+describe("a new project's place", () => {
+  it("lists the library's folders by their way from the top, č after c, never a project or a file", () => {
+    const folder = (path: string, children: LibraryEntry[] = []): LibraryEntry => ({ name: lastName(path), path, project: false, children });
+    const entries: LibraryEntry[] = [
+      folder("C:\\K\\Romani", [folder("C:\\K\\Romani\\Čarovnice"), folder("C:\\K\\Romani\\Cesta", [folder("C:\\K\\Romani\\Cesta\\Globoko")])]),
+      { name: "Brod", path: "C:\\K\\Brod", project: true, children: [folder("C:\\K\\Brod\\Slike")] },
+      { name: "zapiski.txt", path: "C:\\K\\zapiski.txt", project: false, file: true, children: [] },
+    ];
+    expect(projectFolders(entries, "sl").map((place) => place.label)).toEqual(["Romani", "Romani / Cesta", "Romani / Cesta / Globoko", "Romani / Čarovnice"]);
+    // Only as deep as the tree lists.
+    expect(projectFolders(entries, "sl", 2).map((place) => place.label)).toEqual(["Romani", "Romani / Cesta", "Romani / Čarovnice"]);
   });
 });

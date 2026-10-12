@@ -16,13 +16,14 @@
   import { chaptersToHtml, chaptersToMarkdown, chaptersToPlain } from "$lib/export/document";
   import { ALREADY_EXISTS, CHANGED_ELSEWHERE, MUST_BE_NEW, chooseSavePath, inFolder, writeFileTo, type ExportKind } from "$lib/export/files";
   import { wordFileFor, wordLook } from "$lib/export/wordAssets";
-  import { appendBookChapters, looksLikeChapterTitle, readWordFile, replaceBookChapters, type WordImport } from "$lib/export/wordImport";
+  import { appendBookChapters, readWordFile, replaceBookChapters, type WordImport } from "$lib/export/wordImport";
+  import { bookFromDocuments, byFileName, documentKind, documentName, draftChapters, writingFromDocument, type WritingDraft } from "$lib/export/importWriting";
   import { createAmbience } from "$lib/ambience";
   import { onPomodoroTurn, pomodoro } from "$lib/pomodoro.svelte";
   import { check, type Update } from "@tauri-apps/plugin-updater";
   import { getVersion } from "@tauri-apps/api/app";
   import type { UpdateOffer } from "$lib/editor/UpdatePill.svelte";
-  import { chooseBackupFile, chooseBackupFolder, chooseProjectFile, readBackupFile, writeBackup } from "$lib/storage/backup";
+  import { chooseBackupFile, chooseBackupFolder, chooseDocumentFile, chooseProjectFile, readBackupFile, writeBackup } from "$lib/storage/backup";
   import { backupSignature, type BackupContent } from "$lib/storage/backupFile";
   import Particles from "$lib/views/Particles.svelte";
   import Tour from "$lib/views/Tour.svelte";
@@ -35,7 +36,7 @@
   import { chapterTitle } from "$lib/chapters/welcome";
   import { applyPage, chapterBreak, composePage, heldHeading, isLeadLine, joinWriting, leadLines, readPage, splitWriting, startsPart, textStart, withoutBreaks } from "$lib/chapters/page";
   import { summarize, summarizeOutline, summarizeProject } from "$lib/chapters/progress";
-  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, joinPath, lastName, looksSynced, parentFolder, projectFile, projectFiles, projectName, rebasePath, sameFolder, type LibraryActions, type LibraryEntry, type LibraryView } from "$lib/chapters/library";
+  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, joinPath, lastName, looksSynced, parentFolder, projectFile, projectFiles, projectFolders, projectName, rebasePath, sameFolder, type LibraryActions, type LibraryEntry, type LibraryView } from "$lib/chapters/library";
   import { moveOpen } from "$lib/chapters/treeState.svelte";
   import { notesInChapter } from "$lib/chapters/mentions";
   import { panelNotes, panelOrder } from "$lib/views/panelNotes";
@@ -45,6 +46,7 @@
   import { namesANote, noteFromComment, noteFromWords, todoFromComment } from "$lib/storage/fromComment";
   import type { NoteTarget } from "$lib/editor/noteLinks";
   import type { CommentInfo } from "$lib/editor/comments";
+  import type { ProjectRequest } from "$lib/views/NewProjectWindow.svelte";
   import { addWriting, checkpointDatabase, duplicateWriting, eraseWriting, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, moveProjectFile, readSnapshotChapters, rememberPersonalWord, renameWritingFolder, restoreChapter, restoreFromBackup, setShelf, setWritingFields, setWritingOrder, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
   import type { Editor as TiptapEditor } from "@tiptap/core";
   import type { NodeSelection } from "@tiptap/pm/state";
@@ -61,6 +63,7 @@
   const HistoryPart = lazy(() => import("$lib/views/History.svelte"));
   const NotePanePart = lazy(() => import("$lib/views/NotePane.svelte"));
   const SelectionBarPart = lazy(() => import("$lib/editor/SelectionBar.svelte"));
+  const NewProjectPart = lazy(() => import("$lib/views/NewProjectWindow.svelte"));
 
   // The writing open in Write: one of the open project's writings, with all its chapters.
   let writing = $state<Writing | null>(null);
@@ -342,7 +345,7 @@
       }
       requestIdleCallback(
         () => {
-          for (const part of [EditorPart, CommentRailPart, NotesPart, TodosPart, SettingsPart, OutlinePart, BookPart, HistoryPart, NotePanePart, SelectionBarPart]) {
+          for (const part of [EditorPart, CommentRailPart, NotesPart, TodosPart, SettingsPart, OutlinePart, BookPart, HistoryPart, NotePanePart, SelectionBarPart, NewProjectPart]) {
             // A part that fails here is tried again, and reported, when it is shown.
             part.load().catch(() => undefined);
           }
@@ -2000,14 +2003,89 @@
     return taken.some((item) => item.trim().toLowerCase() === wanted) ? t("nameTaken") : null;
   }
 
-  /** A new project in a library folder, opened at once. */
-  async function newProject(parent: string, name: string): Promise<string | null> {
+  /** The New project window, while it is open: the folder it was asked for in. */
+  let newProjectAsk = $state<{ parent: string } | null>(null);
+
+  /** Opens the New project window, for a project in `parent` (the library's top when empty). */
+  function startProject(parent = "") {
+    newProjectAsk = { parent: parent || libraryRoot };
+    // Its list of folders is the library as it is now.
+    void refreshLibrary();
+  }
+
+  /** A folder of her files, with its Word, text and Markdown files in the order Explorer shows them. */
+  async function chooseFolderOfFiles(): Promise<{ path: string; files: string[] } | null> {
+    const path = await chooseBackupFolder(t("dialogChooseFolderOfFiles"));
+    if (!path) return null;
+    try {
+      return { path, files: byFileName(await invoke<string[]>("list_document_files", { folder: path }), locale()) };
+    } catch (error) {
+      throw new Error(errorMessage(error));
+    }
+  }
+
+  /** A Word, text or Markdown file, read into chapters, its pictures made small. */
+  async function readDocument(path: string): Promise<WordImport> {
+    const name = documentName(path);
+    const data = await invoke<ArrayBuffer>("read_document_file", { path });
+    const kind = documentKind(path);
+    // Text and Markdown are read by code loaded when it is needed, as Word's reader is.
+    const result = kind === "word" ? await readWordFile(data, name) : (await import("$lib/export/textImport")).readTextFile(data, name, kind === "markdown");
+    for (const chapter of result.chapters) await shrinkPictures(chapter.contentJson);
+    return result;
+  }
+
+  /**
+   * The New project window's project: empty, or from a file, or from a folder of files. The files are
+   * read before anything is made, so one that can't be read leaves no half-made project; of a folder's,
+   * those that can't be read stay out, and she is told which. Opens the project in Write.
+   */
+  async function createProject(request: ProjectRequest, progress: (done: number, total: number) => void): Promise<string | null> {
+    const name = request.name.trim();
     const problem = folderNameProblem(name);
     if (problem) return t(problem);
     try {
-      const path = await makeProjectFolder(parent || libraryRoot, name);
-      await useProjectFile(path, {}, true, { title: name.trim(), writingTitle: name.trim(), welcome: false });
+      let drafts: WritingDraft[] = [];
+      const left: string[] = [];
+      const start = request.start;
+      if (start.kind === "file") {
+        drafts = [writingFromDocument(await readDocument(start.path), documentName(start.path), t("untitled"))];
+      } else if (start.kind === "folder") {
+        const read: { name: string; result: WordImport }[] = [];
+        for (const [index, path] of start.files.entries()) {
+          progress(index + 1, start.files.length);
+          try {
+            read.push({ name: documentName(path), result: await readDocument(path) });
+          } catch {
+            left.push(lastName(path));
+          }
+        }
+        if (read.length === 0) return t("noFileRead");
+        drafts =
+          start.each === "chapter"
+            ? [bookFromDocuments(name, read)]
+            : read.map((item) => writingFromDocument(item.result, item.name, t("untitled")));
+      }
+      const path = await makeProjectFolder(request.parent || libraryRoot, name);
+      const [first, ...rest] = drafts;
+      await useProjectFile(path, {}, true, {
+        title: name,
+        writingTitle: first?.title ?? name,
+        welcome: false,
+        ...(first ? { first: { split: first.split, chapters: draftChapters(first) } } : {}),
+      });
+      if (rest.length > 0) {
+        const project = projectId;
+        const language = writing?.language ?? ui.language;
+        // Only into the project just made, after any change under way.
+        await oneAtATime(async () => {
+          if (projectId !== project) return;
+          for (const draft of rest) await addWriting({ title: draft.title, folder: "", split: draft.split, language, chapters: draftChapters(draft) });
+        });
+        await refreshShelf();
+      }
       await refreshLibrary();
+      if (left.length > 0) notice(t("filesLeftOut", { names: left.join(", ") }));
       return null;
     } catch (error) {
       return errorMessage(error);
@@ -2477,60 +2555,35 @@
   }
 
   /**
-   * A Word file brought into the open project as a new writing, and opened: its chapters begin at its
-   * Heading 2s (a file without any is one page), its parts at its Heading 1s, as Import Word reads them.
+   * A Word, text or Markdown file brought into the open project as a new writing, and opened: its chapters
+   * begin at its top headings (or chapter lines), and a file without any is one page.
    */
-  let importingWord = false;
-  async function importWordAsWriting(path: string) {
-    if (!writing || !shelf || importingWord) return;
-    importingWord = true;
+  let importingFile = false;
+  async function importAsWriting(path: string) {
+    if (!writing || !shelf || importingFile) return;
+    importingFile = true;
     // The project it was asked for, and its language: another project may open while the file is read.
     const project = projectId;
     const language = writing.language;
     try {
-      const name = lastName(path).replace(/\.docx$/i, "");
+      const name = documentName(path);
       notice(t("importingWord", { name }));
-      const result = await readWordFile(await invoke<ArrayBuffer>("read_word_file", { path }), name);
-      for (const chapter of result.chapters) await shrinkPictures(chapter.contentJson);
-      // A file's one chapter line (a Heading 1 such as "Pod lipo") was read as that chapter's title and isn't in
-      // its text, so it mustn't be dropped: with no Title paragraph it names the writing; a chapter label, or a
-      // line under a Title that says something else, stays the title of its one chapter.
-      const only = result.chapters.length === 1 ? result.chapters[0].title.trim() : "";
-      const named = only && only !== name && !isUntitled(only) && !looksLikeChapterTitle(only) ? only : "";
-      const title = result.title.trim() || named || name || t("untitled");
-      const split = result.chapters.length > 1 || (only !== "" && only !== name && !isUntitled(only) && only !== title);
-      const now = new Date().toISOString();
-      const imported = {
-        title,
-        folder: "",
-        split,
-        language,
-        // An empty file gives a writing as a new one starts.
-        chapters:
-          result.chapters.length > 0
-            ? (id: string) =>
-                result.chapters.map((item, index) => ({
-                  // One page carries the writing's title on its title line.
-                  ...createChapter(id, split ? item.title : title, index, now),
-                  contentJson: item.contentJson,
-                  plainText: item.plainText,
-                  ...(item.part !== undefined ? { part: item.part } : {}),
-                }))
-            : undefined,
-      };
+      const draft = writingFromDocument(await readDocument(path), name, t("untitled"));
       // After any switch under way, and only into the project it was asked for.
-      const made = await oneAtATime(async () => (projectId === project ? addWriting(imported) : null));
+      const made = await oneAtATime(async () =>
+        projectId === project ? addWriting({ title: draft.title, folder: "", split: draft.split, language, chapters: draftChapters(draft) }) : null,
+      );
       if (!made) {
-        notice(t("importOtherProject", { title }));
+        notice(t("importOtherProject", { title: draft.title }));
         return;
       }
       // Outside the queued change: openWriting queues its own.
       await openWriting(made.id);
-      if (projectId === project) notice(t("importedAsWriting", { title }));
+      if (projectId === project) notice(t("importedAsWriting", { title: draft.title }));
     } catch (error) {
       notice(errorMessage(error));
     } finally {
-      importingWord = false;
+      importingFile = false;
     }
   }
 
@@ -2586,7 +2639,7 @@
     openWriting: (path, id, chapterId) => void openFromLibrary(path, { writingId: id, chapterId }),
     openNote: (id) => showNote(id),
     openTodos: () => showTodos("all"),
-    newProject,
+    startProject,
     newLibraryFolder,
     renameLibraryEntry: (path, name) => relocateLibraryEntry(path, parentFolder(path), name),
     moveLibraryEntry: (path, into) => void moveLibraryEntry(path, into),
@@ -2594,7 +2647,7 @@
     placeWriting: (id, beforeId) => void placeWriting(id, beforeId),
     openFile: (path) => void openLibraryFile(path),
     showInExplorer: (path) => void showInExplorer(path),
-    importWord: (path) => void importWordAsWriting(path),
+    importAsWriting: (path) => void importAsWriting(path),
     newWriting,
     newWritingFolder,
     renameWritingFolder: renameWritingFolderTo,
@@ -2750,16 +2803,6 @@
     }
   }
 
-  /** Home's "+ New": the library, in Write, with a name to give the new project. */
-  function startNewProject() {
-    prefs = { ...prefs, sidebarView: "library" };
-    collapsed = false;
-    view = "write";
-    libraryCreate = { kind: "project", parent: libraryRoot, at: Date.now() };
-  }
-
-  /** Lets the tree start naming something new, as Home's "+ New" asks. */
-  let libraryCreate = $state<{ kind: "project"; parent: string; at: number } | null>(null);
   // The library as its trees show it, beside the page and on Home.
   const libraryView = $derived<LibraryView>({
     root: libraryRoot,
@@ -2769,7 +2812,6 @@
     shelf,
     notes: bookNotes,
     openTodos: bookTasks.filter((task) => task.todoState !== "done").length,
-    create: libraryCreate,
   });
 
   /** The library folder from Settings: never in a synced folder, never with the backups. */
@@ -3182,7 +3224,6 @@
                   page
                   docId={chapter.id}
                   initialContent={composePage(chapters, chapters.findIndex((item) => item.id === chapter.id), writing?.split ?? true)}
-                  focusOnOpen={!libraryCreate || Date.now() - libraryCreate.at > 3000}
                   language={writing ? effectiveLanguage(writing, chapter) : "en"}
                   typewriter={prefs.typewriter}
                   {sheet}
@@ -3376,7 +3417,7 @@
           }}
           onSaveError={reportSaveError}
           onOpenProject={() => void openAnotherProject()}
-          onStartProject={startNewProject}
+          onStartProject={() => startProject()}
           books={homeProjects}
           currentPath={projectLocation}
           onOpenBook={(path) => void openFromLibrary(path)}
@@ -3523,6 +3564,21 @@
       onRestoreChapter={() => void restoreHistoryChapter()}
       onRestoreBook={() => void restoreHistoryBook()}
       onClose={() => (historyOpen = false)}
+    />
+  {/if}
+  {#if newProjectAsk && NewProjectPart.current}
+    {@const NewProjectWindow = NewProjectPart.current}
+    <NewProjectWindow
+      places={[{ path: libraryRoot, label: t("library") }, ...projectFolders(libraryEntries, locale())]}
+      parent={newProjectAsk.parent}
+      onChooseFile={chooseDocumentFile}
+      onChooseFolder={chooseFolderOfFiles}
+      onCreate={async (request, progress) => {
+        const problem = await createProject(request, progress);
+        if (!problem) newProjectAsk = null;
+        return problem;
+      }}
+      onClose={() => (newProjectAsk = null)}
     />
   {/if}
 </div>

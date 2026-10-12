@@ -166,18 +166,60 @@ pub async fn show_in_explorer(path: String) -> Result<(), String> {
     tauri_plugin_opener::reveal_item_in_dir(item).map_err(|error| error.to_string())
 }
 
-/// A Word file's bytes, to bring it into a project as a writing.
+/// The kinds of file that can come in as a writing: Word, text and Markdown.
+const DOCUMENTS: &[&str] = &["docx", "txt", "md", "markdown"];
+
+/// How many files of one folder can come in as a project.
+const MOST_DOCUMENTS: usize = 500;
+
+fn is_document(file: &Path) -> bool {
+    let kind = file.extension().map(|kind| kind.to_string_lossy().to_lowercase()).unwrap_or_default();
+    DOCUMENTS.contains(&kind.as_str())
+}
+
+/// A Word, text or Markdown file's bytes, to bring it into a project as a writing.
 #[tauri::command]
-pub async fn read_word_file(path: String) -> Result<tauri::ipc::Response, String> {
-    let file = Path::new(&path);
-    if !file.extension().is_some_and(|kind| kind.eq_ignore_ascii_case("docx")) {
-        return Err("Only a Word file (.docx) can come in as a writing".into());
+pub async fn read_document_file(path: String) -> Result<tauri::ipc::Response, String> {
+    read_document(Path::new(&path)).map(tauri::ipc::Response::new)
+}
+
+fn read_document(file: &Path) -> Result<Vec<u8>, String> {
+    if !is_document(file) {
+        return Err("Only a Word, text or Markdown file can come in as a writing".into());
     }
     let size = fs::metadata(file).map_err(|_| "That file isn't there any more".to_string())?.len();
-    if size > 200 * 1024 * 1024 {
+    // Pictures make a Word file big; text that size would be shelves of books.
+    let most = if file.extension().is_some_and(|kind| kind.eq_ignore_ascii_case("docx")) { 200 } else { 20 };
+    if size > most * 1024 * 1024 {
         return Err("That file is too big to bring in".into());
     }
-    Ok(tauri::ipc::Response::new(fs::read(file).map_err(|error| error.to_string())?))
+    fs::read(file).map_err(|error| error.to_string())
+}
+
+/// The Word, text and Markdown files in a folder (not in its folders), to make a project of them.
+#[tauri::command]
+pub async fn list_document_files(folder: String) -> Result<Vec<String>, String> {
+    list_documents(Path::new(&folder))
+}
+
+fn list_documents(dir: &Path) -> Result<Vec<String>, String> {
+    let entries = fs::read_dir(dir).map_err(|_| "That folder isn't there any more".to_string())?;
+    let mut found = Vec::new();
+    for entry in entries.filter_map(Result::ok) {
+        let name = entry.file_name().to_string_lossy().to_string();
+        // Word's lock files ("~$...") and hidden files are not hers to bring in.
+        if name.starts_with('.') || name.starts_with("~$") || hidden(&entry) {
+            continue;
+        }
+        let path = entry.path();
+        if entry.file_type().is_ok_and(|kind| kind.is_file()) && is_document(&path) {
+            found.push(path.display().to_string());
+            if found.len() == MOST_DOCUMENTS {
+                break;
+            }
+        }
+    }
+    Ok(found)
 }
 
 /// Whether Windows marks a folder hidden or as the system's ("System Volume Information", say).
@@ -388,6 +430,29 @@ mod tests {
         assert!(starts_program(Path::new("C:\\x\\setup.EXE")));
         assert!(starts_program(Path::new("C:\\x\\run.ps1")));
         assert!(!starts_program(Path::new("C:\\x\\Rokopis.docx")));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn documents_of_a_folder() {
+        let root = std::env::temp_dir().join(format!("pensieve-documents-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("Stari")).unwrap();
+        for file in ["1 Prvo.docx", "2 Drugo.TXT", "zapiski.md", "slika.png", "~$1 Prvo.docx", ".skrito.md", "Stari/3 Tretje.docx"] {
+            fs::write(root.join(file), "Čaša, šola, žaba".as_bytes()).unwrap();
+        }
+        // Word, text and Markdown files of the folder itself; not its folders, Word's lock files or hidden ones.
+        let mut names: Vec<String> = list_documents(&root)
+            .unwrap()
+            .iter()
+            .map(|path| Path::new(path).file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["1 Prvo.docx", "2 Drugo.TXT", "zapiski.md"]);
+        assert_eq!(read_document(&root.join("zapiski.md")).unwrap(), "Čaša, šola, žaba".as_bytes());
+        assert!(read_document(&root.join("slika.png")).is_err());
+        assert_eq!(read_document(&root.join("ni.txt")), Err("That file isn't there any more".to_string()));
+        assert!(list_documents(&root.join("ni")).is_err());
         let _ = fs::remove_dir_all(&root);
     }
 

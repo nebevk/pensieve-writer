@@ -83,4 +83,6 @@ itself. Most worth doing once on Eva's laptop, with the installed release:
     follow the keys.
 13. **The library:** rename and drag the open project's folder; her files open with a double click; a Word
     file comes in as a new writing; a file dragged in from Explorer is refused.
-14. **Pages** (A4) on the long test book: no flicker while opening chapters and typing.
+14. **New project** from one of her real Word files, and from a folder of her Word and text files as one
+    book: the chapters come in order, with their headings, italics and pictures, and č, š, ž.
+15. **Pages** (A4) on the long test book: no flicker while opening chapters and typing.

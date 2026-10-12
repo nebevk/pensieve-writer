@@ -29,4 +29,4 @@ export function moveOpen(from: string, to: string): void {
  * The requests to name something new that the tree has answered, by the time each was made. The tree is
  * made again whenever Write or the Library tab opens, and must not answer an old request a second time.
  */
-export const answered = { header: 0, home: 0 };
+export const answered = { header: 0 };

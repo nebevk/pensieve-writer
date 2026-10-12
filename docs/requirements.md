@@ -81,8 +81,9 @@ said), Not started, Dropped. IDs are fixed; code comments and the backlog refer 
 | CH-6 | Per chapter: a synopsis and a word goal, shown in the Outline and the Goals list. No status (draft, revising, final): dropped | S | Done |
 | CH-7 | The side lists can be hidden and brought back | M | Done |
 | CH-8 | No project types: each writing has a "Split into chapters" switch. On, a Heading 2 starts a chapter; off, the writing is one page and its headings stay headings. Turning it off joins the chapters (an earlier version keeps them as they were), with a warning over 20,000 words that one long page types slower; turning it on splits the page at its headings | S | Done |
-| CH-9 | A library folder, chosen in Settings (Documents\Pensieve to start; a cloud-synced folder is refused), holds the projects, each in its own folder with one file. Beside the page it is a tree, as in Explorer: folders, projects, a project's writing folders and writings, a writing's parts and chapters, its Notes by group, To-dos, a Deleted folder, and the project's own files, which open in their program. Projects kept elsewhere are listed under Elsewhere and can be moved in. Folders and projects are renamed and dragged on disk; writings are dragged into folders and order, notes into groups; a Word file can come in as a new writing | M | Done |
+| CH-9 | A library folder, chosen in Settings (Documents\Pensieve to start; a cloud-synced folder is refused), holds the projects, each in its own folder with one file. Beside the page it is a tree, as in Explorer: folders, projects, a project's writing folders and writings, a writing's parts and chapters, its Notes by group, To-dos, a Deleted folder, and the project's own files, which open in their program. Projects kept elsewhere are listed under Elsewhere and can be moved in. Folders and projects are renamed and dragged on disk; writings are dragged into folders and order, notes into groups; a Word, text or Markdown file can come in as a new writing | M | Done |
 | CH-10 | Notes and to-dos belong to the project and are shared by its writings. The tree makes, renames, duplicates, moves and deletes notes, with a + on Notes and on each of its groups | M | Done |
+| CH-11 | New project is a window (owner, 12 October), from Home's + New and its new-project card, the library's + and a library folder's menu: a name, where it goes (the library or one of its folders), and what it starts with: an empty page, a Word, text or Markdown file (which names it, unless she typed a name), or a folder of them, each file its own writing or one book with a chapter for each, in the order Explorer shows them. The files are read before anything is made; a folder's files that can't be read stay out, and she is told which | S | Done |
 
 ### 4.3 Notes and to-dos
 
@@ -128,7 +129,7 @@ said), Not started, Dropped. IDs are fixed; code comments and the backlog refer 
 | SV-5 | Projects live in the library folder (CH-9), never in a cloud-synced folder | M | Done |
 | SV-6 | Export to Word as the page looks (parts, chapters and subheadings as Heading 1, 2 and 3), and an optional Word copy in a chosen folder, kept up to date until it is changed in Word | M | Done |
 | SV-7 | PDF (printing from the Book view), Markdown and plain text | S | Done |
-| SV-8 | Import from Word, split into chapters at its headings | S | Done |
+| SV-8 | Import from Word, text and Markdown, split into chapters at their headings or at lines such as "3. poglavje". Markdown keeps its bold, italics, lists, quotes, links, pictures and footnotes; a blog post (front matter, or text before its first heading) stays one page. Text in Windows' old Central European code page reads with its č, š and ž | S | Done |
 | SV-9 | Backups to a folder that Google Drive syncs, hourly and on close, and a restore from one (Section 7) | S | Done |
 | SV-10 | EPUB export | C | Not started |
 | SV-11 | Copy as clean HTML for a blog, and a Markdown export | S | Done |
@@ -231,7 +232,8 @@ design system said.
   note, to-dos the chapter's or the project's in one list. The toolbar keeps Notes, To-dos, Goals and Link
   a note. Home redone around projects: hers on the left (greeting, the Continue card, a short to-do
   list), every project on the right as cards or the library's tree; no chapter strip, progress bars or
-  recent notes.
+  recent notes. New project is a window, and a project can start from a Word, text or Markdown file or a
+  folder of them (each file a writing, or one book with a chapter for each).
 - **9 Oct:** Earlier versions, a note and the to-dos open in windows like Settings. A note or the to-dos can
   be pinned beside the page, on the right only, as the library keeps the left (since 12 October they open
   there always). The tree has a + for chapters. Smooth typing has its own switch, apart from Gentle mode.

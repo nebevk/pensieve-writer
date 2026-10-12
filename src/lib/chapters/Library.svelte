@@ -3,7 +3,7 @@
   import type { WritingOutline } from "$lib/model";
   import type { NoteCategory } from "$lib/storage/organize";
   import { compactWords } from "$lib/editor/counts";
-  import { collator, fileIcon, folderOf, isInside, isWordFile, parentFolder, projectFile, projectFiles, sameFolder, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "./library";
+  import { collator, fileIcon, folderOf, isDocumentFile, isInside, parentFolder, projectFile, projectFiles, sameFolder, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "./library";
   import { answered, isOpen, setOpen } from "./treeState.svelte";
   import { LONG_PAGE_WORDS } from "./page";
   import TreeMenu, { type MenuItem } from "./TreeMenu.svelte";
@@ -30,8 +30,8 @@
     writingWords: number;
     /** The open writing's chapters, drawn at the depth given; a one-page writing has none to draw. */
     chapterRows?: Snippet<[number]>;
-    /** The header's "New writing", "New project" or "New folder", by the time it was asked. */
-    createRequest?: { kind: "writing" | "project" | "folder"; at: number } | null;
+    /** The header's "New writing" or "New folder", by the time it was asked. */
+    createRequest?: { kind: "writing" | "folder"; at: number } | null;
   } = $props();
 
   type Kind =
@@ -151,20 +151,13 @@
       .reduce((sum, item) => sum + item.chapters.reduce((total, chapter) => total + chapter.words, 0), 0),
   );
 
-  // A name to type for something new, asked for by the header or by Home, once.
+  // A name to type for something new, asked for by the header, once.
   $effect(() => {
     const asked = createRequest;
     if (!asked || asked.at <= answered.header) return;
     answered.header = asked.at;
-    if (asked.kind === "project") startNew("project", "root", library.root);
-    else if (asked.kind === "folder") startNew("libraryFolder", "root", library.root);
+    if (asked.kind === "folder") startNew("libraryFolder", "root", library.root);
     else startNew("writing", openProjectRow, "");
-  });
-  $effect(() => {
-    const asked = library.create;
-    if (!asked || asked.at <= answered.home) return;
-    answered.home = asked.at;
-    startNew("project", "root", asked.parent || library.root);
   });
 
   const rows = $derived.by(() => {
@@ -176,8 +169,7 @@
     const pushInput = (key: string, depth: number) => {
       const edit = editing;
       if (!edit || edit.mode !== "new" || edit.key !== key) return;
-      const icon =
-        edit.what === "project" ? "library" : edit.what === "writing" ? "book" : edit.what === "note" ? "notes" : edit.what === "writingFolder" ? "layers" : "folder";
+      const icon = edit.what === "writing" ? "book" : edit.what === "note" ? "notes" : edit.what === "writingFolder" ? "layers" : "folder";
       list.push({ key: `input:${key}`, depth, kind: "input", name: "", icon, expandable: false, open: false });
     };
     const renamed = (key: string, depth: number, icon: string): boolean => {
@@ -461,8 +453,7 @@
     try {
       let problem: string | null = null;
       if (edit.mode === "new") {
-        if (edit.what === "project") problem = await actions.newProject(edit.target, value);
-        else if (edit.what === "libraryFolder") problem = await actions.newLibraryFolder(edit.target, value);
+        if (edit.what === "libraryFolder") problem = await actions.newLibraryFolder(edit.target, value);
         else if (edit.what === "writing") problem = await actions.newWriting(edit.target, value);
         else if (edit.what === "writingFolder") problem = await actions.newWritingFolder(value);
         else if (edit.what === "note" && edit.category) actions.newNote(edit.category, value);
@@ -510,7 +501,7 @@
     if (row.kind === "file" && row.path) {
       const path = row.path;
       const items: MenuItem[] = [{ label: t("openItem"), run: () => actions.openFile(path) }, reveal(path)];
-      if (isWordFile(row.name)) items.push("rule", { label: t("importAsWriting"), run: () => actions.importWord(path) });
+      if (isDocumentFile(row.name)) items.push("rule", { label: t("importAsWriting"), run: () => actions.importAsWriting(path) });
       return items;
     }
     if ((row.kind === "files" || row.kind === "pfolder") && row.path) return [reveal(row.path)];
@@ -520,7 +511,7 @@
       // The library is read six folders deep; something made deeper than that wouldn't show.
       if (row.depth < LISTED_DEPTH - 1) {
         items.push(
-          { label: t("newProjectTitle"), run: () => startNew("project", row.key, path) },
+          { label: t("newProjectTitle"), run: () => actions.startProject(path) },
           { label: t("newFolderTitle"), run: () => startNew("libraryFolder", row.key, path) },
           "rule",
         );
@@ -799,7 +790,7 @@
       y: event.clientY,
       back: null,
       items: [
-        { label: t("newProjectTitle"), run: () => startNew("project", "root", root) },
+        { label: t("newProjectTitle"), run: () => actions.startProject(root) },
         { label: t("newFolderTitle"), run: () => startNew("libraryFolder", "root", root) },
       ],
     };
@@ -815,7 +806,7 @@
         <input
           bind:value={editing.value}
           use:takeKeyboard
-          aria-label={editing.mode === "rename" ? t("rename") : t(editing.what === "project" ? "newProjectTitle" : editing.what === "writing" ? "newWritingTitle" : editing.what === "note" ? "newNoteTitle" : "newFolderTitle")}
+          aria-label={editing.mode === "rename" ? t("rename") : t(editing.what === "writing" ? "newWritingTitle" : editing.what === "note" ? "newNoteTitle" : "newFolderTitle")}
           aria-invalid={!!editing.error}
           onkeydown={onInputKey}
           onblur={() => void commit()}

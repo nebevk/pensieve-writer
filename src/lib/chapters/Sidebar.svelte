@@ -62,20 +62,20 @@
 
   // A one-page writing has no chapter list: the library shows beside it whichever tab was chosen.
   const shown = $derived(article ? "library" : view);
-  // What the header asked the tree to name: a new writing in the open project, or a new project.
-  let createRequest = $state<{ kind: "writing" | "project" | "folder"; at: number } | null>(null);
+  // What the header asked the tree to name: a new writing in the open project, or a new folder.
+  let createRequest = $state<{ kind: "writing" | "folder"; at: number } | null>(null);
 
   /** The library's "+": what to make, said in words, as icons alone can't tell a writing, a project and a folder apart. */
   function openNewMenu(button: HTMLElement) {
     const box = button.getBoundingClientRect();
-    const ask = (kind: "writing" | "project" | "folder") => () => (createRequest = { kind, at: Date.now() });
+    const ask = (kind: "writing" | "folder") => () => (createRequest = { kind, at: Date.now() });
     chapterMenu = {
       x: box.left,
       y: box.bottom + 2,
       back: button,
       items: [
         { label: t("newWritingTitle"), run: ask("writing") },
-        { label: t("newProjectTitle"), run: ask("project") },
+        { label: t("newProjectTitle"), run: () => actions.startProject("") },
         { label: t("newFolderTitle"), run: ask("folder") },
         "rule",
         { label: t("open"), run: actions.openAnother },
