@@ -12,7 +12,7 @@
   import Icon from "$lib/editor/Icon.svelte";
   import { chapterTitle, isWelcomePage } from "$lib/chapters/welcome";
   import { WRITER } from "$lib/writer";
-  import { randomQuote } from "$lib/quotes";
+  import { randomVerse, verse } from "$lib/quotes";
   import { listTasks, saveTask, type Task } from "$lib/storage/organize";
   import ChecklistItem from "./ChecklistItem.svelte";
 
@@ -72,8 +72,9 @@
     books?: KnownProject[];
   } = $props();
 
-  // A short verse for Eva under her greeting, a different one each time Home opens.
-  const quote = randomQuote();
+  // A short verse for Eva under her greeting, a different one each time Home opens, in her language.
+  const verseAt = randomVerse();
+  const quote = $derived(verse(verseAt, ui.language));
   const SOUNDS: Record<Exclude<AmbienceName, "off">, { key: UiKey; icon: string }> = {
     rain: { key: "soundRain", icon: "rain" },
     fire: { key: "soundFireplace", icon: "flame" },

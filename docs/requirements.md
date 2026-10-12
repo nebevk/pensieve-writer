@@ -105,7 +105,7 @@ said), Not started, Dropped. IDs are fixed; code comments and the backlog refer 
 | VW-1 | Write: the page with the library or chapter list, the toolbar (the full one until she closes it; on a laptop's screen it folds the alignments into one menu, as Word does) and the panel. The paper is one continuous page, or A4 or A5 sheets on which the text flows from sheet to sheet, each numbered; it is chosen in Settings and in the toolbar's View group, which also opens Zen. The Word file takes the same paper | M | Done |
 | VW-2 | Book: read-only, set as a printed book: facing pages with page 1 on the right, a book's margins, justified text with first-line indents and no line left alone at a page's foot or head, each chapter on a new page, running heads and page numbers | S | Done |
 | VW-3 | Outline: chapters as cards or a list (remembered), each with its number, title, words toward its goal, synopsis and part; dragged into order or moved with the arrow keys, renamed in place, opened in Write; a new chapter named where it appears; parts as headings | S | Done |
-| VW-4 | Home, around projects (owner, 12 October). On the left: the date and a greeting naming the chapter Continue opens, a verse, the words written today and in the book, the Continue card with the last lines she wrote (Continue writing opens what was open last; Zen beside it), and a short list of open to-dos. On the right: every project, as cards (its name, its writings, their words, when it was last written in; the open one marked) with one for a new project, or as the library's tree, whose chapters, notes and to-dos open in Write; the choice is remembered. No chapter strip or progress bars | M | Done |
+| VW-4 | Home, around projects (owner, 12 October). On the left: the date and a greeting naming the chapter Continue opens, a verse (the King James Bible in English, the Slovenski standardni prevod in Slovenian, marked "(SSP)" as its publisher asks), the words written today and in the book, the Continue card with the last lines she wrote (Continue writing opens what was open last; Zen beside it), and a short list of open to-dos. On the right: every project, as cards (its name, its writings, their words, when it was last written in; the open one marked) with one for a new project, or as the library's tree, whose chapters, notes and to-dos open in Write; the choice is remembered. No chapter strip or progress bars | M | Done |
 | VW-5 | A Book view she can type in | C | Not started; Pages in Write (VW-1) may be enough |
 
 ### 4.5 Zen
@@ -233,7 +233,8 @@ design system said.
   a note. Home redone around projects: hers on the left (greeting, the Continue card, a short to-do
   list), every project on the right as cards or the library's tree; no chapter strip, progress bars or
   recent notes. New project is a window, and a project can start from a Word, text or Markdown file or a
-  folder of them (each file a writing, or one book with a chapter for each).
+  folder of them (each file a writing, or one book with a chapter for each). Home's verse in Slovenian
+  from the SSP.
 - **9 Oct:** Earlier versions, a note and the to-dos open in windows like Settings. A note or the to-dos can
   be pinned beside the page, on the right only, as the library keeps the left (since 12 October they open
   there always). The tree has a + for chapters. Smooth typing has its own switch, apart from Gentle mode.
