@@ -16,7 +16,7 @@ Each item keeps its ID so it can be asked for by name; a new one gets the next f
 | **IMP-6** Pictures stored once | Pictures are shrunk to 1600 px when put in, but still kept inside the chapter, so every save and each of the up to 78 automatic snapshots copies them again. Keep them in a table of their own that chapters and snapshots refer to | Partial | P2 |
 | **IMP-7** A restore drill | Tests cover the restore logic and backup files (with č, š, ž), but none writes a book to a real database, restores a snapshot and a Drive backup, and compares the text | Partial | P2 |
 | **WIN-1** One window bar | The app draws its own window bar (Windows' is off). Check it in the desktop window: dragging, a double-click to maximise, the three buttons, and resizing from the edges | Check | P2 |
-| **IMP-83** Projects, what is left | Home is to be redone around projects (VW-4, owner, later), and the Word copy is named after the writing only, so two projects with a writing of the same name would share one | Partial | P2 |
+| **IMP-83** Projects, what is left | The Word copy is named after the writing only, so two projects with a writing of the same name would share one (Home was redone around projects on 12 October) | Partial | P2 |
 | **TOOL-5** Text colour and highlight (ED-5) | The design has Word's "A" with a colour bar and a highlight swatch; each applies one fixed colour, with no choice | Partial | P3 |
 | **TOOL-6** Font and size (ED-5) | The toolbar's font and size change the whole manuscript (as Settings does), not the selected text as in Word | Differs | P3 |
 | **WIN-3** Language badge | The design's badge shows the project's writing language; the app's marks the selected text, or the open chapter, as EN or SL. Decide which | Differs | P3 |
@@ -44,6 +44,8 @@ On purpose: keep them when matching the design.
 - **Write:** the panel shows one list at a time; no chapter statuses; both side lists have a hide
   button; scrollbars are slim; the library's + has a menu in words; sparks drift over the desk in Candlelit.
 - **The brand:** the phoenix in the app's bars, not a "P" square.
+- **Home:** hers on the left (the greeting, the Continue card, a short to-do list), every project on the
+  right as cards or the library's tree; no chapter strip, recent notes or progress bars.
 
 ## Parked ideas
 

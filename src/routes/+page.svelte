@@ -35,7 +35,7 @@
   import { chapterTitle } from "$lib/chapters/welcome";
   import { applyPage, chapterBreak, composePage, heldHeading, isLeadLine, joinWriting, leadLines, readPage, splitWriting, startsPart, textStart, withoutBreaks } from "$lib/chapters/page";
   import { summarize, summarizeOutline, summarizeProject } from "$lib/chapters/progress";
-  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, joinPath, lastName, looksSynced, parentFolder, projectFile, projectFiles, projectName, rebasePath, sameFolder, type LibraryActions, type LibraryEntry } from "$lib/chapters/library";
+  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, joinPath, lastName, looksSynced, parentFolder, projectFile, projectFiles, projectName, rebasePath, sameFolder, type LibraryActions, type LibraryEntry, type LibraryView } from "$lib/chapters/library";
   import { moveOpen } from "$lib/chapters/treeState.svelte";
   import { notesInChapter } from "$lib/chapters/mentions";
   import { panelNotes, panelOrder } from "$lib/views/panelNotes";
@@ -2616,6 +2616,23 @@
     openAnother: () => void openAnotherProject(),
   };
 
+  /** The library's tree on Home: what it opens, it opens in Write (another project goes there by itself). */
+  const homeLibraryActions: LibraryActions = {
+    ...libraryActions,
+    openWriting: (path, id, chapterId) =>
+      void openFromLibrary(path, { writingId: id, chapterId }).then(() => {
+        if (writingId === id) view = "write";
+      }),
+    openNote: (id) => {
+      view = "write";
+      showNote(id);
+    },
+    openTodos: () => {
+      view = "write";
+      showTodos("all");
+    },
+  };
+
   type SampleProject = {
     slug: string;
     /** Where it goes in the library: "" for the library itself, or a folder in it. */
@@ -2743,6 +2760,17 @@
 
   /** Lets the tree start naming something new, as Home's "+ New" asks. */
   let libraryCreate = $state<{ kind: "project"; parent: string; at: number } | null>(null);
+  // The library as its trees show it, beside the page and on Home.
+  const libraryView = $derived<LibraryView>({
+    root: libraryRoot,
+    entries: libraryEntries,
+    known: prefs.knownProjects,
+    currentPath: projectLocation || prefs.projectPath,
+    shelf,
+    notes: bookNotes,
+    openTodos: bookTasks.filter((task) => task.todoState !== "done").length,
+    create: libraryCreate,
+  });
 
   /** The library folder from Settings: never in a synced folder, never with the backups. */
   async function pickLibraryFolder() {
@@ -3039,16 +3067,7 @@
     onHide={() => (collapsed = true)}
     view={prefs.sidebarView}
     onView={(next) => (prefs = { ...prefs, sidebarView: next })}
-    library={{
-      root: libraryRoot,
-      entries: libraryEntries,
-      known: prefs.knownProjects,
-      currentPath: projectLocation || prefs.projectPath,
-      shelf,
-      notes: bookNotes,
-      openTodos: bookTasks.filter((task) => task.todoState !== "done").length,
-      create: libraryCreate,
-    }}
+    library={libraryView}
     {writingId}
     writingTitle={writing?.title ?? ""}
     writingSplit={writing?.split ?? true}
@@ -3330,8 +3349,13 @@
           {prefs}
           now={clock}
           {wordsToday}
+          layout={prefs.homeLayout}
+          onLayout={(layout) => (prefs = { ...prefs, homeLayout: layout })}
+          library={libraryView}
+          actions={homeLibraryActions}
+          {writingWords}
           onContinue={(chapterId) => {
-            // A chapter from the strip opens in the writing on Home; Continue opens what was open last.
+            // A chapter from Home's tree opens in the writing on Home; Continue opens what was open last.
             if (chapterId) {
               activeId = chapterId;
               view = "write";
@@ -3345,18 +3369,12 @@
             } else void continueWriting(true);
           }}
           onOpenTodos={() => (view = "todos")}
-          onOpenNotes={() => (view = "notes")}
-          onOpenNote={(id, title) => {
-            view = "notes";
-            noteOpenRequest = { id, title, at: Date.now() };
-          }}
           onAmbience={() => {
             settingsSection = "Ambience";
             settingsReturn = document.activeElement instanceof HTMLElement ? document.activeElement : null;
             settingsOpen = true;
           }}
           onSaveError={reportSaveError}
-          onRename={renameOpenWriting}
           onOpenProject={() => void openAnotherProject()}
           onStartProject={startNewProject}
           books={homeProjects}

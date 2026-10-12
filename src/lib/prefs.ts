@@ -66,6 +66,8 @@ export type Prefs = {
   panel: "" | "todos" | "notes" | "goals";
   sidebarView: SidebarView;
   outlineLayout: OutlineLayout;
+  /** Home's projects: cards, or the library's tree. */
+  homeLayout: OutlineLayout;
   /** Words to write each day; 0 means no goal. */
   dailyGoal: number;
   /** A pomodoro's minutes of writing, and of the break after them. */
@@ -157,6 +159,7 @@ export const defaultPrefs = (): Prefs => ({
   panel: "",
   sidebarView: "chapters",
   outlineLayout: "grid",
+  homeLayout: "grid",
   dailyGoal: 500,
   pomodoroFocus: 25,
   pomodoroBreak: 5,
@@ -213,6 +216,7 @@ function fromStored(raw: string): Prefs {
     panel,
     sidebarView: rest.sidebarView === "library" ? "library" : "chapters",
     outlineLayout: rest.outlineLayout === "list" ? "list" : "grid",
+    homeLayout: rest.homeLayout === "list" ? "list" : "grid",
     paper: rest.paper === "pages" ? "pages" : "continuous",
     paperSize: rest.paperSize === "a5" ? "a5" : "a4",
     manuscriptPt: typeof rest.manuscriptPt === "number" ? rest.manuscriptPt : fromPixels,

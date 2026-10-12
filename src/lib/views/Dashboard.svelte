@@ -1,9 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { bookProgress, summarize, type ProjectSummary } from "$lib/chapters/progress";
+  import { summarize, type ProjectSummary } from "$lib/chapters/progress";
   import { compactWords, wordsFor } from "$lib/editor/counts";
   import { roman } from "$lib/chapters/labels";
-  import type { AmbienceName, KnownProject, Prefs } from "$lib/prefs";
+  import Library from "$lib/chapters/Library.svelte";
+  import type { LibraryActions, LibraryView } from "$lib/chapters/library";
+  import type { AmbienceName, KnownProject, OutlineLayout, Prefs } from "$lib/prefs";
   import type { Chapter, Writing } from "$lib/model";
   import { isUntitled, type UiKey } from "$lib/i18n";
   import { ago, locale, num, plural, t, ui } from "$lib/ui.svelte";
@@ -11,9 +13,8 @@
   import { chapterTitle, isWelcomePage } from "$lib/chapters/welcome";
   import { WRITER } from "$lib/writer";
   import { randomQuote } from "$lib/quotes";
-  import { listNotes, listTasks, saveTask, type Note, type NoteCategory, type Task } from "$lib/storage/organize";
+  import { listTasks, saveTask, type Task } from "$lib/storage/organize";
   import ChecklistItem from "./ChecklistItem.svelte";
-  import NoteMini from "./NoteMini.svelte";
 
   let {
     writing,
@@ -23,15 +24,17 @@
     prefs,
     now = Date.now(),
     wordsToday = 0,
+    layout = "grid",
+    onLayout,
+    library,
+    actions,
+    writingWords = 0,
     onContinue,
     onZen,
-    onRename,
     onOpenProject,
     onStartProject,
     onOpenBook,
     onOpenTodos,
-    onOpenNotes,
-    onOpenNote,
     onAmbience,
     onSaveError,
     currentPath = "",
@@ -48,15 +51,20 @@
     /** The page's minute clock, for the time beside the date. */
     now?: number;
     wordsToday?: number;
+    /** The projects as cards, or as the library's tree (remembered). */
+    layout?: OutlineLayout;
+    onLayout: (layout: OutlineLayout) => void;
+    /** The library, for its tree; and what its rows do from Home. */
+    library: LibraryView;
+    actions: LibraryActions;
+    /** The open writing's words, counted as she types. */
+    writingWords?: number;
     onContinue: (chapterId: string | null) => void;
     onZen: (chapterId: string | null) => void;
-    onRename: (title: string) => void;
     onOpenProject: () => void;
     onStartProject: () => void;
     onOpenBook: (path: string) => void;
     onOpenTodos: () => void;
-    onOpenNotes: () => void;
-    onOpenNote: (id: string, title: string) => void;
     /** Opens Settings at the ambience. */
     onAmbience: () => void;
     onSaveError?: (message: string) => void;
@@ -66,12 +74,6 @@
 
   // A short verse for Eva under her greeting, a different one each time Home opens.
   const quote = randomQuote();
-  const NOTE_KINDS: Record<NoteCategory, UiKey> = {
-    characters: "kindCharacter",
-    places: "kindPlace",
-    research: "kindResearch",
-    ideas: "kindNote",
-  };
   const SOUNDS: Record<Exclude<AmbienceName, "off">, { key: UiKey; icon: string }> = {
     rain: { key: "soundRain", icon: "rain" },
     fire: { key: "soundFireplace", icon: "flame" },
@@ -79,18 +81,12 @@
     piano: { key: "soundPiano", icon: "" },
   };
   const NEXT_STATE: Record<Task["todoState"], Task["todoState"]> = { todo: "doing", doing: "done", done: "todo" };
+  // A short list on Home; the rest are a link away.
+  const TODOS_SHOWN = 5;
 
-  let renaming = $state(false);
-  let titleDraft = $state("");
-  let titleInput = $state<HTMLInputElement | undefined>(undefined);
   let menuOpen = $state(false);
-  let notes = $state<Note[]>([]);
   let tasks = $state<Task[]>([]);
   let message = $state("");
-
-  $effect(() => {
-    if (renaming) titleInput?.focus();
-  });
 
   const chapters = $derived([...writing.chapters].sort((a, b) => a.position - b.position));
   const summary = $derived(summarize(writing));
@@ -110,12 +106,6 @@
       .filter((task) => task.todoState !== "done")
       .sort((a, b) => Number(b.todoState === "doing") - Number(a.todoState === "doing")),
   );
-  const recentNotes = $derived([...notes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3));
-  // How many chapters, and how many are still empty: no statuses for now (owner, 8 October).
-  const chapterCounts = $derived.by(() => {
-    const empty = chapters.filter((chapter) => statusOf(chapter) === "empty").length;
-    return [plural("chapters", chapters.length), ...(empty > 0 ? [`${num(empty)} ${t("statusEmpty").toLowerCase()}`] : [])];
-  });
   const sound = $derived(prefs.ambience === "off" ? null : SOUNDS[prefs.ambience]);
 
   function paragraphs(chapter: Chapter | null): string[] {
@@ -124,10 +114,6 @@
       .split(/\n+/)
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
-  }
-
-  function statusOf(chapter: Chapter): "written" | "empty" {
-    return chapter.plainText.trim() ? "written" : "empty";
   }
 
   /**
@@ -152,48 +138,11 @@
     return `${text.slice(0, max - 1).trimEnd()}…`;
   }
 
-  /** Today, yesterday, or the date. */
-  function when(iso: string): string {
-    const then = new Date(iso).getTime();
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
-    if (then >= start.getTime()) return t("today");
-    if (then >= start.getTime() - 24 * 60 * 60 * 1000) {
-      const yesterday = t("yesterday");
-      return yesterday.charAt(0).toUpperCase() + yesterday.slice(1);
-    }
-    return new Date(iso).toLocaleDateString(locale(), { day: "numeric", month: "short" });
-  }
-
-  /** What a project row says: how many writings, and their words. */
-  function rowStatus(project: ProjectSummary): string {
+  /** What a project's card says: how many writings, and their words. */
+  function projectWords(project: ProjectSummary): string {
     // One remembered before projects held writings knows its words, not yet its writings.
     if (project.writings.length === 0) return plural("words", project.words);
     return `${plural("writings", project.writings.length)} · ${plural("words", project.words)}`;
-  }
-
-  /** How far along a project is: its one writing's progress, or none to show for several. */
-  function rowProgress(project: ProjectSummary | undefined): number {
-    return project?.writings.length === 1 ? bookProgress(project.writings[0]) : 0;
-  }
-
-  function taskMeta(task: Task): string {
-    const index = chapters.findIndex((chapter) => chapter.id === task.chapterId);
-    // A to-do on another writing's chapter says nothing about where; one on no chapter is the project's.
-    const chapter = index >= 0 ? `${index + 1} · ${chapters[index].title}` : task.chapterId ? "" : t("wholeProject");
-    const note = task.noteId ? notes.find((item) => item.id === task.noteId)?.title : "";
-    return note ? (chapter ? `${chapter} · ${note}` : note) : chapter;
-  }
-
-  function startRename() {
-    titleDraft = writing.title;
-    renaming = true;
-  }
-
-  function finishRename() {
-    if (!renaming) return;
-    renaming = false;
-    onRename(titleDraft);
   }
 
   async function toggle(task: Task) {
@@ -213,33 +162,55 @@
 
   async function refresh() {
     try {
-      [notes, tasks] = await Promise.all([listNotes(), listTasks()]);
+      tasks = await listTasks();
     } catch (error) {
       message = error instanceof Error ? error.message : t("homeLoadFailed");
     }
   }
 </script>
 
-{#snippet projectRow(title: string, project: ProjectSummary | undefined, onclick: () => void)}
-  <!-- A project as a tiny title page, with its writings and words (design round 6; projects since 7 October). -->
-  <button type="button" class="project" {onclick}>
-    <span class="page" class:stacked={(project?.writings.length ?? 0) > 1}>
-      {title.trim().charAt(0) || "·"}
-    </span>
-    <span class="about">
-      <span class="line">
-        <span class="name">{title}</span>
+<!-- A project as a little title page: its name, its writings, their words, when it was last written in. -->
+{#snippet card(title: string, project: ProjectSummary | undefined, current: boolean, onclick: () => void)}
+  <button type="button" class="card project" class:current {onclick}>
+    {#if current}<span class="open">{t("openNow")}</span>{/if}
+    <span class="title name">{title}</span>
+    <span class="rule" aria-hidden="true"></span>
+    {#if project && project.writings.length > 0}
+      <span class="writings">
+        {#each project.writings.slice(0, 3) as item (item.id)}
+          <span class="writing"><Icon name={item.split ? "book" : "fileText"} />{item.title}</span>
+        {/each}
+        {#if project.writings.length > 3}
+          <span class="more">{t("andMore", { n: project.writings.length - 3 })}</span>
+        {/if}
       </span>
-      <span class="bar" aria-hidden="true">
-        <span style:width="{Math.round(rowProgress(project) * 100)}%"></span>
-      </span>
-      <span class="kind-line">{project ? rowStatus(project) : t("book")}</span>
+    {/if}
+    <span class="meta">
+      <span>{project ? projectWords(project) : t("book")}</span>
+      {#if project?.editedAt}<span>{t("editedAgo", { ago: ago(project.editedAt) })}</span>{/if}
     </span>
   </button>
 {/snippet}
 
+<!-- The open writing's chapters in the tree, each opening in Write. -->
+{#snippet chapterRows(depth: number)}
+  <ul class="chapters">
+    {#each chapters as chapter, index (chapter.id)}
+      <li>
+        <button type="button" class="tree-row" style:--depth={depth} title={chapter.title} onclick={() => onContinue(chapter.id)}>
+          <span class="twist" aria-hidden="true"></span>
+          <span class="num">{index + 1}</span>
+          <span class="chapter-name" class:untitled={isUntitled(chapter.title)}>{chapter.title}</span>
+          <span class="words">{compactWords(wordsFor(chapter.id, chapter.plainText))}</span>
+        </button>
+      </li>
+    {/each}
+  </ul>
+{/snippet}
+
+<!-- Home (owner, 12 October): on the left the greeting, what she wrote last and her to-dos; on the right her projects. -->
 <section class="home">
-  <div class="hero">
+  <div class="left">
     <div class="intro">
       <p class="date">
         {new Date(now).toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long" })} ·
@@ -260,66 +231,28 @@
           <p class="label">{t("inBook")}</p>
         </div>
       </div>
-
-      <!-- The open book's chapters as bars, written or still empty; each opens its chapter. -->
-      <div class="strip">
-        <div class="strip-head">
-          {#if renaming}
-            <input
-              class="title-edit"
-              aria-label={t("projectTitle")}
-              bind:this={titleInput}
-              bind:value={titleDraft}
-              onkeydown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  finishRename();
-                }
-              }}
-              onblur={finishRename}
-            />
-          {:else}
-            <button type="button" class="book-title" title={t("renameBook")} onclick={startRename}>{writing.title}</button>
-          {/if}
-          <span class="counts">{chapterCounts.join(" · ")}</span>
-        </div>
-        <div class="bars" class:many={chapters.length > 12}>
-          {#each chapters as chapter, index (chapter.id)}
-            <button type="button" class="chapter" title={`${index + 1} · ${chapter.title}`} onclick={() => onContinue(chapter.id)}>
-              <span class="mark {statusOf(chapter)}"></span>
-              <span class="chapter-name" class:current={chapter.id === latest?.id} class:untitled={isUntitled(chapter.title)}>
-                <span class="n">{index + 1}</span>
-                {chapter.title}
-              </span>
-              <span class="words">{compactWords(wordsFor(chapter.id, chapter.plainText))}</span>
-            </button>
-          {/each}
-        </div>
-      </div>
     </div>
 
-    <div class="side">
-      <div class="continue">
-        <div class="sheet">
-          <div class="running">
-            <span>{writing.title}</span>
-            <!-- The chapter in Roman numerals, as the page's own running head writes it. -->
-            <span>{latest ? t("chapterShort", { n: roman(chapters.findIndex((chapter) => chapter.id === latest.id) + 1) }) : ""}</span>
-          </div>
-          <div class="excerpt">
-            {#if previousLine}
-              <p class="faded">{clip(previousLine, 140)}</p>
-            {/if}
-            <p>{currentLine ? clip(currentLine, 160) : t("blankPage")}<span class="caret" aria-hidden="true"></span></p>
-          </div>
-          <div class="foot">
-            <span class="edited">{latest ? t("editedAgo", { ago: ago(latest.updatedAt) }) : ""}</span>
-            <!-- The two buttons stay together: short of room, they go under the time, not into it. -->
-            <span class="buttons">
-              <button type="button" class="zen" onclick={() => onZen(latest?.id ?? null)}><Icon name="moon" />{t("zen")}</button>
-              <button type="button" class="go" onclick={() => onContinue(latest?.id ?? null)}>{t("continue")} <Icon name="arrowRight" /></button>
-            </span>
-          </div>
+    <div class="continue">
+      <div class="sheet">
+        <div class="running">
+          <span>{writing.title}</span>
+          <!-- The chapter in Roman numerals, as the page's own running head writes it. -->
+          <span>{latest ? t("chapterShort", { n: roman(chapters.findIndex((chapter) => chapter.id === latest.id) + 1) }) : ""}</span>
+        </div>
+        <div class="excerpt">
+          {#if previousLine}
+            <p class="faded">{clip(previousLine, 140)}</p>
+          {/if}
+          <p>{currentLine ? clip(currentLine, 160) : t("blankPage")}<span class="caret" aria-hidden="true"></span></p>
+        </div>
+        <div class="foot">
+          <span class="edited">{latest ? t("editedAgo", { ago: ago(latest.updatedAt) }) : ""}</span>
+          <!-- The two buttons stay together: short of room, they go under the time, not into it. -->
+          <span class="buttons">
+            <button type="button" class="zen" onclick={() => onZen(latest?.id ?? null)}><Icon name="moon" />{t("zen")}</button>
+            <button type="button" class="go" onclick={() => onContinue(latest?.id ?? null)}>{t("continue")} <Icon name="arrowRight" /></button>
+          </span>
         </div>
       </div>
       <p class="sound">
@@ -328,95 +261,101 @@
         <button type="button" onclick={onAmbience}>{t("change")}</button>
       </p>
     </div>
-  </div>
 
-  <div class="columns">
-    <div class="column">
-      <div class="column-head">
+    <div class="todos">
+      <div class="head">
         <h2>{t("openTodosFilter")}</h2>
         <span class="count">{openTasks.length}</span>
         <button type="button" class="link" onclick={onOpenTodos}>{t("allTodos")}</button>
       </div>
-      {#each openTasks.slice(0, 4) as task (task.id)}
-        <ChecklistItem text={task.title} state={task.todoState} meta={taskMeta(task)} truncate flush onToggle={() => void toggle(task)} />
+      {#each openTasks.slice(0, TODOS_SHOWN) as task (task.id)}
+        <ChecklistItem text={task.title} state={task.todoState} truncate flush onToggle={() => void toggle(task)} />
       {:else}
         <p class="empty">{t("noOpenTodos")}</p>
       {/each}
     </div>
+  </div>
 
-    <div class="column">
-      <div class="column-head">
-        <h2>{t("recentNotes")}</h2>
-        <span class="count">{notes.length}</span>
-        <button type="button" class="link" onclick={onOpenNotes}>{t("allNotes")}</button>
+  <div class="right">
+    <div class="head">
+      <h2>{t("projects")}</h2>
+      <span class="count">{otherBooks.length + 1}</span>
+      <div class="switch" role="radiogroup" aria-label={t("homeLayout")}>
+        <button type="button" role="radio" aria-checked={layout === "grid"} class:on={layout === "grid"} title={t("outlineGrid")} onclick={() => onLayout("grid")}>
+          <Icon name="layoutGrid" />{t("outlineGrid")}
+        </button>
+        <button type="button" role="radio" aria-checked={layout === "list"} class:on={layout === "list"} title={t("outlineList")} onclick={() => onLayout("list")}>
+          <Icon name="list" />{t("outlineList")}
+        </button>
       </div>
-      <div class="notes">
-        {#each recentNotes as note (note.id)}
-          <NoteMini
-            variant="card"
-            kind={t(NOTE_KINDS[note.category])}
-            title={note.title}
-            meta={when(note.updatedAt)}
-            onclick={() => onOpenNote(note.id, note.title)}
-          />
-        {:else}
-          <p class="empty">{t("noNotesYet")}</p>
+      <div
+        class="menu-wrap"
+        role="presentation"
+        onkeydown={(event) => {
+          if (event.key === "Escape" && menuOpen) {
+            event.stopPropagation();
+            menuOpen = false;
+          }
+        }}
+        onfocusout={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) menuOpen = false;
+        }}
+      >
+        <button type="button" class="link" aria-haspopup="menu" aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}>
+          {t("newProject")}
+        </button>
+        {#if menuOpen}
+          <div class="menu" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              onclick={() => {
+                menuOpen = false;
+                onStartProject();
+              }}
+            >
+              {t("newProjectTitle")}
+            </button>
+            <span class="menu-rule" aria-hidden="true"></span>
+            <button
+              type="button"
+              role="menuitem"
+              onclick={() => {
+                menuOpen = false;
+                onOpenProject();
+              }}
+            >
+              {t("open")}
+            </button>
+          </div>
+        {/if}
+      </div>
+    </div>
+
+    {#if layout === "list"}
+      <!-- The library's own tree: folders, projects, writings, notes and her files, as beside the page. -->
+      <div class="tree">
+        <Library
+          {library}
+          {actions}
+          writingId={writing.id}
+          writingTitle={writing.title}
+          writingSplit={writing.split}
+          {writingWords}
+          chapterRows={writing.split ? chapterRows : undefined}
+        />
+      </div>
+    {:else}
+      <div class="grid">
+        {@render card(projectTitle || writing.title, openSummary, true, () => onContinue(null))}
+        {#each otherBooks as book (book.path)}
+          {@render card(book.title, book.summary, false, () => onOpenBook(book.path))}
         {/each}
+        <button type="button" class="card new" onclick={onStartProject}>
+          <Icon name="plus" />{t("newProjectTitle")}
+        </button>
       </div>
-    </div>
-
-    <div class="column">
-      <div class="column-head">
-        <h2>{t("projects")}</h2>
-        <span class="count">{otherBooks.length + 1}</span>
-        <div
-          class="menu-wrap"
-          role="presentation"
-          onkeydown={(event) => {
-            if (event.key === "Escape" && menuOpen) {
-              event.stopPropagation();
-              menuOpen = false;
-            }
-          }}
-          onfocusout={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) menuOpen = false;
-          }}
-        >
-          <button type="button" class="link" aria-haspopup="menu" aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}>
-            {t("newProject")}
-          </button>
-          {#if menuOpen}
-            <div class="menu" role="menu">
-              <button
-                type="button"
-                role="menuitem"
-                onclick={() => {
-                  menuOpen = false;
-                  onStartProject();
-                }}
-              >
-                {t("newProjectTitle")}
-              </button>
-              <span class="rule" aria-hidden="true"></span>
-              <button
-                type="button"
-                role="menuitem"
-                onclick={() => {
-                  menuOpen = false;
-                  onOpenProject();
-                }}
-              >
-                {t("open")}
-              </button>
-            </div>
-          {/if}
-        </div>
-      </div>
-      {@render projectRow(projectTitle || writing.title, openSummary, () => onContinue(null))}
-      {#each otherBooks as book (book.path)}
-        {@render projectRow(book.title, book.summary, () => onOpenBook(book.path))}
-      {/each}
-    </div>
+    {/if}
   </div>
 
   {#if message}
@@ -425,25 +364,34 @@
 </section>
 
 <style>
+  /* Two columns: hers on the left, her projects on the right; one under the other on a narrow window. */
   .home {
     flex: 1;
     min-height: 0;
     overflow: auto;
     position: relative;
+    display: grid;
+    grid-template-columns: minmax(360px, 500px) minmax(0, 1fr);
+    align-items: start;
+    gap: 48px;
+    padding: 36px 56px 48px;
     color: var(--pv-text);
   }
 
-  .hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(300px, 440px);
-    gap: 56px;
-    padding: 36px 64px 0;
+  .left {
+    display: flex;
+    flex-direction: column;
+    gap: 26px;
+    min-width: 0;
+  }
+
+  .right {
+    min-width: 0;
   }
 
   .intro {
     display: flex;
     flex-direction: column;
-    min-width: 0;
   }
 
   .date {
@@ -455,27 +403,27 @@
     color: var(--pv-text-faint);
   }
 
+  /* The greeting is quieter than the verse under it (owner, 12 October). */
   h1 {
-    margin: 12px 0 0;
-    max-width: 560px;
+    margin: 10px 0 0;
     font-family: var(--pv-font-heading);
-    font-size: 46px;
+    font-size: 30px;
     font-weight: 400;
-    line-height: 1.08;
+    line-height: 1.15;
     text-wrap: pretty;
   }
 
   .quote {
-    margin: 10px 0 0;
-    max-width: 34rem;
+    margin: 16px 0 0;
   }
 
   .quote p {
     margin: 0;
     font-family: var(--pv-font-manuscript);
-    font-size: 17px;
-    line-height: 1.45;
-    color: var(--pv-text-2);
+    font-size: 24px;
+    line-height: 1.4;
+    color: var(--pv-text);
+    text-wrap: pretty;
   }
 
   .quote footer {
@@ -509,125 +457,12 @@
     color: var(--pv-text-subtle);
   }
 
-  .strip {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-top: 18px;
-    padding-top: 16px;
-    border-top: 1px solid var(--pv-divider);
-  }
-
-  .strip-head {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    font-size: var(--pv-text-md);
-  }
-
-  .book-title,
-  .title-edit {
-    border: 0;
-    padding: 0;
-    background: transparent;
-    color: var(--pv-text);
-    font: inherit;
-    font-weight: 600;
-  }
-
-  .book-title:hover {
-    text-decoration: underline;
-    text-decoration-color: var(--pv-line-strong);
-  }
-
-  .title-edit {
-    min-width: 12rem;
-    border-bottom: 1px solid var(--pv-line-strong);
-  }
-
-  .counts {
-    color: var(--pv-text-faint);
-  }
-
-  .bars {
-    display: flex;
-    gap: 6px;
-  }
-
-  .chapter {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: 7px;
-    min-width: 0;
-    border: 0;
-    padding: 0;
-    background: transparent;
-    color: inherit;
-    text-align: left;
-  }
-
-  .mark {
-    height: 6px;
-    border-radius: 1px;
-  }
-
-  /* A chapter with text in it; no statuses for now (owner, 8 October). */
-  .mark.written {
-    background: color-mix(in oklch, var(--pv-text) 30%, transparent);
-  }
-
-  .mark.empty {
-    border: 1.5px dashed var(--pv-empty);
-  }
-
-  .chapter:hover .mark {
-    filter: brightness(1.08);
-  }
-
-  .chapter-name {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    font-size: 12px;
-    color: var(--pv-text);
-  }
-
-  .chapter-name.current {
-    font-weight: 600;
-  }
-
-  .chapter-name.untitled {
-    font-style: italic;
-    color: var(--pv-text-faint);
-  }
-
-  .n {
-    font-weight: 400;
-    color: var(--pv-text-faint);
-  }
-
-  .words {
-    margin-top: -4px;
-    font-size: 11px;
-    color: var(--pv-text-faint);
-  }
-
-  /* With many chapters, the bars are enough; each one's name shows on hover. */
-  .bars.many .chapter-name,
-  .bars.many .words {
-    display: none;
-  }
-
-  .side {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
   /* The design's 250px card, taller when a long paragraph or Slovenian's longer words need it, never spilling. */
   .continue {
     position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
 
   .sheet {
@@ -783,27 +618,16 @@
     text-decoration: underline;
   }
 
-  .columns {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 44px;
-    padding: 30px 64px 0;
-  }
-
-  .column {
-    min-width: 0;
-  }
-
-  .column-head {
+  .head {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 10px;
     margin-bottom: 12px;
     padding-bottom: 12px;
     border-bottom: 1px solid var(--pv-divider);
   }
 
-  .column-head h2 {
+  .head h2 {
     margin: 0;
     font-family: var(--pv-font-heading);
     font-size: 19px;
@@ -830,20 +654,49 @@
     text-decoration: underline;
   }
 
-  .notes {
-    display: flex;
-    flex-direction: column;
-    gap: 9px;
-  }
-
   .empty {
     margin: 0;
     font-size: var(--pv-text-md);
     color: var(--pv-text-faint);
   }
 
+  .switch {
+    display: flex;
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-sm);
+    overflow: hidden;
+  }
+
+  .switch button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border: 0;
+    background: transparent;
+    color: var(--pv-text);
+    font-size: var(--pv-text-md);
+  }
+
+  .switch button :global(svg) {
+    width: 14px;
+    height: 14px;
+  }
+
+  .switch button.on {
+    background: var(--pv-mark-bg);
+    color: var(--pv-mark-fg);
+    font-weight: 600;
+  }
+
+  .switch button:not(.on):hover {
+    background: var(--pv-selected);
+  }
+
   .menu-wrap {
     position: relative;
+    margin-left: 6px;
   }
 
   .menu {
@@ -879,93 +732,173 @@
     background: var(--pv-pressed);
   }
 
-  .menu .rule {
+  .menu-rule {
     height: 1px;
     margin: 4px 2px;
     background: var(--pv-line);
   }
 
-  /* A project as a tiny title page with its language and progress. */
-  .project {
+  /* The projects as little title pages, as many to a row as there's room for. */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+    gap: 16px;
+  }
+
+  .card {
+    position: relative;
     display: flex;
-    align-items: center;
-    gap: 14px;
-    width: 100%;
-    border: 0;
-    border-radius: var(--pv-radius-xs);
-    padding: 6px 4px;
-    background: transparent;
-    color: inherit;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 176px;
+    border: 1px solid transparent;
+    border-radius: var(--pv-radius-sm);
+    padding: 20px 18px 14px;
+    background-color: var(--pv-paper);
+    box-shadow: var(--pv-shadow-card);
+    color: var(--pv-ink);
+    color-scheme: light;
     text-align: left;
   }
 
-  .project:hover {
-    background: var(--pv-selected);
+  .card:hover {
+    border-color: var(--pv-ink-rule-accent);
   }
 
-  .project:active {
-    background: var(--pv-pressed);
+  .card:active {
+    background-color: var(--pv-paper-under);
   }
 
-  .page {
-    display: grid;
-    place-items: center;
-    flex: none;
-    width: 42px;
-    height: 54px;
-    background: var(--pv-paper);
-    box-shadow: var(--pv-shadow-slip);
+  .card.current {
+    border-color: var(--pv-ink-rule-accent);
+  }
+
+  .open {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    font-size: var(--pv-text-xs);
+    font-weight: 600;
+    letter-spacing: var(--pv-track-eyebrow);
+    text-transform: uppercase;
     color: var(--pv-ink-accent);
-    font-family: var(--pv-font-manuscript);
-    font-size: 13px;
   }
 
-  .page.stacked {
-    box-shadow:
-      var(--pv-shadow-slip),
-      3px 3px 0 -1px var(--pv-paper-under),
-      3px 3px 0 0 var(--pv-line-strong);
+  .title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    margin-top: 4px;
+    font-family: var(--pv-font-heading);
+    font-size: 19px;
+    line-height: 1.2;
   }
 
-  .about {
+  .card .rule {
+    width: 28px;
+    height: 1.5px;
+    background: var(--pv-ink-rule-accent);
+  }
+
+  .writings {
     display: flex;
-    flex: 1;
     flex-direction: column;
-    gap: 5px;
+    gap: 3px;
     min-width: 0;
   }
 
-  .line {
+  .writing {
     display: flex;
-    align-items: baseline;
-    gap: 8px;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: var(--pv-text-md);
+    color: var(--pv-ink-2);
   }
 
-  .name {
+  .writing :global(svg) {
+    flex: none;
+    width: 13px;
+    height: 13px;
+    color: var(--pv-ink-muted);
+  }
+
+  .more {
+    font-size: var(--pv-text-sm);
+    color: var(--pv-ink-muted);
+  }
+
+  .meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: auto;
+    font-size: var(--pv-text-sm);
+    color: var(--pv-ink-muted);
+  }
+
+  .card.new {
+    align-items: center;
+    justify-content: center;
+    flex-direction: row;
+    gap: 8px;
+    border: 1.5px dashed var(--pv-line-strong);
+    background: transparent;
+    box-shadow: none;
+    color: var(--pv-text-subtle);
+    font-size: var(--pv-text-base);
+  }
+
+  .card.new:hover {
+    border-color: var(--pv-accent);
+    color: var(--pv-accent);
+  }
+
+  .card.new :global(svg) {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* The tree, as beside the page, but with the room Home has. */
+  .tree {
+    max-width: 640px;
+  }
+
+  .chapters {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .num {
+    flex: none;
+    min-width: 16px;
+    font-size: var(--pv-text-sm);
+    color: var(--pv-text-faint);
+  }
+
+  .chapter-name {
     flex: 1;
     min-width: 0;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
-    font-size: var(--pv-text-base);
-    font-weight: 600;
   }
 
-  .bar {
-    display: block;
-    height: 2px;
-    background: var(--pv-divider);
+  .chapter-name.untitled {
+    font-style: italic;
+    color: var(--pv-text-faint);
   }
 
-  .bar span {
-    display: block;
-    height: 100%;
-    background: var(--pv-accent);
-  }
-
-  .kind-line {
+  .words {
+    flex: none;
     font-size: var(--pv-text-sm);
-    color: var(--pv-text-subtle);
+    color: var(--pv-text-faint);
   }
 
   .error {
@@ -973,8 +906,8 @@
   }
 
   .load {
+    grid-column: 1 / -1;
     margin: 0;
-    padding: 28px 64px;
   }
 
   @keyframes blink {
@@ -984,19 +917,9 @@
   }
 
   @media (max-width: 1100px) {
-    .hero,
-    .columns,
-    .load {
-      padding-left: 28px;
-      padding-right: 28px;
-    }
-
-    .hero {
-      grid-template-columns: 1fr;
-    }
-
-    .columns {
-      grid-template-columns: 1fr 1fr;
+    .home {
+      grid-template-columns: minmax(0, 1fr);
+      padding: 28px 28px 40px;
     }
   }
 </style>
