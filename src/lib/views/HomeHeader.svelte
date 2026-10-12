@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BrandMark from "$lib/editor/BrandMark.svelte";
   import Icon from "$lib/editor/Icon.svelte";
   import WindowControls from "$lib/editor/WindowControls.svelte";
   import UpdatePill, { type UpdateOffer } from "$lib/editor/UpdatePill.svelte";
@@ -39,6 +40,7 @@
     { name: "dusk", icon: "sunset", key: "themeDusk" },
     { name: "candlelit", icon: "flame", key: "themeCandlelit" },
     { name: "moonlit", icon: "moon", key: "themeMoonlit" },
+    { name: "forest", icon: "sprout", key: "themeForest" },
   ];
 
   const backupState = $derived(prefs.lastBackupError ? "failed" : prefs.lastBackupAt ? "done" : "none");
@@ -53,8 +55,8 @@
 <!-- Home's own window bar (HOME-6). Home sits above all books, so it has no view tabs. -->
 <header class="home-header" data-tauri-drag-region="deep">
   <span class="brand">
-    <!-- Sunset wears the daylight mark, as its page is light. -->
-    <img src="/brand/{appearance === "dusk" ? "daylight" : appearance}.png" alt="" width="26" height="26" />
+    <!-- Home's mark is the large one, and moves, except in Gentle mode. -->
+    <BrandMark {appearance} size={34} animated={!prefs.gentle} />
     <span class="name">Pensieve</span>
   </span>
   <span class="spacer"></span>
@@ -65,7 +67,7 @@
     <span class="error" role="alert">{error}</span>
   {/if}
   <span class="backup" class:none={backupState === "none"} class:failed={backupState === "failed"}>
-    {#if backupState === "done"}<Icon name="check" />{/if}
+    {#if backupState === "done"}<Icon name="check" />{:else if backupState === "none"}<Icon name="cloudOff" />{/if}
     {backupLabel}
   </span>
   <span class="divider" aria-hidden="true"></span>
@@ -98,32 +100,38 @@
     gap: 12px;
     height: 60px;
     flex: none;
-    padding: 0 40px;
+    /* As wide a margin as Home's own, so the mark stands over the page's left edge. */
+    padding: 0 var(--home-margin);
     border-bottom: 1px solid var(--pv-divider);
     color: var(--pv-text);
+    --home-margin: 56px;
+  }
+
+  @media (max-width: 1100px) {
+    .home-header {
+      --home-margin: 28px;
+    }
   }
 
   /* The window buttons sit flush with the top right corner. */
   .home-header :global(.controls) {
-    margin-right: -40px;
+    margin-right: calc(-1 * var(--home-margin));
   }
 
   .brand {
     display: inline-flex;
     align-items: center;
-    gap: 12px;
-  }
-
-  .brand img {
-    display: block;
-    width: 26px;
-    height: 26px;
-    border-radius: var(--pv-radius-xs);
+    gap: 9px;
+    /* The basin starts an eighth of the way in: the mark moves out by that, so the basin lines up. */
+    margin-left: -4px;
   }
 
   .name {
     font-family: var(--pv-font-heading);
-    font-size: 19px;
+    font-size: 22px;
+    line-height: 1;
+    /* The heading face sits a little high in its line: down to the middle of the basin. */
+    padding-top: 3px;
   }
 
   .spacer {
@@ -144,8 +152,16 @@
     height: 14px;
   }
 
+  /* No backup yet: a soft chip, as the design has it, so it is seen without alarm. */
   .backup.none {
-    color: var(--pv-text-faint);
+    height: 28px;
+    padding: 0 12px 0 10px;
+    gap: 7px;
+    border-radius: var(--pv-radius-xs);
+    background: var(--pv-ink-tint);
+    color: var(--pv-ink-tint-text);
+    font-size: 12.5px;
+    font-weight: 600;
   }
 
   .backup.failed,
@@ -168,52 +184,52 @@
     background: var(--pv-divider);
   }
 
+  /* The theme switch: a soft track, the chosen theme raised on it in the page's colour. */
   .themes {
     display: flex;
-    border: 1px solid var(--pv-line-strong);
-    border-radius: var(--pv-radius-sm);
-    overflow: hidden;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 6px;
+    background: var(--pv-selected);
   }
 
   .themes button {
     display: grid;
     place-items: center;
-    width: 28px;
+    min-width: 30px;
     height: 24px;
     border: 0;
-    border-radius: 0;
-    padding: 0;
+    border-radius: var(--pv-radius-xs);
+    padding: 0 8px;
     background: transparent;
     color: var(--pv-text-subtle);
   }
 
-  .themes button:hover {
-    background: var(--pv-selected);
+  .themes button:not(.on):hover {
+    color: var(--pv-text);
   }
 
-  .themes button:active {
-    background: var(--pv-pressed);
-  }
-
+  /* The page's colours, ink on paper, so it reads in the dark looks too. */
   .themes button.on {
-    background: var(--pv-mark-bg);
-    color: var(--pv-mark-fg);
+    background: var(--pv-paper);
+    color: var(--pv-ink-accent);
+    box-shadow: 0 1px 2px rgba(60, 45, 30, 0.18);
   }
 
   .themes :global(svg) {
-    width: 13px;
-    height: 13px;
+    width: 15px;
+    height: 15px;
   }
 
   .lang {
+    height: 26px;
     border: 1px solid var(--pv-line-strong);
     border-radius: var(--pv-radius-xs);
-    padding: 2px 6px;
+    padding: 0 7px;
     background: transparent;
-    color: var(--pv-text-subtle);
+    color: var(--pv-text-muted);
     font-size: 12px;
     font-weight: 600;
-    line-height: 1.3;
   }
 
   .gear {

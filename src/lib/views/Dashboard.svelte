@@ -31,7 +31,6 @@
     writingWords = 0,
     onContinue,
     onZen,
-    onOpenProject,
     onStartProject,
     onOpenBook,
     onOpenTodos,
@@ -61,7 +60,6 @@
     writingWords?: number;
     onContinue: (chapterId: string | null) => void;
     onZen: (chapterId: string | null) => void;
-    onOpenProject: () => void;
     onStartProject: () => void;
     onOpenBook: (path: string) => void;
     onOpenTodos: () => void;
@@ -85,7 +83,6 @@
   // A short list on Home; the rest are a link away.
   const TODOS_SHOWN = 5;
 
-  let menuOpen = $state(false);
   let tasks = $state<Task[]>([]);
   let message = $state("");
 
@@ -289,48 +286,8 @@
           <Icon name="list" />{t("outlineList")}
         </button>
       </div>
-      <div
-        class="menu-wrap"
-        role="presentation"
-        onkeydown={(event) => {
-          if (event.key === "Escape" && menuOpen) {
-            event.stopPropagation();
-            menuOpen = false;
-          }
-        }}
-        onfocusout={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) menuOpen = false;
-        }}
-      >
-        <button type="button" class="link" aria-haspopup="menu" aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}>
-          {t("newProject")}
-        </button>
-        {#if menuOpen}
-          <div class="menu" role="menu">
-            <button
-              type="button"
-              role="menuitem"
-              onclick={() => {
-                menuOpen = false;
-                onStartProject();
-              }}
-            >
-              {t("newProjectTitle")}
-            </button>
-            <span class="menu-rule" aria-hidden="true"></span>
-            <button
-              type="button"
-              role="menuitem"
-              onclick={() => {
-                menuOpen = false;
-                onOpenProject();
-              }}
-            >
-              {t("open")}
-            </button>
-          </div>
-        {/if}
-      </div>
+      <!-- The design's button (12 October); another project from elsewhere opens from the library's +. -->
+      <button type="button" class="new" onclick={onStartProject}><Icon name="plus" />{t("newProjectTitle")}</button>
     </div>
 
     {#if layout === "list"}
@@ -372,7 +329,7 @@
     overflow: auto;
     position: relative;
     display: grid;
-    grid-template-columns: minmax(360px, 500px) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-items: start;
     gap: 48px;
     padding: 36px 56px 48px;
@@ -661,11 +618,13 @@
     color: var(--pv-text-faint);
   }
 
+  /* Grid or List: a soft track, the chosen one raised on it in the page's colour, as the theme switch. */
   .switch {
     display: flex;
-    border: 1px solid var(--pv-line-strong);
-    border-radius: var(--pv-radius-sm);
-    overflow: hidden;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 6px;
+    background: var(--pv-selected);
   }
 
   .switch button {
@@ -675,9 +634,10 @@
     height: 28px;
     padding: 0 10px;
     border: 0;
+    border-radius: var(--pv-radius-xs);
     background: transparent;
-    color: var(--pv-text);
-    font-size: var(--pv-text-md);
+    color: var(--pv-text-subtle);
+    font-size: 13px;
   }
 
   .switch button :global(svg) {
@@ -685,58 +645,50 @@
     height: 14px;
   }
 
+  /* The page's colours, ink on paper, so it reads in the dark looks too. */
   .switch button.on {
-    background: var(--pv-mark-bg);
-    color: var(--pv-mark-fg);
+    background: var(--pv-paper);
+    color: var(--pv-ink);
     font-weight: 600;
+    box-shadow: 0 1px 2px rgba(60, 45, 30, 0.18);
+  }
+
+  .switch button.on :global(svg) {
+    color: var(--pv-ink-accent);
   }
 
   .switch button:not(.on):hover {
-    background: var(--pv-selected);
-  }
-
-  .menu-wrap {
-    position: relative;
-    margin-left: 6px;
-  }
-
-  .menu {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 6px);
-    z-index: 5;
-    display: flex;
-    flex-direction: column;
-    min-width: 13rem;
-    padding: 4px;
-    border: 1px solid var(--pv-line-strong);
-    border-radius: var(--pv-radius-sm);
-    background: var(--pv-chrome-raised);
-    box-shadow: var(--pv-shadow-window);
-  }
-
-  .menu button {
-    border: 0;
-    border-radius: var(--pv-radius-xs);
-    padding: 6px 8px;
-    background: transparent;
     color: var(--pv-text);
-    text-align: left;
-    font-size: var(--pv-text-md);
   }
 
-  .menu button:hover {
+  .new {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 34px;
+    margin-left: 4px;
+    padding: 0 14px;
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-xs);
+    background: var(--pv-field);
+    color: var(--pv-text);
+    font-size: 13.5px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .new :global(svg) {
+    width: 15px;
+    height: 15px;
+    color: var(--pv-accent);
+  }
+
+  .new:hover {
     background: var(--pv-selected);
   }
 
-  .menu button:active {
+  .new:active {
     background: var(--pv-pressed);
-  }
-
-  .menu-rule {
-    height: 1px;
-    margin: 4px 2px;
-    background: var(--pv-line);
   }
 
   /* The projects as little title pages, as many to a row as there's room for. */

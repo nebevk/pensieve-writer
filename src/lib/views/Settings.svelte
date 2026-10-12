@@ -142,6 +142,7 @@
     { id: "dusk", key: "themeDusk" },
     { id: "candlelit", key: "themeCandlelit" },
     { id: "moonlit", key: "themeMoonlit" },
+    { id: "forest", key: "themeForest" },
     { id: "sunset", key: "themeSunset" },
   ];
 
@@ -876,6 +877,22 @@
     height: 30px;
     border-radius: 50%;
     background: linear-gradient(180deg, #ffd79a, #f08a5d);
+  }
+
+  /* Forest: morning light through leaves over the moss, and a leaf beside the page. */
+  .mini[data-theme="forest"] {
+    background: linear-gradient(180deg, var(--pv-decor-1), var(--pv-desk) 70%);
+  }
+
+  .mini[data-theme="forest"]::after {
+    content: "";
+    position: absolute;
+    left: 14px;
+    top: 14px;
+    width: 24px;
+    height: 24px;
+    border-radius: 0 70% 0 70%;
+    background: linear-gradient(135deg, #8cc06a, #3b7349);
   }
 
   .fonts {

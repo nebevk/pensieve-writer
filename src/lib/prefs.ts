@@ -2,7 +2,7 @@ import type { ProjectSummary } from "$lib/chapters/progress";
 import type { KeySoundStyle } from "$lib/keySounds";
 
 /** The looks, and "sunset": Daylight by day and Candlelit after dark ("Day and night"). "dusk" is the Sunset look. */
-export type ThemeName = "daylight" | "dusk" | "candlelit" | "moonlit" | "sunset";
+export type ThemeName = "daylight" | "dusk" | "forest" | "candlelit" | "moonlit" | "sunset";
 export type AmbienceName = "off" | "rain" | "fire" | "cafe" | "piano";
 export type ManuscriptFont = "literata" | "garamond" | "typewriter";
 export type PageWidth = "narrow" | "book" | "wide";
@@ -92,7 +92,7 @@ export type Prefs = {
 const KEY = "pensieve-prefs";
 
 function normalizeTheme(value: string | undefined): ThemeName {
-  if (value === "candlelit" || value === "moonlit" || value === "sunset" || value === "daylight" || value === "dusk") return value;
+  if (value === "candlelit" || value === "moonlit" || value === "sunset" || value === "daylight" || value === "dusk" || value === "forest") return value;
   if (value === "dark") return "moonlit";
   return "daylight";
 }

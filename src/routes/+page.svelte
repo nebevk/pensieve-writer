@@ -3416,7 +3416,6 @@
             settingsOpen = true;
           }}
           onSaveError={reportSaveError}
-          onOpenProject={() => void openAnotherProject()}
           onStartProject={() => startProject()}
           books={homeProjects}
           currentPath={projectLocation}

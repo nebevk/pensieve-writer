@@ -31,6 +31,7 @@ describe("settings", () => {
 
   it("remember the Sunset look, and Day and night switching from Daylight to Candlelit after dark", () => {
     expect(loadSaved({ theme: "dusk" }).theme).toBe("dusk");
+    expect(loadSaved({ theme: "forest" }).theme).toBe("forest");
     expect(loadSaved({ theme: "sunset" }).theme).toBe("sunset");
     expect(resolvedTheme("dusk", new Date(2026, 9, 7, 22))).toBe("dusk");
     expect(resolvedTheme("sunset", new Date(2026, 9, 7, 12))).toBe("daylight");

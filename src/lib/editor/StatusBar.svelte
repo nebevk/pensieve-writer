@@ -49,6 +49,7 @@
     { id: "dusk", key: "themeDusk" },
     { id: "candlelit", key: "themeCandlelit" },
     { id: "moonlit", key: "themeMoonlit" },
+    { id: "forest", key: "themeForest" },
     { id: "sunset", key: "themeSunset" },
   ] as const;
 

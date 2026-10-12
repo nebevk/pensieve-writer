@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from "$lib/ui.svelte";
+  import BrandMark from "./BrandMark.svelte";
   import Icon from "./Icon.svelte";
   import WindowControls from "./WindowControls.svelte";
   import UpdatePill, { type UpdateOffer } from "./UpdatePill.svelte";
@@ -33,7 +34,7 @@
     onHome: () => void;
     onSettings: () => void;
     settingsOpen?: boolean;
-    appearance?: "daylight" | "dusk" | "candlelit" | "moonlit";
+    appearance?: "daylight" | "dusk" | "forest" | "candlelit" | "moonlit";
     /** A newer Pensieve to install, when there is one. */
     update?: UpdateOffer | null;
     onUpdate?: () => void;
@@ -52,7 +53,8 @@
 <!-- The only window bar (WIN-1): drag it to move the window, double-click it to maximise. -->
 <header class="titlebar" data-tauri-drag-region="deep">
   <button type="button" class="mark" title={t("home")} aria-label={t("home")} onclick={onHome}>
-    <img src="/brand/{appearance === "dusk" ? "daylight" : appearance}.png" alt="" width="22" height="22" />
+    <!-- Still here: the page she types on has nothing moving beside it. -->
+    <BrandMark {appearance} size={24} />
   </button>
   <span class="project">{project || t("untitled")}</span>
   <div class="tabs" role="tablist" aria-label={t("views")}>
@@ -109,19 +111,12 @@
   }
 
   .mark {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     border: 0;
     border-radius: var(--pv-radius-xs);
     background: transparent;
     padding: 0;
-  }
-
-  .mark img {
-    display: block;
-    width: 22px;
-    height: 22px;
-    border-radius: var(--pv-radius-xs);
   }
 
   .project {

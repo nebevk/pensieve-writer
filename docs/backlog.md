@@ -39,13 +39,15 @@ On purpose: keep them when matching the design.
 - **Paper:** no second sheet drawn under the page; Pages (A4 or A5) instead.
 - **Goals:** no streak and no goal meter in the floating bar; a Goals list beside the page.
 - **The floating bar:** a theme menu and the pomodoro; no book total, language or save state.
-- **Themes and sound:** a Sunset theme and "Day and night"; sound is its own choice in any theme (no Night
+- **Themes and sound:** Sunset and Forest themes and "Day and night"; sound is its own choice in any theme (no Night
   rain).
 - **Write:** the panel shows one list at a time; no chapter statuses; both side lists have a hide
   button; scrollbars are slim; the library's + has a menu in words; sparks drift over the desk in Candlelit.
-- **The brand:** the phoenix in the app's bars, not a "P" square.
+- **The brand:** the owner's Basin mark (`design-system/exports/pensieve-icons`), not a "P" square; it moves
+  on Home only, so nothing moves beside the page she types on.
 - **Home:** hers on the left (the greeting, the Continue card, a short to-do list), every project on the
-  right as cards or the library's tree; no chapter strip, recent notes or progress bars.
+  right as cards or the library's tree, the two as wide as each other; no chapter strip, recent notes or
+  progress bars. Another project from elsewhere opens from the library's +, not from Home.
 
 ## Parked ideas
 

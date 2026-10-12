@@ -6,6 +6,7 @@ export type IconPart = string | [string, Record<string, number>];
 
 export const LUCIDE: Record<string, IconPart[]> = {
   check: ["M20 6 9 17l-5-5"],
+  cloudOff: ["m2 2 20 20M5.782 5.782A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.307-.193M21.532 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7.008 7.008 0 0 0 10 5.07"],
   sliders: ["M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"],
   outdent: ["M21 12H11M21 18H11M21 6H11M7 8l-4 4 4 4"],
   indent: ["M21 12H11M21 18H11M21 6H11M3 8l4 4-4 4"],
@@ -28,6 +29,7 @@ export const LUCIDE: Record<string, IconPart[]> = {
   layoutGrid: [["rect", { width: 7, height: 7, x: 3, y: 3, rx: 1 }], ["rect", { width: 7, height: 7, x: 14, y: 3, rx: 1 }], ["rect", { width: 7, height: 7, x: 14, y: 14, rx: 1 }], ["rect", { width: 7, height: 7, x: 3, y: 14, rx: 1 }]],
   grip: [["circle", { cx: 9, cy: 5, r: 1 }], ["circle", { cx: 9, cy: 12, r: 1 }], ["circle", { cx: 9, cy: 19, r: 1 }], ["circle", { cx: 15, cy: 5, r: 1 }], ["circle", { cx: 15, cy: 12, r: 1 }], ["circle", { cx: 15, cy: 19, r: 1 }]],
   sunset: ["M12 10V2M4.93 10.93l1.41 1.41M2 18h2M20 18h2M19.07 10.93l-1.41 1.41M22 22H2M16 6l-4 4-4-4M16 18a4 4 0 0 0-8 0"],
+  sprout: ["M7 20h10M10 20c5.5-2.5.8-6.4 3-10M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8zM14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"],
   sun: [["circle", { cx: 12, cy: 12, r: 4 }], "M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"],
   x: ["M18 6 6 18M6 6l12 12"],
   arrowRight: ["M5 12h14M12 5l7 7-7 7"],
