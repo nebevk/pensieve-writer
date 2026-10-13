@@ -87,8 +87,11 @@ export type Prefs = {
   lastBackupSignature: string;
   /** Folder where Pensieve keeps an up-to-date Word copy of the open book; empty means none. */
   wordCopyFolder: string;
-  /** Per Word copy path: the stamp Pensieve last wrote and the book's fingerprint at that time. */
-  wordCopies: Record<string, { stamp: string; signature: string }>;
+  /**
+   * Per Word copy path: the stamp Pensieve last wrote, the book's fingerprint at that time, and the writing it
+   * is a copy of (missing in copies made before 14 October).
+   */
+  wordCopies: Record<string, { stamp: string; signature: string; writing?: string }>;
   wordCopyAt: string;
   wordCopyError: string;
 };

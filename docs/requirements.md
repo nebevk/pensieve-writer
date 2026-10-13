@@ -131,7 +131,7 @@ said), Not started, Dropped. IDs are fixed; code comments and the backlog refer 
 | SV-3 | Automatic snapshots (hourly, daily) with an easy restore | M | Done |
 | SV-4 | Earlier versions: a window listing the snapshots, showing the open chapter as it was, and restoring that chapter or the whole book (after keeping the book as it is as a "Before restore" snapshot) | S | Done |
 | SV-5 | Projects live in the library folder (CH-9), never in a cloud-synced folder | M | Done |
-| SV-6 | Export to Word as the page looks (parts, chapters and subheadings as Heading 1, 2 and 3), and an optional Word copy in a chosen folder, kept up to date until it is changed in Word | M | Done |
+| SV-6 | Export to Word as the page looks (parts, chapters and subheadings as Heading 1, 2 and 3), and an optional Word copy in a chosen folder, kept up to date until it is changed in Word. Each writing has its own copy, named "Project - Writing" (just the writing when the two are the same); when another writing's copy has that name, two projects of the same name say, it is "… (2)", and keeps that name | M | Done |
 | SV-7 | PDF (printing from the Book view), Markdown and plain text | S | Done |
 | SV-8 | Import from Word, text and Markdown, split into chapters at their headings or at lines such as "3. poglavje". Markdown keeps its bold, italics, lists, quotes, links, pictures and footnotes; a blog post (front matter, or text before its first heading) stays one page. Text in Windows' old Central European code page reads with its č, š and ž | S | Done |
 | SV-9 | Backups to a folder that Google Drive syncs, hourly and on close, and a restore from one (Section 7) | S | Done |

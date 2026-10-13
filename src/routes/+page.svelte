@@ -3441,7 +3441,7 @@
       onAddExamples={() => void addExampleBooks()}
       examplesAdded={sampleNames.some((name) => name !== "long-test-book")}
       projectTitle={shelf?.title ?? ""}
-      wordCopyName={safeName(wordCopy.name(writing))}
+      wordCopyName={wordCopy.fileName(writing)}
       onAddLongBook={() => void addLongBook()}
       longBookAdded={sampleNames.includes("long-test-book")}
       onChooseWordFolder={() => void wordCopy.pickFolder()}

@@ -14,7 +14,6 @@ Each item keeps its ID so it can be asked for by name; a new one gets the next f
 |----|------|--------|-----|
 | **IMP-10** Speed on the real laptop | Time typing in a chapter of the long test book on her laptop, in Candlelit with the sparks on, with the panel open and a note pinned; time the start with that book open. The browser checks (processor slowed four times) give about 40 ms a key; this confirms it on the hardware that matters (Windows 10, 8 GB of memory) | Open | P2 |
 | **WIN-1** One window bar | The app draws its own window bar (Windows' is off). Check it in the desktop window: dragging, a double-click to maximise, the three buttons, and resizing from the edges | Check | P2 |
-| **IMP-83** Projects, what is left | The Word copy is named after the writing only, so two projects with a writing of the same name would share one (Home was redone around projects on 12 October) | Partial | P2 |
 | **TOOL-5** Text colour and highlight (ED-5) | The design has Word's "A" with a colour bar and a highlight swatch; each applies one fixed colour, with no choice | Partial | P3 |
 | **TOOL-6** Font and size (ED-5) | The toolbar's font and size change the whole manuscript (as Settings does), not the selected text as in Word | Differs | P3 |
 | **WIN-3** Language badge | The design's badge shows the project's writing language; the app's marks the selected text, or the open chapter, as EN or SL. Decide which | Differs | P3 |

@@ -31,6 +31,21 @@ export function safeName(title: string): string {
 }
 
 /**
+ * Where a writing's Word copy goes (IMP-83): "<name>.docx" in the folder, unless another writing's copy has
+ * that name already (two projects of the same name, say), in any case, as Windows doesn't tell them apart:
+ * then "<name> (2).docx", and on. A copy from before copies knew their writing is taken by the first that
+ * writes it.
+ */
+export function copyPathFor(folder: string, name: string, writingId: string, copies: Record<string, { writing?: string }>): string {
+  const owners = new Map(Object.entries(copies).map(([path, copy]) => [path.toLowerCase(), copy.writing]));
+  for (let number = 1; ; number += 1) {
+    const path = inFolder(folder, `${number === 1 ? name : `${name} (${number})`}.docx`);
+    const owner = owners.get(path.toLowerCase());
+    if (!owner || owner === writingId) return path;
+  }
+}
+
+/**
  * The backup in a folder of her choosing, such as one Google Drive keeps (SV-1): every hour while she
  * writes, when Pensieve closes, and when she asks. Never the live project in that folder.
  */
@@ -128,6 +143,15 @@ export class WordCopy {
     return projectTitle && projectTitle !== book.title.trim() ? `${projectTitle} - ${book.title}` : book.title;
   }
 
+  /** The copy's file name, as Settings shows it: the name, or "name (2)" when another writing's copy has it. */
+  fileName(book: Pick<Writing, "id" | "title">): string {
+    const name = safeName(this.name(book));
+    const folder = this.#host.prefs().wordCopyFolder;
+    if (!folder) return name;
+    const path = copyPathFor(folder, name, book.id, this.#host.prefs().wordCopies);
+    return (path.split(/[\\/]/).pop() ?? name).replace(/\.docx$/, "");
+  }
+
   /** Writes the open writing's copy, or `of`'s, a writing just left, as it was then; `force` writes over what is held. */
   update(force = false, of: Writing | null = null): Promise<void> {
     const host = this.#host;
@@ -144,16 +168,16 @@ export class WordCopy {
         if (!of) await host.flush();
         const book = of ?? host.writing();
         if (!book) return;
-        path = inFolder(folder, `${safeName(leftName || this.name(book))}.docx`);
-        if (!force && path === this.held) return;
         const prefs = host.prefs();
+        path = copyPathFor(folder, safeName(leftName || this.name(book)), book.id, prefs.wordCopies);
+        if (!force && path === this.held) return;
         const signature = `${backupSignature(book.id, book)}|${JSON.stringify(wordLook(prefs))}`;
         const known = prefs.wordCopies[path];
         if (!force && known?.signature === signature && !prefs.wordCopyError) return;
         const written = await writeFileTo(path, await wordFileFor(book, prefs), force ? "" : (known?.stamp ?? MUST_BE_NEW));
         this.held = "";
         host.setPrefs({
-          wordCopies: { ...host.prefs().wordCopies, [path]: { stamp: written.stamp, signature } },
+          wordCopies: { ...host.prefs().wordCopies, [path]: { stamp: written.stamp, signature, writing: book.id } },
           wordCopyAt: new Date().toISOString(),
           wordCopyError: "",
         });
