@@ -204,6 +204,10 @@ export type LibraryActions = {
   /** Moves a folder of the library or a project's folder into another folder (`into`; the library's own for its top). */
   moveLibraryEntry(path: string, into: string): void;
   deleteLibraryFolder(path: string): void;
+  /** Moves a project of the library (`path`, its file) to the Recycle Bin, after she said so; never the open one. */
+  deleteProject(path: string): void;
+  /** Takes a project kept elsewhere off the list; its files stay where they are. */
+  forgetProject(path: string): void;
   /** Puts a writing just before another one, in that one's writing folder. */
   placeWriting(id: string, beforeId: string): void;
   /** Opens one of her files in its own program, as Explorer does. */

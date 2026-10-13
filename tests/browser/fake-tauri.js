@@ -340,6 +340,34 @@
         keepFolders();
         return null;
       }
+      case "trash_project_folder": {
+        // library.rs trash_project: only a project of the library goes; what went is in __PV_HARNESS__.trashed.
+        const path = String(args.path).replace(/[\\/]+$/, "");
+        const library = String(args.library ?? "").replace(/[\\/]+$/, "");
+        if (!folders.has(lower(path))) throw "That folder isn't there any more";
+        if (!library || !lower(path).startsWith(`${lower(library)}\\`) || !fileExists(`${path}\\pensieve.db`)) {
+          throw "Only a project's folder goes to the Recycle Bin from here";
+        }
+        for (const db of openPools) {
+          if (within(db.replace(/^sqlite:/, ""), path)) throw "Windows couldn't move the folder to the Recycle Bin; close what has it open and try again";
+        }
+        for (const [key, spelled] of [...folders]) if (within(spelled, path)) folders.delete(key);
+        for (const key of [...books.keys()]) {
+          if (!within(key.replace(/^sqlite:/, ""), path)) continue;
+          books.delete(key);
+          dirty.delete(key);
+        }
+        for (const key of [...seeds.keys()]) if (within(key.replace(/^sqlite:/, ""), path)) seeds.delete(key);
+        for (const [key, file] of [...files]) if (within(file.path, path)) files.delete(key);
+        if (window.__PV_KEEP__) {
+          for (const key of Object.keys(localStorage)) {
+            if (key.startsWith("pv-db:sqlite:") && within(key.slice("pv-db:sqlite:".length), path)) localStorage.removeItem(key);
+          }
+        }
+        keepFolders();
+        (window.__PV_HARNESS__.trashed ??= []).push(path);
+        return true;
+      }
       default:
         return null;
     }

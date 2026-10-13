@@ -513,6 +513,20 @@
     };
   }
 
+  /**
+   * The end of a project's menu (HOME-15): a project of the library goes to the Recycle Bin once she said so,
+   * never the open one; one kept elsewhere only leaves the list, its files where they are.
+   */
+  function dropItems(row: Row, back: HTMLElement | null, at: { x: number; y: number }): MenuItem[] {
+    const path = row.path;
+    if (!path) return [];
+    if (insideLibrary(path)) {
+      const run = () => confirm(back, at, t("deleteProjectQuestion", { title: row.name }), t("toRecycleBin"), () => actions.deleteProject(path));
+      return ["rule", { label: t("deleteProject"), keys: "Del", danger: true, disabled: !!row.current, run }];
+    }
+    return row.current ? [] : ["rule", { label: t("removeFromList"), run: () => actions.forgetProject(path) }];
+  }
+
   function menuFor(row: Row, back: HTMLElement | null, at: { x: number; y: number }): MenuItem[] {
     const shelf = library.shelf;
     const reveal = (path: string): MenuItem => ({ label: t("showInExplorer"), run: () => actions.showInExplorer(path) });
@@ -548,7 +562,8 @@
       if (row.path && insideLibrary(row.path)) rename.push({ label: t("rename"), keys: "F2", run: () => startRename(row) });
       // Explorer opens on the project's folder, its file picked.
       if (row.path) rename.push(reveal(row.path));
-      if (!row.current || !shelf) return [{ label: t("openItem"), run: () => row.path && actions.openProject(row.path) }, ...rename];
+      const drop = dropItems(row, back, at);
+      if (!row.current || !shelf) return [{ label: t("openItem"), run: () => row.path && actions.openProject(row.path) }, ...rename, ...drop];
       const items: MenuItem[] = [
         { label: t("newWritingTitle"), run: () => startNew("writing", row.key, "") },
         { label: t("newFolderTitle"), run: () => startNew("writingFolder", row.key, "") },
@@ -556,6 +571,7 @@
         ...rename,
       ];
       if (library.root && !isInside(currentFile, library.root)) items.push("rule", { label: t("moveIntoLibrary"), run: () => actions.moveIntoLibrary() });
+      items.push(...drop);
       return items;
     }
     if (row.kind === "wfolder" && row.folder) {
@@ -759,6 +775,11 @@
         // An empty folder goes; one with anything in it stays, and the page says why.
         event.preventDefault();
         actions.deleteLibraryFolder(row.path);
+      } else if (row.kind === "project" && row.path && insideLibrary(row.path) && !row.current) {
+        event.preventDefault();
+        const box = button.getBoundingClientRect();
+        const path = row.path;
+        confirm(button, { x: box.left + 24, y: box.bottom }, t("deleteProjectQuestion", { title: row.name }), t("toRecycleBin"), () => actions.deleteProject(path));
       }
       return;
     }

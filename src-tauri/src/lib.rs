@@ -49,6 +49,7 @@ pub fn run() {
             library::new_project_folder,
             library::move_library_entry,
             library::remove_library_folder,
+            library::trash_project_folder,
             library::open_library_file,
             library::show_in_explorer,
             library::read_document_file,

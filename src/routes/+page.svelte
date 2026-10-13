@@ -517,6 +517,15 @@
     noticeTimer = window.setTimeout(() => (writeNotice = ""), 3500);
   }
 
+  /** Something the library says (a folder that stays where it is, say) where she is: above the page, or on Home. */
+  function libraryNotice(message: string) {
+    if (view !== "home") return notice(message);
+    homeNotice = message;
+    window.setTimeout(() => {
+      if (homeNotice === message) homeNotice = "";
+    }, 6000);
+  }
+
   /** Comments the selection, or the word at the cursor, and puts the keyboard in the new card. */
   async function newComment() {
     const editor = textEditor;
@@ -2449,7 +2458,7 @@
   async function moveLibraryEntry(path: string, into: string) {
     if (!into || sameFolder(parentFolder(path), into) || isInside(into, path)) return;
     const problem = await relocateLibraryEntry(path, into, lastName(path));
-    if (problem) notice(problem);
+    if (problem) libraryNotice(problem);
   }
 
   /** Deletes an empty folder of the library; one with anything in it stays, and she is told why. */
@@ -2457,9 +2466,36 @@
     try {
       await invoke("remove_library_folder", { path });
     } catch (error) {
-      notice(errorMessage(error));
+      libraryNotice(errorMessage(error));
     }
     await refreshLibrary();
+  }
+
+  /**
+   * Moves a project of the library to the Recycle Bin, with everything in its folder (HOME-15); never the open
+   * one. Where there is no Recycle Bin, Windows asks her itself, and a no there leaves it all as it was.
+   */
+  async function deleteProject(path: string) {
+    const open = projectLocation || prefs.projectPath;
+    if (!libraryRoot || !isInside(path, libraryRoot) || sameFolder(folderOf(path).path, folderOf(open).path)) return;
+    try {
+      if (await invoke<boolean>("trash_project_folder", { path: folderOf(path).path, library: libraryRoot })) forgetProject(path);
+    } catch (error) {
+      libraryNotice(errorMessage(error));
+    }
+    await refreshLibrary();
+  }
+
+  /** Takes a project off Pensieve's lists; its files stay where they are. */
+  function forgetProject(path: string) {
+    const gone = (file: string) => file.toLowerCase() === path.toLowerCase();
+    prefs = {
+      ...prefs,
+      knownProjects: prefs.knownProjects.filter((item) => !gone(item.path)),
+      // Settings offers the examples as new again once none of them is left.
+      samples: Object.fromEntries(Object.entries(prefs.samples).filter(([, file]) => !gone(file))),
+      lastOpened: gone(prefs.lastOpened.path) ? { path: "", writingId: "", chapterId: "" } : prefs.lastOpened,
+    };
   }
 
   /** Puts a writing just before another one of the open project, in that one's writing folder. */
@@ -2540,6 +2576,8 @@
     renameLibraryEntry: (path, name) => relocateLibraryEntry(path, parentFolder(path), name),
     moveLibraryEntry: (path, into) => void moveLibraryEntry(path, into),
     deleteLibraryFolder: (path) => void deleteLibraryFolder(path),
+    deleteProject: (path) => void deleteProject(path),
+    forgetProject,
     placeWriting: (id, beforeId) => void placeWriting(id, beforeId),
     openFile: (path) => void openLibraryFile(path),
     showInExplorer: (path) => void showInExplorer(path),

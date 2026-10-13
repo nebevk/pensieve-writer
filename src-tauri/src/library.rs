@@ -386,9 +386,105 @@ fn remove_folder(dir: &Path) -> Result<(), String> {
     fs::remove_dir(dir).map_err(in_use)
 }
 
+/// Moves a project's folder to the Recycle Bin (HOME-15), from where it can be brought back as it was. Only the
+/// folder of a project in the library goes, one with its pensieve.db. Where there is no Recycle Bin (a network
+/// folder, say), Windows asks her itself before deleting it for good; false when she said no there.
+/// Not async, so it runs on the window's thread and that question belongs to her window.
+#[tauri::command]
+pub fn trash_project_folder(window: tauri::WebviewWindow, path: String, library: String) -> Result<bool, String> {
+    trash_project(Path::new(&path), Path::new(&library), owner(&window))
+}
+
+#[cfg(windows)]
+fn owner(window: &tauri::WebviewWindow) -> isize {
+    window.hwnd().map(|hwnd| hwnd.0 as isize).unwrap_or(0)
+}
+
+#[cfg(not(windows))]
+fn owner(_window: &tauri::WebviewWindow) -> isize {
+    0
+}
+
+fn trash_project(dir: &Path, library: &Path, owner: isize) -> Result<bool, String> {
+    if !dir.is_dir() {
+        return Err("That folder isn't there any more".into());
+    }
+    // Never the library itself, a folder of projects, or a project kept elsewhere, in Documents say.
+    let in_library = library.is_absolute() && path_key(dir).starts_with(&format!("{}\\", path_key(library)));
+    if !dir.is_absolute() || !in_library || !dir.join("pensieve.db").is_file() {
+        return Err("Only a project's folder goes to the Recycle Bin from here".into());
+    }
+    if !to_recycle_bin(dir, owner)? {
+        return Ok(false);
+    }
+    // Windows says it went; a folder in use can stay behind all the same.
+    if dir.exists() {
+        return Err("That folder is in use; close what has it open and try again".into());
+    }
+    Ok(true)
+}
+
+/// False when Windows asked her and she said no.
+#[cfg(windows)]
+fn to_recycle_bin(dir: &Path, owner: isize) -> Result<bool, String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::Shell::{SHFileOperationW, FOF_ALLOWUNDO, FOF_NOERRORUI, FOF_SILENT, FOF_WANTNUKEWARNING, FO_DELETE, SHFILEOPSTRUCTW};
+    // Windows takes a list of paths, each ended by a zero and the list by one more.
+    let from: Vec<u16> = dir.as_os_str().encode_wide().chain([0, 0]).collect();
+    let mut operation = SHFILEOPSTRUCTW {
+        hwnd: HWND(owner as *mut _),
+        wFunc: FO_DELETE,
+        pFrom: PCWSTR(from.as_ptr()),
+        // Undo is what sends it to the Recycle Bin. FOF_NOCONFIRMATION stays out on purpose: with it, a folder
+        // where there is no Recycle Bin is deleted for good without a word (tried on a subst drive, 13 Oct).
+        // Without it, Windows asks first in that case, and otherwise only if she has set it to ask.
+        fFlags: (FOF_ALLOWUNDO | FOF_WANTNUKEWARNING | FOF_NOERRORUI | FOF_SILENT).0 as u16,
+        ..Default::default()
+    };
+    let result = unsafe { SHFileOperationW(&mut operation) };
+    if operation.fAnyOperationsAborted.as_bool() {
+        return Ok(false);
+    }
+    // A file in it held open keeps the whole folder where it is, nothing moved (tried, 13 Oct).
+    if result != 0 {
+        return Err("Windows couldn't move the folder to the Recycle Bin; close what has it open and try again".into());
+    }
+    Ok(true)
+}
+
+#[cfg(not(windows))]
+fn to_recycle_bin(_dir: &Path, _owner: isize) -> Result<bool, String> {
+    Err("Only Windows has the Recycle Bin Pensieve uses".into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_project_of_the_library_goes_to_the_recycle_bin() {
+        let root = std::env::temp_dir().join(format!("pensieve-trash-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let library = root.join("Knjižnica");
+        fs::create_dir_all(library.join("Gradivo")).unwrap();
+        fs::write(library.join("Gradivo").join("zapiski.txt"), b"x").unwrap();
+        fs::create_dir_all(root.join("Drugje")).unwrap();
+        fs::write(root.join("Drugje").join("pensieve.db"), b"x").unwrap();
+        fs::write(library.join("pensieve.db"), b"x").unwrap();
+        // Refused, and nothing moves: a folder that isn't a project, a project outside the library, the
+        // library itself, and a folder that isn't there.
+        let refused = "Only a project's folder goes to the Recycle Bin from here";
+        assert_eq!(trash_project(&library.join("Gradivo"), &library, 0), Err(refused.into()));
+        assert_eq!(trash_project(&root.join("Drugje"), &library, 0), Err(refused.into()));
+        assert_eq!(trash_project(&library, &library, 0), Err(refused.into()));
+        assert_eq!(trash_project(&root.join("Drugje"), Path::new("Knjižnica"), 0), Err(refused.into()));
+        assert!(trash_project(&library.join("Ni ga"), &library, 0).is_err());
+        assert!(library.join("Gradivo").join("zapiski.txt").exists());
+        assert!(root.join("Drugje").join("pensieve.db").exists());
+        fs::remove_dir_all(&root).unwrap();
+    }
 
     #[test]
     fn listing_files() {

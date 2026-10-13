@@ -21,7 +21,6 @@ Each item keeps its ID so it can be asked for by name; a new one gets the next f
 | **TOOL-6** Font and size (ED-5) | The toolbar's font and size change the whole manuscript (as Settings does), not the selected text as in Word | Differs | P3 |
 | **WIN-3** Language badge | The design's badge shows the project's writing language; the app's marks the selected text, or the open chapter, as EN or SL. Decide which | Differs | P3 |
 | **HOME-11** Place on the Continue card | The design says "Ch. III · p. 47"; the app says "Ch. III". Pages and the Book view have page numbers now, so the page could be added | Partial | P3 |
-| **HOME-15** Remove or delete a project | Home and the library can't drop a project from the list or delete it (only an empty folder can be deleted) | Open | P3 |
 | **IMP-18** Paste from Word (ED-10) | Paste a chapter from a real manuscript and check headings, italics and paragraphs survive; an automatic test would need a browser-like document in the tests (a test-only package such as `happy-dom`) | Open | P3 |
 | **IMP-25** Keyboard and screen reader | Settings and the windows trap the keyboard and give it back; buttons have spoken names; svelte-check reports no accessibility warnings. Still to do: someone tabbing through the running app | Partial | P3 |
 | **IMP-28** Split `+page.svelte` | At about 4,000 lines it is by far the largest file. Move find and replace, earlier versions, the windows, projects, backups, the Word copy and Zen into their own modules | Partial | P3 |

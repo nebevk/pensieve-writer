@@ -23,6 +23,8 @@ windows = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Globalization",
     "Win32_System_Com",
+    # A deleted project goes to the Recycle Bin (HOME-15).
+    "Win32_UI_Shell",
 ] }
 
 [profile.release]
