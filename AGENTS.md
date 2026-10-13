@@ -22,6 +22,7 @@ Open work, and where the app differs from `design-system/` on purpose: `docs/bac
 - `npm run tauri dev` : run the desktop app in development
 - `npm run check` : type-check (svelte-check / tsc)
 - `npm test` : unit tests (Vitest)
+- `npm run test:browser` : the browser checks, the built app driven in headless Edge (see `tests/browser/README.md`); `-- find home` runs only those
 - `npm run build` / `npm run tauri build` : production build / installer
 - `npm run release -- 0.2.0 --notes "…"` : a signed release for GitHub Releases, which installed copies update from (see `docs/releasing.md`; needs the key in `%USERPROFILE%\.tauri`)
 

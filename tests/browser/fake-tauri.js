@@ -1,0 +1,370 @@
+// @ts-nocheck
+// Stands in for the Pensieve desktop window in a plain browser, for testing only: answers the SQL
+// plugin with sql.js (one in-memory database per project file) and the app's own commands with a
+// pretend disk of folders and files. Load sql-asm.js first; it defines initSqlJs.
+(() => {
+  const sqlReady = window.initSqlJs();
+  const books = new Map();
+  const callbacks = new Map();
+  let nextCallback = 1;
+  // The app folder, where books lived before the library, and the writer's Documents and home folders.
+  const HOME = "C:\\Books\\Pensieve";
+  const USER = "C:\\Users\\Eva";
+  const DOCS = window.__PV_DOCUMENTS__ ?? `${USER}\\Documents`;
+  window.isTauri = true;
+  // Folders on the pretend disk, by lower-case path, with their own spelling.
+  const folders = new Map();
+  window.__PV_HARNESS__ = { books, calls: [], folders, copies: [] };
+
+  const lower = (path) => path.toLowerCase();
+  const parentOf = (path) => path.slice(0, Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/")));
+  const addFolder = (path) => {
+    let at = path;
+    while (at && !folders.has(lower(at)) && /[\\/]/.test(at)) {
+      folders.set(lower(at), at);
+      at = parentOf(at);
+    }
+  };
+  addFolder(HOME);
+  addFolder(DOCS);
+  addFolder(USER);
+
+  const clean = (value) => (value === undefined ? null : typeof value === "boolean" ? (value ? 1 : 0) : value);
+  // The app writes $1, $2 … in its queries; sql.js binds those by name.
+  const bindOf = (query, values) => {
+    const list = (values ?? []).map(clean);
+    if (!/\$\d/.test(query)) return list;
+    const named = {};
+    list.forEach((value, index) => (named[`$${index + 1}`] = value));
+    return named;
+  };
+  const rowsOf = (db, query, values) => {
+    const statement = db.prepare(query);
+    try {
+      statement.bind(bindOf(query, values));
+      const rows = [];
+      while (statement.step()) rows.push(statement.getAsObject());
+      return rows;
+    } finally {
+      statement.free();
+    }
+  };
+
+  // With window.__PV_KEEP__ set, books outlive a page load (in localStorage), like files on disk.
+  const kept = (path) => `pv-db:${path}`;
+  const keep = (path) => {
+    const bytes = books.get(path).export();
+    let text = "";
+    for (let at = 0; at < bytes.length; at += 0x8000) text += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+    localStorage.setItem(kept(path), btoa(text));
+  };
+  const bytesOf = (base64) => {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+  };
+  // window.__PV_SEED__ maps a book path to a prepared database (base64), like a file already on disk.
+  // It is decoded now, before the app starts, so timing the app does not time this.
+  const seeds = new Map(Object.entries(window.__PV_SEED__ ?? {}).map(([path, base64]) => [path, bytesOf(base64)]));
+  for (const key of seeds.keys()) addFolder(parentOf(key.replace(/^sqlite:/, "")));
+  if (window.__PV_KEEP__) {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index) ?? "";
+      if (key.startsWith("pv-db:sqlite:")) addFolder(parentOf(key.slice("pv-db:sqlite:".length)));
+    }
+    for (const path of JSON.parse(localStorage.getItem("pv-folders") ?? "[]")) addFolder(path);
+  }
+  const keepFolders = () => {
+    if (window.__PV_KEEP__) localStorage.setItem("pv-folders", JSON.stringify([...folders.values()]));
+  };
+  const opened = (SQL, path) => {
+    if (seeds.has(path)) return new SQL.Database(seeds.get(path));
+    const saved = window.__PV_KEEP__ ? localStorage.getItem(kept(path)) : null;
+    return saved ? new SQL.Database(bytesOf(saved)) : new SQL.Database();
+  };
+  /** Whether a file is on the pretend disk: loaded in this page, seeded, or kept from an earlier one. */
+  const fileExists = (path) => {
+    const key = lower(`sqlite:${path}`);
+    for (const name of books.keys()) if (lower(name) === key) return true;
+    for (const name of seeds.keys()) if (lower(name) === key) return true;
+    if (window.__PV_KEEP__) {
+      for (let index = 0; index < localStorage.length; index += 1) {
+        if (lower(localStorage.key(index) ?? "") === lower(kept(`sqlite:${path}`))) return true;
+      }
+    }
+    return false;
+  };
+  window.__PV_HARNESS__.stacks = [];
+  const dirty = new Set();
+  const keepAll = () => {
+    for (const path of dirty) keep(path);
+    dirty.clear();
+  };
+  window.__PV_HARNESS__.keepAll = keepAll;
+  addEventListener("pagehide", keepAll);
+  addEventListener("beforeunload", keepAll);
+  /** A clean disk for the next page load: nothing kept from this one. */
+  window.__PV_HARNESS__.forget = () => {
+    dirty.clear();
+    removeEventListener("pagehide", keepAll);
+    removeEventListener("beforeunload", keepAll);
+    localStorage.clear();
+  };
+
+  // The same rules and English messages as src-tauri/src/library.rs.
+  const folderName = (name) => {
+    const trimmed = String(name).trim().replace(/[.\s]+$/, "");
+    if (!trimmed || trimmed === "." || trimmed === "..") throw "Give the folder a name";
+    if ([...trimmed].length > 120) throw "That name is too long for a folder";
+    if (/[\\/:*?"<>|\u0000-\u001f]/.test(trimmed)) throw "A folder name can't have \\ / : * ? \" < > or |";
+    if (/^[.$]/.test(trimmed)) throw "A folder name can't start with . or $";
+    if (/^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i.test(trimmed)) throw "Windows keeps that name for itself; choose another";
+    return trimmed;
+  };
+  const createFolder = (parent, name) => {
+    addFolder(parent);
+    const path = `${parent.replace(/[\\/]+$/, "")}\\${folderName(name)}`;
+    if (folders.has(lower(path)) || fileExists(path)) throw "Something with that name is already there";
+    addFolder(path);
+    keepFolders();
+    return path;
+  };
+  /** The library as library.rs lists it: folders, and projects (folders holding pensieve.db). */
+  const listFolder = (folder, depth, open = "") => {
+    const prefix = `${lower(folder.replace(/[\\/]+$/, ""))}\\`;
+    const children = [...folders.entries()].filter(([key]) => key.startsWith(prefix) && !key.slice(prefix.length).includes("\\"));
+    return children
+      .filter(([, path]) => !path.split(/[\\/]/).pop().startsWith("."))
+      .map(([, path]) => {
+        const project = fileExists(`${path}\\pensieve.db`);
+        return {
+          name: path.split(/[\\/]/).pop(),
+          path,
+          project,
+          file: false,
+          // Only the open project's own files and folders are listed, as library.rs does.
+          children: depth >= 6 ? [] : project ? (open && lower(path) === lower(open) ? listFolder(path, depth + 1) : []) : listFolder(path, depth + 1, open),
+        };
+      })
+      .reverse()
+      .concat(
+        [...files.values()]
+          .filter((file) => lower(parentOf(file.path)) === prefix.slice(0, -1))
+          .map((file) => ({ name: file.path.split(/[\\/]/).pop(), path: file.path, project: false, file: true, children: [] }))
+          .filter((file) => !/^(\.|\$|~\$)/.test(file.name) && !file.name.toLowerCase().startsWith("pensieve.db")),
+      );
+  };
+
+  // Her files on the pretend disk (pictures, PDFs, Word files), by lower-case path: { path, base64 }. Seeded
+  // through localStorage "pv-files" ({ path: base64 }) before the page loads.
+  const files = new Map();
+  for (const [path, base64] of Object.entries(JSON.parse(localStorage.getItem("pv-files") ?? "{}"))) {
+    files.set(lower(path), { path, base64 });
+    addFolder(parentOf(path));
+  }
+  window.__PV_HARNESS__.files = files;
+  window.__PV_HARNESS__.opened = [];
+  window.__PV_HARNESS__.revealed = [];
+  const PROGRAMS = /\.(appref-ms|application|bat|chm|cmd|com|cpl|exe|gadget|hta|inf|jar|js|jse|lnk|msc|msi|msp|pif|ps1|psm1|reg|scf|scr|sct|url|vb|vbe|vbs|ws|wsc|wsf|wsh)$/i;
+
+  // Database files open now: Windows won't move a folder with one of them inside.
+  const openPools = new Set();
+  window.__PV_HARNESS__.openPools = openPools;
+  const within = (path, folder) => lower(path) === lower(folder) || lower(path).startsWith(`${lower(folder)}\\`);
+  /** library.rs move_entry on the pretend disk: folders, files kept or loaded, all follow. */
+  const moveFolder = (from, parent, name) => {
+    from = String(from).replace(/[\\/]+$/, "");
+    parent = String(parent).replace(/[\\/]+$/, "");
+    if (!folders.has(lower(from))) throw "That folder isn't there any more";
+    if (!folders.has(lower(parent))) throw "Choose a folder that exists";
+    const to = `${parent}\\${folderName(name)}`;
+    if (lower(to).startsWith(`${lower(from)}\\`)) throw "A folder can't go inside itself";
+    if (lower(to) === lower(from)) {
+      if (to === from) return from;
+    } else if (folders.has(lower(to)) || fileExists(to)) {
+      throw "Something with that name is already there";
+    }
+    for (const db of openPools) if (within(db.replace(/^sqlite:/, ""), from)) throw "That folder is in use; close what has it open and try again";
+    const moved = (path) => `${to}${path.slice(from.length)}`;
+    for (const [key, spelled] of [...folders]) {
+      if (!within(spelled, from)) continue;
+      folders.delete(key);
+      folders.set(lower(moved(spelled)), moved(spelled));
+    }
+    for (const [key, db] of [...books]) {
+      const path = key.replace(/^sqlite:/, "");
+      if (!within(path, from)) continue;
+      books.delete(key);
+      books.set(`sqlite:${moved(path)}`, db);
+      if (dirty.delete(key)) dirty.add(`sqlite:${moved(path)}`);
+    }
+    for (const [key, file] of [...files]) {
+      if (!within(file.path, from)) continue;
+      files.delete(key);
+      files.set(lower(moved(file.path)), { ...file, path: moved(file.path) });
+    }
+    if (window.__PV_KEEP__) {
+      for (const key of Object.keys(localStorage)) {
+        if (!key.startsWith("pv-db:sqlite:")) continue;
+        const path = key.slice("pv-db:sqlite:".length);
+        if (!within(path, from)) continue;
+        localStorage.setItem(`pv-db:sqlite:${moved(path)}`, localStorage.getItem(key));
+        localStorage.removeItem(key);
+      }
+    }
+    keepFolders();
+    return to;
+  };
+
+  async function handle(cmd, args) {
+    window.__PV_HARNESS__.calls.push(args.query ? `${cmd} ${args.query.replace(/\s+/g, " ").trim().slice(0, 80)}` : cmd);
+    if (window.__PV_STACKS__ && args.query && window.__PV_STACKS__.test(args.query)) {
+      window.__PV_HARNESS__.stacks.push(`${args.query.replace(/\s+/g, " ").trim().slice(0, 60)}\n${new Error().stack}`);
+    }
+    switch (cmd) {
+      case "plugin:sql|load": {
+        const SQL = await sqlReady;
+        addFolder(parentOf(args.db.replace(/^sqlite:/, "")));
+        if (!books.has(args.db)) books.set(args.db, opened(SQL, args.db));
+        openPools.add(args.db);
+        return args.db;
+      }
+      case "plugin:sql|execute": {
+        const db = books.get(args.db);
+        // VACUUM INTO writes a copy of the database file beside it; here it is one more pretend file.
+        const into = /^\s*VACUUM\s+INTO\s+\$1\s*$/i.exec(args.query);
+        if (into) {
+          const SQL = await sqlReady;
+          const target = String((args.values ?? [])[0]);
+          books.set(`sqlite:${target}`, new SQL.Database(db.export()));
+          window.__PV_HARNESS__.copies.push(target);
+          return [0, 0];
+        }
+        db.run(args.query, bindOf(args.query, args.values));
+        const changes = db.getRowsModified();
+        const last = db.exec("SELECT last_insert_rowid()")[0]?.values?.[0]?.[0] ?? 0;
+        // Kept when the page goes, not after every write: copying every database each time runs sql.js out of memory.
+        if (window.__PV_KEEP__) dirty.add(args.db);
+        return [changes, last];
+      }
+      case "plugin:sql|select":
+        return rowsOf(books.get(args.db), args.query, args.values);
+      case "plugin:sql|close":
+        if (args.db) openPools.delete(args.db);
+        else openPools.clear();
+        return true;
+      case "plugin:event|listen":
+        return args.handler ?? 0;
+      case "plugin:window|is_maximized":
+        return false;
+      case "default_project_path":
+        return `${HOME}\\pensieve.db`;
+      case "read_prefs":
+        return "";
+      case "project_file_exists":
+        return fileExists(args.path);
+      case "reserve_project_path":
+        return `${args.folder}\\pensieve.db`;
+      case "example_book_path": {
+        const path = `${HOME}\\examples\\${args.name}.db`;
+        return { path, exists: fileExists(path) };
+      }
+      case "relocate_project": {
+        const SQL = await sqlReady;
+        const source = books.get(`sqlite:${args.source}`);
+        if (!source) throw "The project file was not found";
+        if (!folders.has(lower(args.folder))) throw "Choose a folder that exists";
+        const dest = `${args.folder}\\pensieve.db`;
+        if (fileExists(dest)) throw "That folder already contains a pensieve.db file";
+        books.set(`sqlite:${dest}`, new SQL.Database(source.export()));
+        if (window.__PV_KEEP__) dirty.add(`sqlite:${dest}`);
+        return dest;
+      }
+      case "library_places":
+        return { documents: DOCS, home: USER };
+      case "list_library":
+        return folders.has(lower(args.folder)) ? listFolder(args.folder, 1, String(args.open ?? "").replace(/[\\/]+$/, "")) : [];
+      case "create_library_folder":
+        return createFolder(args.parent, args.name);
+      case "new_project_folder":
+        return `${createFolder(args.parent, args.name)}\\pensieve.db`;
+      // Updates: localStorage "pv-update" holds the newer version GitHub Releases pretends to have.
+      case "plugin:app|version":
+        return "0.1.0";
+      case "plugin:updater|check": {
+        const version = localStorage.getItem("pv-update");
+        return version ? { rid: 7, currentVersion: "0.1.0", version, date: null, body: "", rawJson: {} } : null;
+      }
+      case "plugin:updater|download_and_install":
+        window.__PV_HARNESS__.installed = (window.__PV_HARNESS__.installed ?? 0) + 1;
+        return null;
+      case "move_library_entry":
+        return moveFolder(args.path, args.parent, args.name);
+      case "open_library_file": {
+        if (!files.has(lower(args.path))) throw "That file isn't there any more";
+        if (PROGRAMS.test(args.path)) throw "Pensieve doesn't start programs; open it from Explorer if you trust it";
+        window.__PV_HARNESS__.opened.push(args.path);
+        return null;
+      }
+      case "show_in_explorer":
+        if (!files.has(lower(args.path)) && !folders.has(lower(args.path)) && !fileExists(args.path)) throw "That isn't there any more";
+        window.__PV_HARNESS__.revealed.push(args.path);
+        return null;
+      case "read_document_file": {
+        if (!/\.(docx|txt|md|markdown)$/i.test(args.path)) throw "Only a Word, text or Markdown file can come in as a writing";
+        const file = files.get(lower(args.path));
+        if (!file) throw "That file isn't there any more";
+        return bytesOf(file.base64).buffer;
+      }
+      case "list_document_files": {
+        const folder = String(args.folder).replace(/[\\/]+$/, "");
+        if (!folders.has(lower(folder))) throw "That folder isn't there any more";
+        return [...files.values()]
+          .filter((file) => lower(parentOf(file.path)) === lower(folder))
+          .map((file) => file.path)
+          .filter((path) => /\.(docx|txt|md|markdown)$/i.test(path) && !/^(\.|~\$)/.test(path.split(/[\\/]/).pop()));
+      }
+      // The file and folder pickers: the answers a check queued, in turn; none left is a Cancel.
+      case "plugin:dialog|open":
+        return window.__PV_HARNESS__.dialogAnswers?.shift() ?? null;
+      case "remove_library_folder": {
+        const path = String(args.path).replace(/[\\/]+$/, "");
+        if (!folders.has(lower(path))) throw "That folder isn't there any more";
+        const inside =
+          [...folders.values()].some((spelled) => lower(spelled).startsWith(`${lower(path)}\\`)) ||
+          [...books.keys()].some((key) => within(key.replace(/^sqlite:/, ""), path)) ||
+          [...files.values()].some((file) => within(file.path, path));
+        if (inside) throw "Only an empty folder can be deleted; move what's in it out first";
+        folders.delete(lower(path));
+        keepFolders();
+        return null;
+      }
+      default:
+        return null;
+    }
+  }
+
+  window.__TAURI_INTERNALS__ = {
+    invoke: (cmd, args = {}) => handle(cmd, args),
+    transformCallback(callback, once = false) {
+      const id = nextCallback++;
+      callbacks.set(id, (data) => {
+        if (once) callbacks.delete(id);
+        return callback?.(data);
+      });
+      return id;
+    },
+    unregisterCallback(id) {
+      callbacks.delete(id);
+    },
+    runCallback(id, data) {
+      callbacks.get(id)?.(data);
+    },
+    callbacks,
+    convertFileSrc: (path) => path,
+    metadata: { currentWindow: { label: "main" }, currentWebview: { windowLabel: "main", label: "main" } },
+    plugins: { path: { sep: "\\", delimiter: ";" } },
+  };
+  window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
+})();
