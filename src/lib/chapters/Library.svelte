@@ -10,6 +10,7 @@
   import { agoCapital, locale, num, plural, t } from "$lib/ui.svelte";
   import type { UiKey } from "$lib/i18n";
   import Icon from "$lib/editor/Icon.svelte";
+  import EmptyState from "$lib/views/EmptyState.svelte";
   import { roman } from "./labels";
 
   let {
@@ -903,7 +904,7 @@
       {@render rowButton(row)}
     {/if}
   {:else}
-    <p class="empty">{t("emptyLibrary")}</p>
+    <EmptyState kind="projects" size="small" text={t("emptyLibrary")} action={t("newProjectTitle")} onAction={() => actions.startProject(library.root)} />
   {/each}
 </div>
 

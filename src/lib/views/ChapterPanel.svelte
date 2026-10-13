@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "$lib/editor/Icon.svelte";
+  import EmptyState from "./EmptyState.svelte";
   import type { Chapter } from "$lib/model";
   import type { Note, Task, TodoState } from "$lib/storage/organize";
   import type { UiKey } from "$lib/i18n";
@@ -202,7 +203,7 @@
         {/if}
       {/each}
       {#if shown.length === 0}
-        <p class="empty">{t("noTodosYet")}</p>
+        <EmptyState kind="tasks" size="small" text={t("noTodosYet")} />
       {/if}
     </div>
     <button type="button" class="more board" onclick={onOpenBoard}>{t("openTodosView")} →</button>
@@ -240,7 +241,7 @@
           {/each}
         {/if}
         {#if notes.here.length === 0 && notes.others.length === 0}
-          <p class="empty">{t("noNotesYet")}</p>
+          <EmptyState kind="notes" size="small" text={t("noNotesYet")} />
         {/if}
       {/if}
     </div>

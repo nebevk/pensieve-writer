@@ -13,6 +13,7 @@
   } from "$lib/storage/organize";
   import type { UiKey } from "$lib/i18n";
   import { t } from "$lib/ui.svelte";
+  import EmptyState from "./EmptyState.svelte";
 
   let {
     projectId,
@@ -242,6 +243,9 @@
       <input bind:value={draft} placeholder={t("addTodoHint")} aria-label={t("addTodo")} />
       <span class="hint">{t("enterToAdd")}</span>
     </form>
+    {#if cards.length === 0}
+      <EmptyState kind="tasks" text={t("emptyTodosLine")} />
+    {:else}
     <div class="columns">
       {#each columns as column (column.id)}
         {@const items = cards.filter((card) => card.state === column.id && visible(card))}
@@ -293,6 +297,7 @@
         </section>
       {/each}
     </div>
+    {/if}
     {#if message}
       <p class="error" role="alert">{message}</p>
     {/if}

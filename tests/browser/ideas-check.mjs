@@ -57,7 +57,7 @@ check("the title bar has an Ideas tab after Notes", JSON.stringify(tabs) === JSO
 await page.clickText(".titlebar [role=tab]", "Ideas");
 await until(`!!document.querySelector(".ideas-view")`);
 await sleep(500);
-check("it opens on this project's ideas, none yet", (await page.run(`document.querySelector(".ideas-view .empty")?.textContent.trim()`)) === "No ideas yet.");
+check("it opens on this project's ideas, none yet", (await page.run(`document.querySelector(".ideas-view .empty-state p")?.textContent.trim()`)) === "No ideas yet. Even the smallest one is worth keeping.");
 
 // New idea: a card, open beside with its name ready to be typed over.
 await page.clickText(".ideas-view .new", "New idea");

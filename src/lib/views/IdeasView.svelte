@@ -7,6 +7,7 @@
   import { deleteNote, flushNoteSave, listNotes, saveNote, scheduleNoteSave, watchNoteSaves, type Note } from "$lib/storage/organize";
   import { readIdeaPlaces, saveIdeaPlaces, snapshotSavedWriting } from "$lib/storage/sqlite";
   import { ago, t } from "$lib/ui.svelte";
+  import EmptyState from "./EmptyState.svelte";
   import IdeasMap from "./IdeasMap.svelte";
   import { ideaLinks, ideaMatches, newestFirst, ownCard, placed, readable, withLink, withoutLinks, type IdeaCard, type Place } from "./ideas";
 
@@ -326,7 +327,11 @@
         </button>
       {:else}
         {#if loaded && (scope === "project" || others)}
-          <p class="empty">{query.trim() ? t("searchNothing") : t("noIdeasYet")}</p>
+          {#if query.trim()}
+            <p class="empty">{t("searchNothing")}</p>
+          {:else}
+            <EmptyState kind="notes" text={t("emptyIdeasLine")} action={t("newIdea")} onAction={() => void create()} />
+          {/if}
         {/if}
       {/each}
     </div>
@@ -612,6 +617,12 @@
     margin: 0;
     color: var(--pv-text-faint);
     font-size: var(--pv-text-md);
+  }
+
+  /* No ideas yet: the picture across the cards' room, a little down from the top. */
+  .cards > :global(.empty-state) {
+    grid-column: 1 / -1;
+    padding-top: 48px;
   }
 
   /* The idea open beside the cards, on paper, as a note beside the page. */

@@ -17,6 +17,7 @@
   import { listTasks, saveTask, type Task } from "$lib/storage/organize";
   import ChecklistItem from "./ChecklistItem.svelte";
   import BrandMark from "$lib/editor/BrandMark.svelte";
+  import EmptyState from "./EmptyState.svelte";
 
   let {
     writing,
@@ -278,7 +279,7 @@
       {#each openTasks.slice(0, TODOS_SHOWN) as task (task.id)}
         <ChecklistItem text={task.title} state={task.todoState} truncate flush onToggle={() => void toggle(task)} />
       {:else}
-        <p class="empty">{t("noOpenTodos")}</p>
+        <EmptyState kind="tasks" size="row" text={t("noOpenTodos")} />
       {/each}
     </div>
   </div>
@@ -664,12 +665,6 @@
 
   .link:hover {
     text-decoration: underline;
-  }
-
-  .empty {
-    margin: 0;
-    font-size: var(--pv-text-md);
-    color: var(--pv-text-faint);
   }
 
   /* Grid or List: a soft track, the chosen one raised on it in the page's colour, as the theme switch. */

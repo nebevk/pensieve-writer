@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import Editor from "$lib/editor/Editor.svelte";
   import Icon from "$lib/editor/Icon.svelte";
+  import EmptyState from "./EmptyState.svelte";
   import { linksTo, noteMentions } from "$lib/chapters/mentions";
   import type { Chapter, DocumentJson } from "$lib/model";
   import { emptyDocument } from "$lib/model";
@@ -466,6 +467,8 @@
           <button type="button" class="danger" onclick={() => (confirmDelete = note.id)}>{t("deleteNote")}</button>
         {/if}
       </article>
+    {:else if notes.length === 0}
+      <EmptyState kind="notes" text={t("emptyNotesLine")} action={t("newNoteTitle")} onAction={() => void create()} />
     {:else}
       <p class="quiet">{t("noNoteYet")}</p>
     {/if}
