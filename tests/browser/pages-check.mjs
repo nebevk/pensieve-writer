@@ -6,7 +6,7 @@ import { connect, sleep } from "./cdp.mjs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const shots = join(dirname(fileURLToPath(import.meta.url)), "..");
+const shots = join(dirname(fileURLToPath(import.meta.url)), "shots");
 
 const port = Number(process.argv[2] ?? 4176);
 const results = [];
