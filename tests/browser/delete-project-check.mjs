@@ -21,6 +21,7 @@ const until = async (expression, tries = 60) => {
 };
 
 const ELSEWHERE = "C:\\Users\\Eva\\Desktop\\Stara knjiga\\pensieve.db";
+const NOTES_ELSEWHERE = "C:\\Users\\Eva\\Desktop\\Stari zapiski\\pensieve.db";
 const rowSel = (name) =>
   `[...document.querySelectorAll(".home .library button.tree-row.project")].find((el) => el.querySelector(".name")?.textContent.trim() === ${JSON.stringify(name)})`;
 const hasRow = (name) => page.run(`!!(${rowSel(name)})`);
@@ -37,10 +38,10 @@ const trashed = () => page.run(`window.__PV_HARNESS__.trashed ?? []`);
 const prefs = () => page.run(`JSON.parse(localStorage.getItem("pensieve-prefs") ?? "{}")`);
 const bookOf = (folder) => page.run(`[...window.__PV_HARNESS__.books.keys()].find((key) => key.includes(${JSON.stringify(`\\${folder}\\`)})) ?? ""`);
 
-// A project from before the library, kept on the desktop: it is listed under Elsewhere.
+// Two projects from before the library, kept on the desktop: they are listed under Elsewhere.
 await page.open(`http://127.0.0.1:${port}/`, 1500);
 await page.run(
-  `localStorage.clear(), localStorage.setItem('pensieve-prefs', JSON.stringify({ uiLanguage: 'en', knownProjects: [{ path: ${JSON.stringify(ELSEWHERE)}, title: 'Stara knjiga' }] })), true`,
+  `localStorage.clear(), localStorage.setItem('pensieve-prefs', JSON.stringify({ uiLanguage: 'en', knownProjects: [{ path: ${JSON.stringify(ELSEWHERE)}, title: 'Stara knjiga' }, { path: ${JSON.stringify(NOTES_ELSEWHERE)}, title: 'Stari zapiski' }] })), true`,
 );
 await page.open(`http://127.0.0.1:${port}/`, 500);
 await until(`!!document.querySelector(".home .continue")`);
@@ -146,6 +147,34 @@ check(
   `${slovenianMenu.at(-1)} | ${await question()} | ${JSON.stringify(await menuItems())}`,
 );
 await choose("Prekliči");
+
+// Home's cards have the same menu (owner, 13 October): a right-click, the menu key, or Del on a card.
+await page.run(`[...document.querySelectorAll(".home .right .switch button")].find((el) => el.textContent.includes("Mreža")).click(), true`);
+const cardSel = (name) => `[...document.querySelectorAll(".home .grid .card.project")].find((el) => el.querySelector(".name")?.textContent.trim() === ${JSON.stringify(name)})`;
+const cardMenuOn = (name) =>
+  page.run(`(() => { const el = ${cardSel(name)}; if (!el) return false; const r = el.getBoundingClientRect(); el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 30, clientY: r.top + 10 })); return true; })()`);
+await until(`!!(${cardSel("Zgodbe ob reki")}) && !!(${cardSel("Stari zapiski")})`);
+await cardMenuOn("Zgodbe ob reki");
+const cardMenu = await menuItems();
+check("a project's card has the library's menu, from a right-click", JSON.stringify(cardMenu) === JSON.stringify(["Odpri", "Pokaži v Raziskovalcu", "Izbriši projekt [Del]"]), JSON.stringify(cardMenu));
+await choose("Pokaži v Raziskovalcu");
+check("Pokaži v Raziskovalcu shows its file there", await until(`(window.__PV_HARNESS__.revealed ?? []).some((path) => path.endsWith("\\\\Zgodbe ob reki\\\\pensieve.db"))`), JSON.stringify(await page.run(`window.__PV_HARNESS__.revealed`)));
+// The first project was made while Pensieve spoke English, so it keeps that name.
+await cardMenuOn("My first project");
+check("the open project's card has Delete, off", (await menuItems()).includes("(off) Izbriši projekt [Del]"), JSON.stringify(await menuItems()));
+await page.key("Escape", "Escape", 27);
+await sleep(200);
+await page.run(`(${cardSel("Zgodbe ob reki")}).focus(), true`);
+await page.key("Delete", "Delete", 46);
+await until(`!!document.querySelector(".tree-menu .question")`);
+check("Del on a card asks first", (await question()).startsWith("Premaknem »Zgodbe ob reki«"), await question());
+await choose("Premakni v Koš");
+check("and the card goes, its folder in the Recycle Bin", (await until(`!(${cardSel("Zgodbe ob reki")})`)) && (await trashed()).some((path) => path.endsWith("\\Examples\\Zgodbe ob reki")), JSON.stringify(await trashed()));
+await page.run(`(() => { const el = ${cardSel("Stari zapiski")}; el.focus(); el.dispatchEvent(new KeyboardEvent("keydown", { key: "F10", shiftKey: true, bubbles: true, cancelable: true })); return true; })()`);
+const elsewhereCard = await menuItems();
+check("a card kept elsewhere, by Shift+F10: Odstrani s seznama", elsewhereCard.at(-1) === "Odstrani s seznama" && !elsewhereCard.some((item) => item.includes("Izbriši")), JSON.stringify(elsewhereCard));
+await choose("Odstrani s seznama");
+check("it leaves Home, its file where it was", (await until(`!(${cardSel("Stari zapiski")})`)) && !((await prefs()).knownProjects ?? []).some((item) => item.path === NOTES_ELSEWHERE) && (await trashed()).length === 2);
 
 check("no errors on the page", page.problems.length === 0, page.problems.slice(0, 3).join(" | "));
 console.log(results.every(Boolean) ? "\nALL PASSED" : `\n${results.filter((ok) => !ok).length} FAILED`);

@@ -5,7 +5,8 @@
   import { compactWords, wordsFor } from "$lib/editor/counts";
   import { roman } from "$lib/chapters/labels";
   import Library from "$lib/chapters/Library.svelte";
-  import type { LibraryActions, LibraryView } from "$lib/chapters/library";
+  import TreeMenu, { type MenuItem } from "$lib/chapters/TreeMenu.svelte";
+  import { isInside, type LibraryActions, type LibraryView } from "$lib/chapters/library";
   import type { AmbienceName, KnownProject, OutlineLayout, Prefs, ThemeName } from "$lib/prefs";
   import type { Chapter, Writing } from "$lib/model";
   import { isUntitled, type UiKey } from "$lib/i18n";
@@ -113,6 +114,53 @@
     return parts.join(" · ");
   });
   const otherBooks = $derived(books.filter((book) => book.path.toLowerCase() !== currentPath.toLowerCase()));
+
+  // A card's menu, as the library's row has it for the same project.
+  let cardMenu = $state<{ x: number; y: number; items: MenuItem[]; back: HTMLElement | null } | null>(null);
+  const inLibrary = (path: string) => !!library.root && isInside(path, library.root);
+
+  /** Asks before a project of the library goes to the Recycle Bin, as the library does. */
+  function askToDelete(path: string, title: string, back: HTMLElement | null, at: { x: number; y: number }) {
+    cardMenu = {
+      ...at,
+      back,
+      items: [
+        { text: t("deleteProjectQuestion", { title }) },
+        "rule",
+        { label: t("toRecycleBin"), danger: true, run: () => actions.deleteProject(path) },
+        { label: t("cancel"), run: () => undefined },
+      ],
+    };
+  }
+
+  /** A project card's menu (owner, 13 October): open it, show it in Explorer, and delete it or take it off the list. */
+  function openCardMenu(path: string, title: string, current: boolean, open: () => void, back: HTMLElement | null, at: { x: number; y: number }) {
+    const items: MenuItem[] = [
+      { label: t("openItem"), run: open },
+      { label: t("showInExplorer"), run: () => actions.showInExplorer(path) },
+    ];
+    // Never the open project; one kept elsewhere only leaves the list, its files where they are.
+    if (inLibrary(path)) {
+      items.push("rule", { label: t("deleteProject"), keys: "Del", danger: true, disabled: current, run: () => askToDelete(path, title, back, at) });
+    } else if (!current) {
+      items.push("rule", { label: t("removeFromList"), run: () => actions.forgetProject(path) });
+    }
+    cardMenu = { ...at, back, items };
+  }
+
+  /** The menu key or Shift+F10 opens a card's menu where the keyboard is; Del asks to delete it. */
+  function cardKeys(event: KeyboardEvent, path: string, title: string, current: boolean, open: () => void) {
+    const card = event.currentTarget as HTMLElement;
+    const box = card.getBoundingClientRect();
+    const at = { x: box.left + 24, y: box.bottom };
+    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+      event.preventDefault();
+      openCardMenu(path, title, current, open, card, at);
+    } else if (event.key === "Delete" && inLibrary(path) && !current) {
+      event.preventDefault();
+      askToDelete(path, title, card, at);
+    }
+  }
   // Doing first, as on the board.
   const openTasks = $derived(
     tasks
@@ -173,8 +221,19 @@
 </script>
 
 <!-- A project as a little title page: its name, its writings, their words, when it was last written in. -->
-{#snippet card(title: string, project: ProjectSummary | undefined, current: boolean, onclick: () => void)}
-  <button type="button" class="card project" class:current {onclick}>
+{#snippet card(title: string, project: ProjectSummary | undefined, current: boolean, path: string, onclick: () => void)}
+  <button
+    type="button"
+    class="card project"
+    class:current
+    {onclick}
+    oncontextmenu={(event) => {
+      if (!path) return;
+      event.preventDefault();
+      openCardMenu(path, title, current, onclick, event.currentTarget, { x: event.clientX, y: event.clientY });
+    }}
+    onkeydown={(event) => path && cardKeys(event, path, title, current, onclick)}
+  >
     {#if current}<span class="open">{t("openNow")}</span>{/if}
     <span class="title name">{title}</span>
     <span class="rule" aria-hidden="true"></span>
@@ -316,9 +375,9 @@
       </div>
     {:else}
       <div class="grid">
-        {@render card(projectTitle || writing.title, openSummary, true, () => onContinue(null))}
+        {@render card(projectTitle || writing.title, openSummary, true, currentPath, () => onContinue(null))}
         {#each otherBooks as book (book.path)}
-          {@render card(book.title, book.summary, false, () => onOpenBook(book.path))}
+          {@render card(book.title, book.summary, false, book.path, () => onOpenBook(book.path))}
         {/each}
         <button type="button" class="card new" onclick={onStartProject}>
           <Icon name="plus" />{t("newProjectTitle")}
@@ -331,6 +390,25 @@
     <p class="error load" role="alert">{message}</p>
   {/if}
 </section>
+
+{#if cardMenu}
+  <!-- A question that takes the menu's place is a menu of its own, as in the library. -->
+  {#key cardMenu}
+    <TreeMenu
+      x={cardMenu.x}
+      y={cardMenu.y}
+      items={cardMenu.items}
+      onClose={() => {
+        const back = cardMenu?.back;
+        cardMenu = null;
+        // Once the menu is gone, the card that opened it gets the keyboard back, unless the choice took it elsewhere.
+        setTimeout(() => {
+          if (back?.isConnected && (document.activeElement === document.body || !document.activeElement)) back.focus();
+        });
+      }}
+    />
+  {/key}
+{/if}
 
 <style>
   /* Two columns: hers on the left, her projects on the right; one under the other on a narrow window. */
