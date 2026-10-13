@@ -80,9 +80,9 @@
   const quote = $derived(verse(verseAt, ui.language));
   const SOUNDS: Record<Exclude<AmbienceName, "off">, { key: UiKey; icon: string }> = {
     rain: { key: "soundRain", icon: "rain" },
-    fire: { key: "soundFireplace", icon: "flame" },
-    cafe: { key: "soundCafe", icon: "" },
-    piano: { key: "soundPiano", icon: "" },
+    fire: { key: "soundFireplace", icon: "fireplace" },
+    cafe: { key: "soundCafe", icon: "coffee" },
+    piano: { key: "soundPiano", icon: "music" },
   };
   const NEXT_STATE: Record<Task["todoState"], Task["todoState"]> = { todo: "doing", doing: "done", done: "todo" };
   // A short list on Home; the rest are a link away.

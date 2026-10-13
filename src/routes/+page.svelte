@@ -852,12 +852,6 @@
     findMissing = count === 0;
   }
 
-  function cycleAmbience() {
-    const order = ["off", "rain", "fire", "cafe", "piano"] as const;
-    const index = order.indexOf(prefs.ambience);
-    prefs = { ...prefs, ambience: order[(index + 1) % order.length] };
-  }
-
   function captureEditor() {
     const editor = textEditor;
     const id = editorChapter;
@@ -3444,11 +3438,14 @@
         error={saveStatus.state === "error" ? saveStatus.message : ""}
         {zen}
         onZen={() => void setZen(!zen)}
-        ambience={prefs.ambience}
         today={wordsToday}
-        onAmbience={cycleAmbience}
-        theme={prefs.theme}
+        appearance={resolvedTheme(prefs.theme, new Date(clock))}
         onTheme={(theme) => (prefs.theme = theme)}
+        ambience={prefs.ambience}
+        ambienceVolume={prefs.ambienceVolume}
+        keySounds={prefs.keySounds}
+        keySoundVolume={prefs.keySoundVolume}
+        onSound={(change) => (prefs = { ...prefs, ...change })}
         focusMinutes={prefs.pomodoroFocus}
         breakMinutes={prefs.pomodoroBreak}
         selected={selectedWords}

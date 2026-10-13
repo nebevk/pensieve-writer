@@ -145,14 +145,14 @@ Coziness is the top product priority, within the performance budget in Section 5
 | ID | Requirement | Pri | Status |
 |----|-------------|-----|--------|
 | AT-1 | Soft transitions between views, panels, windows and Zen | M | Done |
-| AT-2 | Warm themes with bundled serif fonts: Daylight, Sunset, Candlelit, Moonlit and Forest, and Day and night (Daylight by day, Candlelit after dark), each with its own Basin mark, which moves on Home (except in Gentle mode or with Windows' animations off) and stands still in Write; Literata, EB Garamond and a typewriter face | M | Done |
-| AT-3 | Ambient sound (rain, fireplace, café, piano), looping, with a volume and fades. It always starts quiet: the volume starts at 10 of 100, and the slider's top is half of full loudness | S | Done |
+| AT-2 | Warm themes with bundled serif fonts (chosen in Settings, on Home and in the floating bar, as the icon set draws them): Daylight, Sunset, Candlelit, Moonlit and Forest, and Day and night (Daylight by day, Candlelit after dark), each with its own Basin mark, which moves on Home (except in Gentle mode or with Windows' animations off) and stands still in Write; Literata, EB Garamond and a typewriter face | M | Done |
+| AT-3 | Ambient sound (rain, fireplace, café, piano), looping, with a volume and fades. It always starts quiet: the volume starts at 10 of 100, and the slider's top is half of full loudness. The floating bar shows the sound's icon and name; a click opens every sound as an icon, and the volume (owner, 13 October) | S | Done |
 | AT-4 | Quiet visual ambience: lamp glow, vignette, paper grain, and sparks drifting over the desk in Candlelit | S | Done |
 | AT-5 | Theme bundles pairing colours, font and sound | C | Dropped: sound stays its own choice |
 | AT-6 | Gentle mode: no sparks and no motion; Windows' "animations off" setting does the same. Sound and smooth typing keep their own switches | M | Done |
 | AT-7 | Harry Potter-flavoured labels (Nox for Zen, Remembrall for to-dos), off by default | C | Not started |
 | AT-8 | A pomodoro in the floating bar: a click starts the writing time with a clock's tick-tock, then a chime, a word on the page and a break, and a chime when the break ends; icons pause, restart and stop it; Zen shows its time; the lengths (25 and 5 minutes to start with) are in Settings → Writing & goals | S | Done |
-| AT-9 | Keystroke sounds, off to start with: a typewriter (with its carriage return and bell), a mechanical keyboard or a soft one, each recorded, with a sound for each key and a volume of up to half. Shortcuts and arrows stay quiet | C | Done |
+| AT-9 | Keystroke sounds, off to start with: a typewriter (with its carriage return and bell), a mechanical keyboard or a soft one, each recorded, with a sound for each key and a volume of up to half. Shortcuts and arrows stay quiet. The floating bar has a keyboard, lit while the keys sound, opening their kinds and volume (owner, 13 October) | C | Done |
 | AT-10 | Smooth typing (on to start with): the caret glides to where the next letter goes and blinks only once she pauses, and each letter inks in under a fading veil, as in Word; drawn over the page, never in the text | S | Done |
 
 ### 4.8 Settings and polish

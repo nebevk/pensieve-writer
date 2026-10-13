@@ -38,7 +38,8 @@ On purpose: keep them when matching the design.
   apart, paragraphs a little apart. Pages are wider (Book 760–960 px) and grow with the room.
 - **Paper:** no second sheet drawn under the page; Pages (A4 or A5) instead.
 - **Goals:** no streak and no goal meter in the floating bar; a Goals list beside the page.
-- **The floating bar:** a theme menu and the pomodoro; no book total, language or save state.
+- **The floating bar:** the looks as icons, the sound and the keys' sound with their volumes, and the
+  pomodoro; no book total, language or save state.
 - **Themes and sound:** Sunset and Forest themes and "Day and night"; sound is its own choice in any theme (no Night
   rain).
 - **Write:** the panel shows one list at a time; no chapter statuses; both side lists have a hide
