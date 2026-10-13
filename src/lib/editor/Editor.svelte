@@ -7,6 +7,7 @@
   import TextAlign from "@tiptap/extension-text-align";
   import type { DocumentJson, WritingLanguage } from "$lib/model";
   import { FontMark, Highlight, ImageBlock, Indent, LinkMark, SizeMark, Superscript, TextColor } from "./marks";
+  import { cleanWordHtml } from "./wordPaste";
   import { TextLanguage } from "./textLanguage";
   import { NoteLinkMark, NoteLinks, type NoteTarget } from "./noteLinks";
   import { Footnote } from "./footnote";
@@ -190,6 +191,8 @@
           lang: language === "sl" ? "sl" : "en",
           "aria-label": t("chapterText"),
         },
+        // Pasted from Word: its lists, footnotes and empty lines as the page holds them (IMP-18).
+        transformPastedHTML: cleanWordHtml,
       },
       onUpdate: ({ editor: current }) => {
         // An edit that leaves the cursor where it was, such as a comment turned into a to-do, changes

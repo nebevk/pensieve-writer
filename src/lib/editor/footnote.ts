@@ -19,7 +19,9 @@ export const Footnote = Node.create({
       },
     };
   },
-  parseHTML: () => [{ tag: "sup[data-footnote]" }],
+  // Before the superscript mark's rule for every <sup>: marks are read first when rules are equal, so a
+  // footnote copied or pasted (from Word too) came in as an empty superscript.
+  parseHTML: () => [{ tag: "sup[data-footnote]", priority: 60 }],
   renderHTML: ({ HTMLAttributes }) => ["sup", mergeAttributes(HTMLAttributes, { class: "footnote" })],
   // The note isn't part of the running text, so word counts and find leave it out.
   renderText: () => "",

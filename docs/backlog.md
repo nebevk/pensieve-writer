@@ -15,7 +15,6 @@ Each item keeps its ID so it can be asked for by name; a new one gets the next f
 | **IMP-10** Speed on the real laptop | Time typing in a chapter of the long test book on her laptop, in Candlelit with the sparks on, with the panel open and a note pinned; time the start with that book open. The browser checks (processor slowed four times) give about 40 ms a key; this confirms it on the hardware that matters (Windows 10, 8 GB of memory) | Open | P2 |
 | **WIN-1** One window bar | The app draws its own window bar (Windows' is off). Check it in the desktop window: dragging, a double-click to maximise, the three buttons, and resizing from the edges | Check | P2 |
 | **WIN-3** Language badge | The design's badge shows the project's writing language; the app's marks the selected text, or the open chapter, as EN or SL. Decide which | Differs | P3 |
-| **IMP-18** Paste from Word (ED-10) | Paste a chapter from a real manuscript and check headings, italics and paragraphs survive; an automatic test would need a browser-like document in the tests (a test-only package such as `happy-dom`) | Open | P3 |
 | **IMP-25** Keyboard and screen reader | Settings and the windows trap the keyboard and give it back; buttons have spoken names; svelte-check reports no accessibility warnings. Still to do: someone tabbing through the running app | Partial | P3 |
 | **IMP-28** Split `+page.svelte` | Find and replace, earlier versions, updates, the folder backup and the Word copy have their own modules (`pageFind`, `earlierVersions`, `updates`, `copies`): 4,354 lines down to about 3,950, HOME-15 included. Left: the library's actions on folders, projects and writings (about 500 lines) and opening projects lean on some 20 pieces of the page's state, so they want a shared store first; then the windows and Zen | Partial | P3 |
 | **LOOK-4** A design pass | The design system doesn't draw these yet, so they were built in the app's own way: the library tree, Outline, Book, Settings other than Appearance, footnotes, comments, the Earlier versions window, the notes and to-dos panel, the selection bar, the pomodoro, error states, and Home in the dark themes | Open | P3 |
@@ -82,4 +81,6 @@ itself. Most worth doing once on Eva's laptop, with the installed release:
     file comes in as a new writing; a file dragged in from Explorer is refused.
 14. **New project** from one of her real Word files, and from a folder of her Word and text files as one
     book: the chapters come in order, with their headings, italics and pictures, and č, š, ž.
+    Then paste a chapter of her manuscript from Word: its headings, italics, lists and footnotes come in, and
+    nothing of Word's (the check uses Word's clipboard format, not her own Word).
 15. **Pages** (A4) on the long test book: no flicker while opening chapters and typing.
