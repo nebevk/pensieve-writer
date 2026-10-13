@@ -30,6 +30,19 @@ const seen = () =>
     return editor ? { text: editor.innerText.replace(/\\s+$/, ""), pictures: [...editor.querySelectorAll("img")].map((img) => img.getAttribute("src")) } : null;
   })()`);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// The project's file as SQLite holds it (sql.js here).
+const fileQuery = (sql) =>
+  page.run(`(() => { const key = [...window.__PV_HARNESS__.books.keys()].find((name) => name.includes("My first project")); const r = window.__PV_HARNESS__.books.get(key).exec(${JSON.stringify(sql)}); return r[0] ? r[0].values : []; })()`);
+// How the file keeps pictures (IMP-6): rows of the pictures table, and what chapters and earlier versions hold.
+const pictureCounts = async () => {
+  const [row] = await fileQuery(`SELECT
+    (SELECT COUNT(*) FROM pictures),
+    (SELECT COUNT(*) FROM chapters WHERE content_json LIKE '%data:image%'),
+    (SELECT COUNT(*) FROM chapters WHERE content_json LIKE '%pensieve-picture:%'),
+    (SELECT COUNT(*) FROM snapshots WHERE payload LIKE '%data:image%'),
+    (SELECT COUNT(*) FROM snapshots WHERE payload LIKE '%pensieve-picture:%')`);
+  return { pictures: row[0], chaptersWithData: row[1], chaptersNaming: row[2], versionsWithData: row[3], versionsNaming: row[4] };
+};
 const toEnd = () =>
   page.run(`(() => { const editor = document.querySelector(".paper .ProseMirror"); editor.focus(); const range = document.createRange(); range.selectNodeContents(editor); range.collapse(false); getSelection().removeAllRanges(); getSelection().addRange(range); return true; })()`);
 // Ctrl+S, then the window bar says it is saved.
@@ -106,6 +119,13 @@ await page.type(" Še ena beseda.");
 await save();
 const kept = await seen();
 check("the book as kept: words with č, š, ž and the picture", /Čez reko je padal mrak, šepetal je žerjav\./.test(kept.text) && /č, š, ž in Č, Š, Ž/.test(kept.text) && kept.pictures.length === 1 && kept.pictures[0].startsWith("data:image/"), JSON.stringify({ text: kept.text.slice(-80), picture: kept.pictures[0]?.slice(0, 30) }));
+let counts = await pictureCounts();
+const [[storedPicture]] = await fileQuery("SELECT data FROM pictures");
+check(
+  "the file keeps the picture once: the chapter and its earlier versions only name it",
+  counts.pictures === 1 && storedPicture === kept.pictures[0] && counts.chaptersWithData === 0 && counts.chaptersNaming === 1 && counts.versionsWithData === 0 && counts.versionsNaming >= 1,
+  JSON.stringify(counts),
+);
 
 // Written over, then put back from the earlier version.
 await wipe("Vse je izginilo.");
@@ -155,6 +175,13 @@ await until(`(document.querySelector(".paper .ProseMirror")?.innerText ?? "").in
 await sleep(800);
 const again = await seen();
 check("after starting again, still every word and the picture", same(again, kept), JSON.stringify({ text: again.text === kept.text, pictures: same(again.pictures, kept.pictures) }));
+counts = await pictureCounts();
+// The "Before restore" versions are of the page written over, without the picture.
+check(
+  "after two restores and a restart, still one picture in the file, no version holding its data",
+  counts.pictures === 1 && counts.chaptersWithData === 0 && counts.chaptersNaming === 1 && counts.versionsWithData === 0 && counts.versionsNaming >= 1,
+  JSON.stringify(counts),
+);
 
 check("no errors on the page", page.problems.length === 0, page.problems.slice(0, 3).join(" | "));
 console.log(results.every(Boolean) ? "\nALL PASSED" : `\n${results.filter((ok) => !ok).length} FAILED`);

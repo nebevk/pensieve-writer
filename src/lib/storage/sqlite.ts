@@ -16,6 +16,7 @@ import { wordsFor } from "$lib/editor/counts";
 import { translate } from "$lib/i18n";
 import { t } from "$lib/ui.svelte";
 import type { Note, Task } from "./organize";
+import { shownJson, storedJson } from "./pictures";
 import { readNotesWith, readTasksWith, writeNoteWith, writeTaskWith } from "./noteRows";
 import {
   missingItems,
@@ -396,6 +397,8 @@ async function writeWriting(db: Database, writing: Writing): Promise<void> {
     ...writing.chapters.filter((chapter) => saved.has(chapter.id)),
   ];
   for (const chapter of ordered) {
+    // Its pictures go into the pictures table first, once (IMP-6); the chapter names them.
+    const content = await storedJson(db, chapter.contentJson);
     await db.execute(
       `INSERT INTO chapters (
          id, project_id, title, position, content_json, plain_text, synopsis, status, language, word_goal, part, updated_at, words
@@ -417,7 +420,7 @@ async function writeWriting(db: Database, writing: Writing): Promise<void> {
         writing.id,
         chapter.title,
         chapter.position,
-        JSON.stringify(chapter.contentJson),
+        content,
         chapter.plainText,
         chapter.synopsis ?? "",
         chapter.status ?? "draft",
@@ -467,11 +470,12 @@ async function maybeSnapshot(db: Database, writing: Writing): Promise<void> {
 async function insertSnapshot(db: Database, writing: Writing, kind: SnapshotKind): Promise<void> {
   const notes = await readNotesWith(db);
   const tasks = await readTasksWith(db);
-  const payload = snapshotPayload(writing, notes, tasks);
+  // An earlier version names its pictures too, so each is kept once however many versions hold it (IMP-6).
+  const payload = await storedJson(db, snapshotPayload(writing, notes, tasks));
   await db.execute(
     `INSERT INTO snapshots (id, project_id, created_at, kind, payload)
      VALUES ($1, $2, $3, $4, $5)`,
-    [crypto.randomUUID(), writing.id, new Date().toISOString(), kind, JSON.stringify(payload)],
+    [crypto.randomUUID(), writing.id, new Date().toISOString(), kind, payload],
   );
   const limit = kind === "daily" ? DAILY_LIMIT : kind === "hourly" ? HOURLY_LIMIT : MANUAL_LIMIT;
   await db.execute(
@@ -503,6 +507,10 @@ async function readWriting(db: Database, writingId: string): Promise<Writing | n
      ORDER BY position ASC, title ASC`,
     [row.id],
   );
+  // Their pictures come back from the pictures table (IMP-6).
+  for (const chapter of chapters) {
+    if (typeof chapter.content_json === "string") chapter.content_json = await shownJson(db, chapter.content_json);
+  }
   return {
     id: row.id,
     title: row.title,
@@ -1166,9 +1174,10 @@ async function readSnapshotPayload(
   );
   const row = rows[0];
   if (!row?.payload) throw new Error(t("errSnapshotMissing"));
+  const raw = await shownJson(db, row.payload);
   let payload: SnapshotPayload;
   try {
-    payload = JSON.parse(row.payload) as SnapshotPayload;
+    payload = JSON.parse(raw) as SnapshotPayload;
   } catch {
     throw new Error(t("errSnapshotUnreadable"));
   }

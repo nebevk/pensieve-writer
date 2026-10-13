@@ -212,6 +212,10 @@ Coziness is the top product priority, within the performance budget in Section 5
   Chapters still carry the status they had before statuses were dropped; nothing reads it. A
   chapter is kept as ProseMirror JSON with a plain-text copy for counts, search and export. The file has a
   schema version, and older files are upgraded after a copy of them is kept beside them.
+- **Pictures** (shrunk to 1600 px when put in) are kept once per project file, in a `pictures` table by
+  the SHA-256 of their data: a chapter, note or snapshot names them, however many saves and snapshots there
+  are (IMP-6). None is ever deleted, so every snapshot finds its pictures. Backups and Word copies carry the
+  pictures themselves. A file from before keeps its pictures in its chapters until each is saved again.
 - **Snapshots** hold a writing with the project's notes and to-dos as they were. A restore never changes
   notes and to-dos that still exist; it brings back the ones deleted since.
 - **Backups:** the live file never sits in a synced folder, where a sync could copy it mid-write. Instead

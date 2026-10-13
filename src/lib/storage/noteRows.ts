@@ -2,6 +2,7 @@ import type Database from "@tauri-apps/plugin-sql";
 import type { DocumentJson } from "$lib/model";
 import { emptyDocument } from "$lib/model";
 import type { Note, NoteCategory, NoteField, Task, TodoState } from "./organize";
+import { shownJson, storedJson } from "./pictures";
 
 /** Row-level reads and writes for notes and to-dos, used inside a database job that is already running. */
 
@@ -75,11 +76,14 @@ export async function readNotesWith(db: Database): Promise<Note[]> {
      FROM notes ORDER BY updated_at DESC`,
   );
   const links = await db.select<{ note_id: string; chapter_id: string }[]>(`SELECT note_id, chapter_id FROM note_chapters`);
-  return rows.map((row) => ({
+  // Their pictures come back from the pictures table (IMP-6).
+  const contents: string[] = [];
+  for (const row of rows) contents.push(await shownJson(db, row.content_json));
+  return rows.map((row, index) => ({
     id: row.id,
     projectId: row.project_id,
     title: row.title,
-    contentJson: parseDoc(row.content_json),
+    contentJson: parseDoc(contents[index]),
     plainText: row.plain_text ?? "",
     category: asCategory(row.category),
     tags: row.tags ?? "",
@@ -93,6 +97,8 @@ export async function readNotesWith(db: Database): Promise<Note[]> {
 }
 
 export async function writeNoteWith(db: Database, note: Note): Promise<void> {
+  // Its pictures go into the pictures table first, once (IMP-6); the note names them.
+  const content = await storedJson(db, note.contentJson);
   await db.execute(
     `INSERT INTO notes (
        id, project_id, title, content_json, plain_text, category, tags, todo_state, fields_json, aliases, created_at, updated_at
@@ -111,7 +117,7 @@ export async function writeNoteWith(db: Database, note: Note): Promise<void> {
       note.id,
       note.projectId,
       note.title,
-      JSON.stringify(note.contentJson),
+      content,
       note.plainText,
       note.category,
       note.tags,
