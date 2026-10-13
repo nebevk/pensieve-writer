@@ -10,9 +10,9 @@
   import { isUntitled, type UiKey } from "$lib/i18n";
   import { ago, agoCapital, locale, num, plural, t, ui } from "$lib/ui.svelte";
   import Icon from "$lib/editor/Icon.svelte";
-  import { chapterTitle, isWelcomePage } from "$lib/chapters/welcome";
   import { WRITER } from "$lib/writer";
   import { randomVerse, verse } from "$lib/quotes";
+  import { encouragementFor } from "$lib/encouragement";
   import { listTasks, saveTask, type Task } from "$lib/storage/organize";
   import ChecklistItem from "./ChecklistItem.svelte";
   import BrandMark from "$lib/editor/BrandMark.svelte";
@@ -77,6 +77,8 @@
   // A short verse for Eva under her greeting, a different one each time Home opens, in her language.
   const verseAt = randomVerse();
   const quote = $derived(verse(verseAt, ui.language));
+  // A few words of encouragement after her greeting, for the time of day, a different line each time Home opens.
+  const cheer = encouragementFor(new Date().getHours());
   const SOUNDS: Record<Exclude<AmbienceName, "off">, { key: UiKey; icon: string }> = {
     rain: { key: "soundRain", icon: "rain" },
     fire: { key: "soundFireplace", icon: "fireplace" },
@@ -117,28 +119,12 @@
       .filter((line) => line.length > 0);
   }
 
-  /**
-   * "Good evening, Eva." and below it "The Attic is waiting." (HOME-10): the time of day, then the chapter
-   * Continue opens. Late at night it's "Late again, Eva."; a new book's welcome page gets the greeting alone.
-   */
+  /** "Good evening, Eva." (HOME-10), by the time of day; late at night it's "Late again, Eva." */
   function hello(at: number): string {
     const hour = new Date(at).getHours();
     const word = hour >= 23 || hour < 5 ? t("lateAgain") : hour < 12 ? t("morning") : hour < 18 ? t("afternoon") : t("evening");
     return `${word}, ${WRITER}.`;
   }
-
-  /** The chapter waiting, its name apart (in the accent, owner's design of 13 October), with the quotation marks round it. */
-  const waiting = $derived.by(() => {
-    const chapter = latest;
-    if (!chapter || isWelcomePage(chapter)) return null;
-    const name = isUntitled(chapter.title)
-      ? chapterTitle(ui.language, chapters.findIndex((item) => item.id === chapter.id) + 1)
-      : chapter.title.trim();
-    const [before, after = ""] = t("chapterWaiting").split("{chapter}");
-    const open = /[»«„“”"']$/.exec(before)?.[0] ?? "";
-    const close = /^[»«„“”"']/.exec(after)?.[0] ?? "";
-    return { before: before.slice(0, before.length - open.length), name: `${open}${name}${close}`, after: after.slice(close.length) };
-  });
 
   function clip(text: string, max = 88): string {
     if (text.length <= max) return text;
@@ -222,23 +208,22 @@
   <div class="left">
     <div class="intro">
       <div class="hero">
-        <!-- The large mark beside the greeting (owner's design, 13 October): it moves, except in Gentle mode. -->
+        <!-- The large mark (owner's design, 13 October): it moves, except in Gentle mode. -->
         <span class="glow" aria-hidden="true"><BrandMark {appearance} size={108} animated={!prefs.gentle} /></span>
         <div class="hello">
           <p class="date">
             {new Date(now).toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long" })} ·
             {new Date(now).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })}
           </p>
-          <h1>
-            <span>{hello(now)}</span>
-            {#if waiting}<span class="waits">{waiting.before}<em>{waiting.name}</em>{waiting.after}</span>{/if}
-          </h1>
+          <!-- The verse first and large beside the mark (owner, 13 October); a long one a little smaller, so it stays a few lines. -->
+          <blockquote class="verse" class:short={quote.text.length <= 45} class:long={quote.text.length > 75}>
+            <p>{quote.text}</p>
+            <footer>{quote.reference}</footer>
+          </blockquote>
         </div>
       </div>
-      <blockquote class="quote">
-        <p>{quote.text}</p>
-        <footer>{quote.reference}</footer>
-      </blockquote>
+      <!-- Then her greeting, small, with a few words of encouragement where the chapter waiting was. -->
+      <h1 class="greeting"><strong>{hello(now)}</strong> {cheer[ui.language]}</h1>
       <div class="stats">
         <div>
           <p class="value">{num(wordsToday)}</p>
@@ -401,41 +386,47 @@
     color: var(--pv-text-faint);
   }
 
-  /* The greeting, and on a line of its own the chapter waiting, its name in the accent. */
-  h1 {
+  /* The verse, large beside the mark (owner, 13 October): a short one larger, a long one smaller. */
+  .verse {
     margin: 10px 0 0;
-    font-family: var(--pv-font-heading);
-    font-size: 36px;
-    font-weight: 400;
-    line-height: 1.12;
-    text-wrap: pretty;
   }
 
-  h1 span {
-    display: block;
-  }
-
-  h1 em {
-    font-style: normal;
-    color: var(--pv-accent);
-  }
-
-  /* The verse, quieter than the greeting now, in the manuscript's italic. */
-  .quote {
-    margin: 20px 0 0;
-  }
-
-  .quote p {
+  .verse p {
     margin: 0;
+    font-family: var(--pv-font-heading);
+    font-size: 28px;
+    font-weight: 400;
+    line-height: 1.2;
+    color: var(--pv-text);
+    text-wrap: balance;
+  }
+
+  .verse.short p {
+    font-size: 32px;
+  }
+
+  .verse.long p {
+    font-size: 23px;
+    line-height: 1.25;
+  }
+
+  /* Her greeting, small under it, the hello a little stronger than the words of encouragement. */
+  .greeting {
+    margin: 20px 0 0;
     font-family: var(--pv-font-manuscript);
     font-size: 17px;
-    font-style: italic;
+    font-weight: 400;
     line-height: 1.5;
-    color: var(--pv-text);
+    color: var(--pv-text-2);
     text-wrap: pretty;
   }
 
-  .quote footer {
+  .greeting strong {
+    font-weight: 600;
+    color: var(--pv-text);
+  }
+
+  .verse footer {
     margin-top: 6px;
     font-size: var(--pv-text-xs);
     letter-spacing: var(--pv-track-eyebrow);
