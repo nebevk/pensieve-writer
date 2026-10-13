@@ -1,5 +1,6 @@
 import type { ProjectText } from "$lib/storage/sqlite";
 import { findPattern, type FindOptions } from "$lib/editor/findPattern";
+import { pageAt } from "./pageOf";
 
 /** Search across every project (owner, 12 October): its writings' chapters and its notes. */
 
@@ -38,12 +39,6 @@ export type HitGroup = { path: string; name: string; count: number; hits: Search
 export type HitResult = { groups: HitGroup[]; total: number; capped: boolean };
 
 /**
- * About how much of a writing a page holds, in characters, for "p. 4": what a sheet of A4 holds in Write at
- * the usual 12 points (measured 13 October), so the list's page is about the page she sees there.
- */
-export const PAGE_CHARACTERS = 2750;
-
-/**
  * Every place the words are in every project, in the order given, as Find matches them (Aa, ab; č apart
  * from c): chapters with their titles, and notes with their names. Every time is counted; at most `most`
  * are listed, so a common word stays quick.
@@ -65,7 +60,7 @@ export function searchHits(sources: SearchSource[], query: string, options: Find
         group.count += 1;
         total += 1;
         if (listed < most) {
-          const page = paged ? Math.floor(Math.max(0, at - head) / PAGE_CHARACTERS) + 1 : 0;
+          const page = paged ? pageAt(at - head) : 0;
           group.hits.push({ path: source.path, ...place, page, nth, ...around(whole, at, match[0].length) });
           listed += 1;
         }

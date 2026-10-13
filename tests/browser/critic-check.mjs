@@ -106,7 +106,10 @@ check("a Heading 2 in an article stays in the article", whole.includes("pen is s
 await page.click(".mark");
 await until(`!!document.querySelector(".home .continue")`);
 const shown = await page.run(`document.querySelector(".home .continue .running span")?.textContent.trim() ?? ""`);
-check("Home shows the article under its new title", shown === "Why I write by hand first today", shown);
+// The page her last line is on, counted from the text as find counts "p. 4" (HOME-11).
+const articleText = await page.run(`(() => { for (const db of window.__PV_HARNESS__.books.values()) { const r = db.exec("SELECT c.plain_text FROM chapters c JOIN projects p ON c.project_id = p.id WHERE p.title = 'Why I write by hand first today'"); if (r[0]) return r[0].values[0][0]; } return ""; })()`);
+const articlePage = Math.floor(Math.max(0, articleText.trimEnd().length - 1) / 2750) + 1;
+check("Home shows the article under its new title, and the page her last line is on", articleText.length > 0 && shown === `Why I write by hand first today · p. ${articlePage}`, `${shown} (${articleText.length} characters)`);
 
 check("no errors on the page", page.problems.length === 0, page.problems.slice(0, 3).join(" | "));
 console.log(results.every(Boolean) ? "\nALL PASSED" : `\n${results.filter((ok) => !ok).length} FAILED`);

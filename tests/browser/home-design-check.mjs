@@ -69,7 +69,7 @@ check("the greeting lines up with the verse, and the mark's basin with the colum
 
 // The Continue card.
 const card = await page.run(`({ running: [...document.querySelectorAll(".home .sheet .running span")].map((el) => el.textContent.trim()), line: document.querySelector(".home .sheet .excerpt")?.textContent.trim(), sound: document.querySelector(".home .sheet .foot .sound")?.textContent.replace(/\\s+/g, " ").trim() })`);
-check("the card: the writing and its chapter, when it was written in", JSON.stringify(card.running) === JSON.stringify(["Brez naslova · Pogl. II", "Urejeno pravkar"]), JSON.stringify(card.running));
+check("the card: the writing, its chapter and page, when it was written in", JSON.stringify(card.running) === JSON.stringify(["Brez naslova · Pogl. II · str. 1", "Urejeno pravkar"]), JSON.stringify(card.running));
 check("her last line, and the sound on the card", card.line === "Reka je tekla mimo mlina." && card.sound === "Ko začnete pisati, je tiho · Spremeni", JSON.stringify(card));
 
 // The projects as a table.

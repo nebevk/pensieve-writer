@@ -32,7 +32,7 @@
   function where(hit: SearchHit): string {
     if (hit.kind === "note") return `${t("notes")} · ${hit.title}`;
     if (hit.chapter > 0) return `${hit.title} · ${t("hitChapter", { n: hit.chapter })}`;
-    return `${hit.title} · ${t("hitPage", { n: hit.page })}`;
+    return `${hit.title} · ${t("pageShort", { n: hit.page })}`;
   }
 </script>
 

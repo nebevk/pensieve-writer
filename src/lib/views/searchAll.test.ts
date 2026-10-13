@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectText } from "$lib/storage/sqlite";
-import { PAGE_CHARACTERS, searchHits, shownHits, type SearchSource } from "./searchAll";
+import { PAGE_CHARACTERS } from "./pageOf";
+import { searchHits, shownHits, type SearchSource } from "./searchAll";
 
 const ANY = { matchCase: false, wholeWord: false };
 const project = (path: string, name: string, text: ProjectText): SearchSource => ({ path, name, text });

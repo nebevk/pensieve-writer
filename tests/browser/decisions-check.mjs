@@ -52,7 +52,7 @@ await toHome();
 const named = await greeting();
 // The strip shows "1 The Letter": its number, then the title.
 const current = (await page.run(`document.querySelector(".chapter-name.current")?.textContent.trim() ?? ""`)).replace(/^\d+\s+/, "");
-check("the greeting still has no chapter in it; the Continue card names it", hello.test(named) && !named.includes("waiting") && (await running()) === "The Lantern House · Ch. I", `${named} | ${await running()} | ${JSON.stringify(current)}`);
+check("the greeting still has no chapter in it; the Continue card names it", hello.test(named) && !named.includes("waiting") && /^The Lantern House · Ch\. I · p\. \d+$/.test(await running()), `${named} | ${await running()} | ${JSON.stringify(current)}`);
 await page.shoot(`${shots}home-greeting.png`, { x: 0, y: 60, width: 900, height: 260 });
 
 // Four tabs; To-dos come through the Notes switch, and Notes stays lit.
@@ -88,13 +88,13 @@ await page.type("The ferry came at dusk.");
 await sleep(2500);
 await toHome();
 const untitled = await greeting();
-check("an untitled chapter goes by its number on the card", hello.test(untitled) && (await running()) === "The Lantern House · Ch. V", `${untitled} | ${await running()}`);
+check("an untitled chapter goes by its number on the card", hello.test(untitled) && (await running()) === "The Lantern House · Ch. V · p. 1", `${untitled} | ${await running()}`);
 
 // Slovenian: the greeting, and no legend there either.
 await page.click(".home .lang");
 await sleep(600);
 const sl = await greeting();
-check("Slovenian greeting", /^(Dobro jutro|Dober dan|Dober večer|Spet pozno), Eva\. \S.*[.!]$/.test(sl) && !sl.includes("čaka") && (await running()) === "The Lantern House · Pogl. V", sl);
+check("Slovenian greeting", /^(Dobro jutro|Dober dan|Dober večer|Spet pozno), Eva\. \S.*[.!]$/.test(sl) && !sl.includes("čaka") && (await running()) === "The Lantern House · Pogl. V · str. 1", `${sl} | ${await running()}`);
 await page.clickText(".home button", "Nadaljuj s pisanjem");
 await until(`!!document.querySelector(".paper .ProseMirror")`);
 await sleep(400);

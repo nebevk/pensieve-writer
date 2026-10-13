@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { pageAt } from "$lib/views/pageOf";
   import { summarize, type ProjectSummary } from "$lib/chapters/progress";
   import { compactWords, wordsFor } from "$lib/editor/counts";
   import { roman } from "$lib/chapters/labels";
@@ -102,6 +103,14 @@
   );
   const lines = $derived(paragraphs(latest));
   const currentLine = $derived(lines.at(-1) ?? "");
+  // The card's running head: the writing; its chapter in Roman numerals, as the page's own running head writes
+  // them (a writing of one page has none); and the page her last line is on, as Write's sheets count it (HOME-11).
+  const runningHead = $derived.by(() => {
+    const parts = [writing.title];
+    if (latest && writing.split) parts.push(t("chapterShort", { n: roman(chapters.findIndex((chapter) => chapter.id === latest.id) + 1) }));
+    if (latest && currentLine) parts.push(t("pageShort", { n: pageAt(latest.plainText.trimEnd().length - 1) }));
+    return parts.join(" · ");
+  });
   const otherBooks = $derived(books.filter((book) => book.path.toLowerCase() !== currentPath.toLowerCase()));
   // Doing first, as on the board.
   const openTasks = $derived(
@@ -239,8 +248,7 @@
     <div class="continue">
       <div class="sheet">
         <div class="running">
-          <!-- The writing and its chapter in Roman numerals, as the page's own running head writes them; a writing of one page has no chapters to name. -->
-          <span>{writing.title}{#if latest && writing.split}{` · ${t("chapterShort", { n: roman(chapters.findIndex((chapter) => chapter.id === latest.id) + 1) })}`}{/if}</span>
+          <span>{runningHead}</span>
           <span class="edited">{latest ? t("editedAgo", { ago: ago(latest.updatedAt) }) : ""}</span>
         </div>
         <div class="excerpt">
