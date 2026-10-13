@@ -185,7 +185,10 @@ Coziness is the top product priority, within the performance budget in Section 5
 - **Privacy:** everything stays on her computer; no telemetry and no account.
 - **Usability:** a Word user can write and format within minutes; every action can be found in the toolbar
   or a menu.
-- **Accessibility:** usable from the keyboard, readable contrast in every theme, adjustable text size.
+- **Accessibility:** usable from the keyboard, readable contrast in every theme, adjustable text size. A walk
+  with Tab through every view and window (keys-walk-check) finds every stop named, on screen and showing
+  where the keyboard is; windows keep the keyboard and Escape gives it back; menus open with Shift+F10 or
+  the menu key and move with the arrows. svelte-check reports no accessibility warnings.
 - **Languages:** English and Slovenian everywhere, in UTF-8 (č, š, ž).
 - **Maintainability:** small, readable code that one developer can look after.
 

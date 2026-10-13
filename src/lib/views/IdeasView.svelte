@@ -486,8 +486,11 @@
     background: var(--pv-field);
   }
 
+  /* The field shows the keyboard as every control does (IMP-25): its frame takes the accent ring. */
   .search:focus-within {
     border-color: var(--pv-accent);
+    outline: 2px solid var(--pv-accent);
+    outline-offset: 2px;
   }
 
   .search :global(svg) {
