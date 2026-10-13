@@ -11,7 +11,8 @@
   import { countWords, wordsFor } from "$lib/editor/counts";
   import { shrinkImage } from "$lib/editor/imageSize";
   import { PageFind } from "$lib/editor/pageFind.svelte";
-  import { createChapter, createWriting, effectiveLanguage, type Chapter, type DocumentJson, type Shelf, type SnapshotInfo, type Writing, type WritingLanguage } from "$lib/model";
+  import { EarlierVersions } from "$lib/views/earlierVersions.svelte";
+  import { createChapter, createWriting, effectiveLanguage, type Chapter, type DocumentJson, type Shelf, type Writing, type WritingLanguage } from "$lib/model";
   import { createAutosave, errorMessage, type SaveStatus } from "$lib/save/autosave";
   import { chaptersToHtml, chaptersToMarkdown, chaptersToPlain } from "$lib/export/document";
   import { ALREADY_EXISTS, CHANGED_ELSEWHERE, MUST_BE_NEW, chooseSavePath, inFolder, writeFileTo, type ExportKind } from "$lib/export/files";
@@ -49,7 +50,7 @@
   import type { ProjectRequest } from "$lib/views/NewProjectWindow.svelte";
   import type { SearchHit, SearchSource } from "$lib/views/searchAll";
   import { otherCards, type IdeaCard } from "$lib/views/ideas";
-  import { addWriting, checkpointDatabase, duplicateWriting, eraseWriting, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, moveProjectFile, readSnapshotChapters, rememberPersonalWord, renameWritingFolder, restoreChapter, restoreFromBackup, setShelf, setWritingFields, setWritingOrder, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
+  import { addWriting, checkpointDatabase, duplicateWriting, eraseWriting, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, moveProjectFile, rememberPersonalWord, renameWritingFolder, restoreFromBackup, setShelf, setWritingFields, setWritingOrder, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
   import type { Editor as TiptapEditor } from "@tiptap/core";
   import type { NodeSelection } from "@tiptap/pm/state";
   import { lazy } from "$lib/lazy.svelte";
@@ -118,12 +119,20 @@
     },
     readEveryProject: (progress) => readEveryProject(progress),
   });
-  let historyOpen = $state(false);
-  let historyList = $state<SnapshotInfo[]>([]);
-  // The open chapter as it was in the snapshot picked; "missing" when the snapshot hasn't it.
-  let historyPreview = $state<{ title: string; text: string } | "missing" | null>(null);
-  let historySnapshotId = $state("");
-  let historyChapterId = $state("");
+  // Earlier versions of the open writing (SV-3; see earlierVersions.svelte.ts).
+  const versions = new EarlierVersions({
+    writing: () => writing,
+    activeChapter: () => activeId,
+    putBack: (restore, open) =>
+      withEditorClosed(async () => {
+        const restored = await restore();
+        const before = writingWords;
+        writing = restored;
+        keepToday(before);
+        activeId = open(restored);
+      }),
+    fail: (message) => (saveStatus = { state: "error", message }),
+  });
   // The note shown in the panel beside the page, to read and write (owner, 12 October); `fresh` for one
   // just made, to be named. The panel has its own copy of it while she types (see editPaneNote).
   let paneNote = $state<{ note: Note; fresh: boolean } | null>(null);
@@ -173,7 +182,7 @@
   // she stops them. Not over Settings or in Zen, and a moment after the place appears, so passing
   // through doesn't bring them and what they point at has settled.
   const tourWanted = $derived.by((): TourPlace | null => {
-    if (!prefs.tips || settingsOpen || historyOpen || zen || !writing) return null;
+    if (!prefs.tips || settingsOpen || versions.open || zen || !writing) return null;
     const place = view === "home" || view === "write" || view === "notes" || view === "book" ? view : null;
     return place && !prefs.tipsSeen.includes(place) ? place : null;
   });
@@ -1436,39 +1445,6 @@
     else printWhenLaidOut = true;
   }
 
-  async function openHistory() {
-    if (!writing) return;
-    historyOpen = true;
-    historyPreview = null;
-    historyChapterId = "";
-    historySnapshotId = "";
-    try {
-      historyList = await sqliteStorage.listSnapshots(writing.id);
-    } catch (error) {
-      saveStatus = { state: "error", message: errorMessage(error) };
-    }
-  }
-
-  async function previewHistory(id: string) {
-    historySnapshotId = id;
-    historyPreview = null;
-    historyChapterId = "";
-    try {
-      const older = await readSnapshotChapters(id);
-      // A quicker click on another snapshot wins.
-      if (historySnapshotId !== id) return;
-      const match = older.find((chapter) => chapter.id === activeId);
-      if (!match) {
-        historyPreview = "missing";
-        return;
-      }
-      historyChapterId = match.id;
-      historyPreview = { title: match.title, text: match.plainText };
-    } catch (error) {
-      saveStatus = { state: "error", message: errorMessage(error) };
-    }
-  }
-
   /**
    * Closes the editor so it hands back its text, saves everything, then runs `work`.
    * The editor reopens on whatever `work` leaves in `writing`, so an open editor can't
@@ -1500,44 +1476,6 @@
     const run = changes.then(work, work);
     changes = run.catch(() => undefined);
     return run;
-  }
-
-  async function restoreHistoryChapter() {
-    if (!historySnapshotId || !historyChapterId) return;
-    const snapshotId = historySnapshotId;
-    const chapterId = historyChapterId;
-    try {
-      await withEditorClosed(async () => {
-        const before = writingWords;
-        writing = await restoreChapter(snapshotId, chapterId);
-        keepToday(before);
-        activeId = chapterId;
-      });
-      historyOpen = false;
-    } catch (error) {
-      saveStatus = { state: "error", message: errorMessage(error) };
-    }
-  }
-
-  /**
-   * Puts the whole book back as it was in the chosen snapshot (SV-3). The book as it is now is kept
-   * first as a "Before restore" snapshot, and the open chapter stays open if the snapshot has it.
-   */
-  async function restoreHistoryBook() {
-    const snapshotId = historySnapshotId;
-    if (!snapshotId) return;
-    try {
-      await withEditorClosed(async () => {
-        const restored = await sqliteStorage.restore(snapshotId);
-        const before = writingWords;
-        writing = restored;
-        keepToday(before);
-        activeId = restored.chapters.find((chapter) => chapter.id === activeId)?.id ?? restored.chapters[0]?.id ?? null;
-      });
-      historyOpen = false;
-    } catch (error) {
-      saveStatus = { state: "error", message: errorMessage(error) };
-    }
   }
 
   async function pickBackup() {
@@ -1858,11 +1796,7 @@
 
   /** Earlier versions, a split to take back and the panel's note belong to the writing that was open. */
   function resetWritingState() {
-    historyOpen = false;
-    historyList = [];
-    historySnapshotId = "";
-    historyChapterId = "";
-    historyPreview = null;
+    versions.reset();
     paneNote = null;
     noteQuery = "";
     splitBack = null;
@@ -3196,7 +3130,7 @@
     onDuplicate={duplicateChapter}
     onDelete={deleteChapter}
     onReorder={reorderChapters}
-    onHistory={() => void openHistory()}
+    onHistory={() => void versions.show()}
     onHide={() => (collapsed = true)}
     view={prefs.sidebarView}
     onView={(next) => (prefs = { ...prefs, sidebarView: next })}
@@ -3653,17 +3587,17 @@
       }}
     />
   {/if}
-  {#if historyOpen && writing && HistoryPart.current}
+  {#if versions.open && writing && HistoryPart.current}
     {@const History = HistoryPart.current}
     <History
-      snapshots={historyList}
-      chosen={historySnapshotId}
-      preview={historyPreview}
+      snapshots={versions.list}
+      chosen={versions.snapshotId}
+      preview={versions.preview}
       family={manuscriptFamily(prefs.manuscriptFont)}
-      onPick={(id) => void previewHistory(id)}
-      onRestoreChapter={() => void restoreHistoryChapter()}
-      onRestoreBook={() => void restoreHistoryBook()}
-      onClose={() => (historyOpen = false)}
+      onPick={(id) => void versions.pick(id)}
+      onRestoreChapter={() => void versions.restoreChapter()}
+      onRestoreBook={() => void versions.restoreBook()}
+      onClose={() => (versions.open = false)}
     />
   {/if}
   {#if newProjectAsk && NewProjectPart.current}
