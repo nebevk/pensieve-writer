@@ -17,3 +17,7 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 # Signed releases made by npm run release (uploaded to GitHub Releases, not committed)
 release/
+# Design sources kept on this computer only: the owner's icon set the marks and app icons were made from,
+# and the Mechvibes packs the key sounds were cut from (see static/keys/CREDITS.txt)
+design-system/exports/pensieve-icons/
+design-system/sounds/
