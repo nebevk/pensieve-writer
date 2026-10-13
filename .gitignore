@@ -20,7 +20,7 @@ release/
 # Screenshots the browser checks take
 tests/browser/shots/
 # Design sources kept on this computer only: the owner's icon set the marks and app icons were made from,
-# his artwork (the scenes the app uses are copied into static/art/), and the Mechvibes packs the key sounds
+# the owner's artwork (what the app uses is copied into static/art/), and the Mechvibes packs the key sounds
 # were cut from (see static/keys/CREDITS.txt)
 design-system/exports/pensieve-icons/
 design-system/exports/pensieve-art/
