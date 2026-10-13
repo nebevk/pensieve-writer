@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ideaLinks, ideaMatches, linkNames, newestFirst, readable } from "./ideas";
+import type { DocumentJson } from "$lib/model";
+import { CARD, edgeOf, ideaLinks, ideaMatches, linkNames, newestFirst, placed, readable, withLink, withoutLinks } from "./ideas";
 
 const idea = (id: string, title: string, text = "", aliases = "", createdAt = "2026-10-13T10:00:00.000Z") => ({ id, title, text, aliases, createdAt });
 
@@ -39,5 +40,44 @@ describe("Ideas", () => {
       { from: "house", to: "bridge" },
       { from: "witch", to: "house" },
     ]);
+  });
+});
+
+const para = (...texts: string[]) => ({ type: "paragraph", ...(texts.length ? { content: texts.map((text) => ({ type: "text", text })) } : {}) });
+const doc = (...content: object[]) => ({ type: "doc", content }) as DocumentJson;
+
+describe("The ideas map", () => {
+  it("links an idea as she would type it: in its empty last line, else on a line of its own", () => {
+    expect(withLink(doc(para()), "Čarovnica")).toEqual({ contentJson: doc(para("[[Čarovnica]]")), plainText: "[[Čarovnica]]" });
+    const linked = withLink(doc(para("Ob reki stoji.")), "Most čez Savo");
+    expect(linked.contentJson).toEqual(doc(para("Ob reki stoji."), para("[[Most čez Savo]]")));
+    expect(linked.plainText).toBe("Ob reki stoji.\n\n[[Most čez Savo]]");
+  });
+
+  it("takes a link away by any of the idea's names, in any case, and a line left empty with it", () => {
+    const before = doc(para("Ob reki stoji. Zgradila jo je [[čarovnica|ona]]."), para("[[Mlinarica]]"), para("[[Most]]"));
+    const after = withoutLinks(before, ["Čarovnica", "Mlinarica"]);
+    expect(after.contentJson).toEqual(doc(para("Ob reki stoji. Zgradila jo je."), para("[[Most]]")));
+    expect(after.plainText).toBe("Ob reki stoji. Zgradila jo je.\n\n[[Most]]");
+    expect(withoutLinks(doc(para("[[Most]]")), ["Most"]).contentJson).toEqual(doc(para()));
+  });
+
+  it("keeps where she put an idea, and puts the rest in rows under them, oldest first", () => {
+    const ideas = [
+      { id: "a", createdAt: "2026-10-13T10:00:00Z" },
+      { id: "b", createdAt: "2026-10-01T10:00:00Z" },
+      { id: "c", createdAt: "2026-10-05T10:00:00Z" },
+    ];
+    const places = placed(ideas, new Map([["a", { x: 400, y: 100 }]]), 2);
+    expect(places.get("a")).toEqual({ x: 400, y: 100 });
+    const top = 100 + CARD.height;
+    expect(places.get("b")!.y).toBeGreaterThan(top);
+    expect(places.get("c")!.y).toBe(places.get("b")!.y);
+    expect(places.get("c")!.x).toBeGreaterThan(places.get("b")!.x);
+  });
+
+  it("meets a card's edge on the way to another", () => {
+    expect(edgeOf({ x: 0, y: 0 }, { x: 1000, y: CARD.height / 2 })).toEqual({ x: CARD.width, y: CARD.height / 2 });
+    expect(edgeOf({ x: 0, y: 0 }, { x: CARD.width / 2, y: -500 })).toEqual({ x: CARD.width / 2, y: 0 });
   });
 });

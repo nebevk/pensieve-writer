@@ -785,6 +785,35 @@ export function readProjectIdeas(path: string): Promise<IdeaText[]> {
   return readProject(path, readIdeas);
 }
 
+/**
+ * Where each idea sits on the Ideas map (owner, 13 October), in a table of its own, made when first needed:
+ * the ideas' text is saved as it always was, whatever happens to their places.
+ */
+const IDEA_PLACES = "CREATE TABLE IF NOT EXISTS idea_places (note_id TEXT PRIMARY KEY NOT NULL, x REAL NOT NULL, y REAL NOT NULL)";
+
+export function readIdeaPlaces(): Promise<Map<string, { x: number; y: number }>> {
+  return enqueue(async () => {
+    const db = await database();
+    await db.execute(IDEA_PLACES);
+    const rows = await db.select<{ note_id: string; x: number; y: number }[]>("SELECT note_id, x, y FROM idea_places");
+    return new Map(rows.map((row) => [row.note_id, { x: Number(row.x), y: Number(row.y) }]));
+  });
+}
+
+/** Where ideas were put on the map, in one turn of the queue. */
+export function saveIdeaPlaces(moved: [string, { x: number; y: number }][]): Promise<void> {
+  return enqueue(async () => {
+    const db = await database();
+    await db.execute(IDEA_PLACES);
+    for (const [noteId, place] of moved) {
+      await db.execute(
+        "INSERT INTO idea_places (note_id, x, y) VALUES ($1, $2, $3) ON CONFLICT(note_id) DO UPDATE SET x = excluded.x, y = excluded.y",
+        [noteId, Math.round(place.x), Math.round(place.y)],
+      );
+    }
+  });
+}
+
 /** The open project's shelf as saved now, after a writing was added, moved, renamed or deleted. */
 export function readOpenShelf(): Promise<Shelf> {
   return enqueue(async () => readShelf(await database()));

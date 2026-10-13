@@ -5,9 +5,10 @@
   import type { DocumentJson } from "$lib/model";
   import type { NoteTarget } from "$lib/editor/noteLinks";
   import { deleteNote, flushNoteSave, listNotes, saveNote, scheduleNoteSave, watchNoteSaves, type Note } from "$lib/storage/organize";
-  import { snapshotSavedWriting } from "$lib/storage/sqlite";
+  import { readIdeaPlaces, saveIdeaPlaces, snapshotSavedWriting } from "$lib/storage/sqlite";
   import { ago, t } from "$lib/ui.svelte";
-  import { ideaLinks, ideaMatches, newestFirst, ownCard, readable, type IdeaCard } from "./ideas";
+  import IdeasMap from "./IdeasMap.svelte";
+  import { ideaLinks, ideaMatches, newestFirst, ownCard, placed, readable, withLink, withoutLinks, type IdeaCard, type Place } from "./ideas";
 
   let {
     projectId,
@@ -60,6 +61,12 @@
   let confirmDelete = $state(false);
   let seenCreate = 0;
   let seenOpen = 0;
+  // Cards, or the map of this project's ideas with where she put them.
+  let layout = $state<"cards" | "map">("cards");
+  let places = $state.raw(new Map<string, Place>());
+  let placesRead = false;
+  // Raised when the map changes the open idea's text, so its page shows the change and never writes over it.
+  let pageTurn = $state(0);
 
   const keyOf = (card: { path: string; id: string }) => `${card.path.toLowerCase()}|${card.id}`;
   const ideas = $derived(notes.filter((note) => note.category === "ideas"));
@@ -74,6 +81,11 @@
   const linksOut = $derived(openNote ? links.filter((link) => link.from === openNote.id).flatMap((link) => noteOf(link.to) ?? []) : []);
   const linksIn = $derived(openNote ? links.filter((link) => link.to === openNote.id).flatMap((link) => noteOf(link.from) ?? []) : []);
   const linkCount = (card: IdeaCard) => (card.own ? links.filter((link) => link.from === card.id).length : 0);
+  // The map draws the links between ideas; a search fades the ideas without its words.
+  const ideaToIdea = $derived(links.filter((link) => noteOf(link.from)?.category === "ideas" && noteOf(link.to)?.category === "ideas"));
+  const matches = $derived(
+    query.trim() ? new Set(ideas.filter((note) => ideaMatches({ title: note.title, aliases: note.aliases, text: note.plainText }, query)).map((note) => note.id)) : null,
+  );
 
   onMount(() => {
     watchNoteSaves((text) => {
@@ -133,8 +145,50 @@
     scheduleNoteSave(next);
   }
 
-  /** A new idea, open beside the cards with its name ready to be typed over; one a [[link]] asked for has that name. */
-  async function create(title = "") {
+  /** The map, of this project's ideas: where she put them is read the first time it opens. */
+  async function showMap() {
+    layout = "map";
+    scope = "project";
+    if (openCard && !openCard.own) openKey = "";
+    if (placesRead) return;
+    placesRead = true;
+    try {
+      // A card moved while they were read stays where it was moved.
+      const read = await readIdeaPlaces();
+      places = new Map([...read, ...places]);
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  /** An idea put somewhere on the map; every idea still in its row stays where it is, so none jumps. */
+  function move(id: string, place: Place) {
+    const moved: [string, Place][] = [...placed(ideas, places)].filter(([other]) => other !== id && !places.has(other));
+    moved.push([id, { x: Math.round(place.x), y: Math.round(place.y) }]);
+    places = new Map([...places, ...moved]);
+    saveIdeaPlaces(moved).catch((error: unknown) => (message = error instanceof Error ? error.message : String(error)));
+  }
+
+  /** Two ideas linked on the map: a [[link]] to the second at the end of the first's text, once. */
+  function link(from: string, to: string) {
+    const source = noteOf(from);
+    const target = noteOf(to);
+    if (!source || !target?.title.trim() || links.some((item) => item.from === from && item.to === to)) return;
+    update(from, withLink(source.contentJson, target.title.trim()));
+    if (openNote?.id === from) pageTurn += 1;
+  }
+
+  /** A link taken away on the map: every [[link]] in the first idea to the second, by any of its names. */
+  function unlink(from: string, to: string) {
+    const source = noteOf(from);
+    const target = noteOf(to);
+    if (!source || !target) return;
+    update(from, withoutLinks(source.contentJson, [target.title, ...target.aliases.split(",")]));
+    if (openNote?.id === from) pageTurn += 1;
+  }
+
+  /** A new idea, open beside the cards with its name ready to be typed over; one a [[link]] asked for has that name, one made on the map is where she made it. */
+  async function create(title = "", place?: Place) {
     const now = new Date().toISOString();
     const note: Note = {
       id: crypto.randomUUID(),
@@ -152,6 +206,7 @@
       updatedAt: now,
     };
     notes = [note, ...notes];
+    if (place) move(note.id, place);
     scope = "project";
     query = "";
     confirmDelete = false;
@@ -207,7 +262,22 @@
     <span class="count">{shown.length}</span>
     <div class="switch" role="radiogroup" aria-label={t("groupIdeas")}>
       <button type="button" role="radio" aria-checked={scope === "project"} class:on={scope === "project"} onclick={() => (scope = "project")}>{t("ideasThisProject")}</button>
-      <button type="button" role="radio" aria-checked={scope === "all"} class:on={scope === "all"} onclick={() => void showAll()}>{t("ideasAllProjects")}</button>
+      <!-- The map is of this project's ideas, where she put them. -->
+      <button
+        type="button"
+        role="radio"
+        aria-checked={scope === "all"}
+        class:on={scope === "all"}
+        disabled={layout === "map"}
+        title={layout === "map" ? t("ideasMapOneProject") : undefined}
+        onclick={() => void showAll()}
+      >
+        {t("ideasAllProjects")}
+      </button>
+    </div>
+    <div class="switch" role="radiogroup" aria-label={t("ideasMap")}>
+      <button type="button" role="radio" aria-checked={layout === "cards"} class:on={layout === "cards"} onclick={() => (layout = "cards")}>{t("ideasCards")}</button>
+      <button type="button" role="radio" aria-checked={layout === "map"} class:on={layout === "map"} onclick={() => void showMap()}>{t("ideasMap")}</button>
     </div>
     <label class="search">
       <Icon name="search" />
@@ -225,7 +295,24 @@
   {#if message}
     <p class="status unread" role="alert">{message}</p>
   {/if}
+  {#if layout === "map"}
+    <p class="status">{t("ideasMapHint")}</p>
+  {/if}
   <div class="body">
+    {#if layout === "map"}
+      <IdeasMap
+        {ideas}
+        links={ideaToIdea}
+        {places}
+        {matches}
+        openId={openNote?.id ?? ""}
+        onOpen={(id) => open({ path: projectPath, id })}
+        onMove={move}
+        onLink={link}
+        onUnlink={unlink}
+        onCreateAt={(place) => void create("", place)}
+      />
+    {:else}
     <div class="cards">
       {#each shown as card (keyOf(card))}
         <button type="button" class="card" class:open={keyOf(card) === openKey} onclick={() => open(card)}>
@@ -243,6 +330,7 @@
         {/if}
       {/each}
     </div>
+    {/if}
     {#if openNote}
       {@const note = openNote}
       <aside class="idea" aria-label={note.title}>
@@ -260,7 +348,7 @@
               <button type="button" class="close" title={t("close")} aria-label={t("close")} onclick={() => (openKey = "")}><Icon name="x" /></button>
             </div>
           {/key}
-          {#key note.id}
+          {#key `${note.id}:${pageTurn}`}
             <Editor
               docId={note.id}
               initialContent={note.contentJson}
