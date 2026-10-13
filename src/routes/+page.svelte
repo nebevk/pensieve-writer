@@ -13,6 +13,7 @@
   import { PageFind } from "$lib/editor/pageFind.svelte";
   import { Updates } from "$lib/updates.svelte";
   import { DriveBackup, WordCopy, safeName } from "$lib/save/copies.svelte";
+  import { WritingActions } from "$lib/chapters/writingActions.svelte";
   import { EarlierVersions } from "$lib/views/earlierVersions.svelte";
   import { createChapter, createWriting, effectiveLanguage, type Chapter, type DocumentJson, type Shelf, type Writing, type WritingLanguage } from "$lib/model";
   import { createAutosave, errorMessage, type SaveStatus } from "$lib/save/autosave";
@@ -34,7 +35,7 @@
   import { PAPER, SHEET_GAP, flushPrefs, loadPrefs, loadPrefsFile, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs, type KnownProject, type Prefs } from "$lib/prefs";
   import { duplicateChapterIn, insertChapterAfter, patchChapter, removeChapter, renameChapterIn, reorderChapterList, setChapterText } from "$lib/chapters/mutate";
   import { chapterTitle } from "$lib/chapters/welcome";
-  import { applyPage, chapterBreak, composePage, heldHeading, isLeadLine, joinWriting, leadLines, readPage, splitWriting, startsPart, withoutBreaks } from "$lib/chapters/page";
+  import { applyPage, chapterBreak, composePage, heldHeading, isLeadLine, leadLines, readPage, startsPart, withoutBreaks } from "$lib/chapters/page";
   import { summarize, summarizeOutline, summarizeProject } from "$lib/chapters/progress";
   import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, joinPath, lastName, looksSynced, parentFolder, projectFile, projectFiles, projectFolders, projectName, rebasePath, sameFolder, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "$lib/chapters/library";
   import { moveOpen } from "$lib/chapters/treeState.svelte";
@@ -49,7 +50,7 @@
   import type { ProjectRequest } from "$lib/views/NewProjectWindow.svelte";
   import type { SearchHit, SearchSource } from "$lib/views/searchAll";
   import { otherCards, type IdeaCard } from "$lib/views/ideas";
-  import { addWriting, checkpointDatabase, duplicateWriting, eraseWriting, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, moveProjectFile, rememberPersonalWord, renameWritingFolder, restoreFromBackup, setShelf, setWritingFields, setWritingOrder, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
+  import { addWriting, checkpointDatabase, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, moveProjectFile, rememberPersonalWord, restoreFromBackup, setShelf, setWritingFields, setWritingOrder, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
   import type { Editor as TiptapEditor } from "@tiptap/core";
   import type { NodeSelection } from "@tiptap/pm/state";
   import { lazy } from "$lib/lazy.svelte";
@@ -1820,13 +1821,6 @@
   });
 
   /** The name of a new writing, folder or project, checked; the message to show beside it when it won't do. */
-  function nameCheck(name: string, taken: string[]): string | null {
-    const problem = folderNameProblem(name);
-    if (problem) return t(problem);
-    const wanted = name.trim().toLowerCase();
-    return taken.some((item) => item.trim().toLowerCase() === wanted) ? t("nameTaken") : null;
-  }
-
   /** The search across every project, while open: the words it started with. */
   let searchAsk = $state<{ query: string } | null>(null);
   /** The words to find on a chapter's page once it opens, from the search across projects. */
@@ -2059,245 +2053,31 @@
     }
   }
 
-  /** A new writing in the open project, in a folder or none, opened at once. */
-  async function newWriting(folder: string, name: string): Promise<string | null> {
-    if (!shelf || !writing) return null;
-    const title = name.trim();
-    if (!title) return t("nameEmpty");
-    try {
-      const made = await addWriting({ title, folder, split: true, language: writing.language });
-      await refreshShelf();
-      await openWriting(made.id);
-      rememberProject();
-      return null;
-    } catch (error) {
-      return errorMessage(error);
-    }
-  }
-
-  /** A new writing folder in the open project; it stays while empty. */
-  async function newWritingFolder(name: string): Promise<string | null> {
-    if (!shelf) return null;
-    const problem = nameCheck(name, shelf.folders);
-    if (problem) return problem;
-    try {
-      await setShelf({ folders: [...shelf.folders, name.trim()] });
-      await refreshShelf();
-      return null;
-    } catch (error) {
-      return errorMessage(error);
-    }
-  }
-
-  async function renameWritingFolderTo(from: string, to: string): Promise<string | null> {
-    if (!shelf || from === to.trim()) return null;
-    const problem = nameCheck(to, shelf.folders.filter((name) => name !== from));
-    if (problem) return problem;
-    try {
-      await renameWritingFolder(from, to.trim(), shelf.folders.map((name) => (name === from ? to.trim() : name)));
-      await refreshShelf();
-      return null;
-    } catch (error) {
-      return errorMessage(error);
-    }
-  }
-
-  /** Deletes a writing folder; its writings stay, out of folders. */
-  async function deleteWritingFolder(name: string) {
-    if (!shelf) return;
-    try {
-      await renameWritingFolder(name, "", shelf.folders.filter((item) => item !== name));
-      await refreshShelf();
-    } catch (error) {
-      reportSaveError(errorMessage(error));
-    }
-  }
-
-  /** Renames a writing, the open one through its page, any other in its file. */
-  async function renameWritingTo(id: string, title: string) {
-    const next = title.trim() || t("untitled");
-    if (id === writingId) {
-      renameOpenWriting(next);
-      return;
-    }
-    try {
-      const outline = shelf?.writings.find((item) => item.id === id);
-      if (outline && !outline.split) {
-        await oneAtATime(async () => {
-          const one = await loadWriting(id);
-          await sqliteStorage.save({ ...one, title: next, chapters: one.chapters.map((chapter, index) => (index === 0 ? { ...chapter, title: next } : chapter)) });
-        });
-      } else await setWritingFields(id, { title: next });
-      await refreshShelf();
-      rememberProject();
-    } catch (error) {
-      reportSaveError(errorMessage(error));
-    }
-  }
-
-  async function duplicateWritingNamed(id: string) {
-    if (!shelf) return;
-    try {
-      if (id === writingId) await autosave.flush();
-      const source = shelf.writings.find((item) => item.id === id);
-      await duplicateWriting(id, t("copyOf", { title: source?.title ?? t("untitled") }));
-      await refreshShelf();
-      rememberProject();
-    } catch (error) {
-      reportSaveError(errorMessage(error));
-    }
-  }
-
-  /**
-   * Puts a writing in the Deleted folder at the end of the project; the open one gives way to another first.
-   * It runs after the changes before it, deciding then whether the writing is the open one, so a writing
-   * being opened, or one deleted just before, never ends up open in Deleted.
-   */
-  async function deleteWriting(id: string) {
-    if (!shelf) return;
-    const source = shelf.writings.find((item) => item.id === id);
-    const project = projectId;
-    const putInDeleted = () => setWritingFields(id, { deletedAt: new Date().toISOString() });
-    try {
-      // One that isn't open goes as it is, the page left alone, unless it was opened meanwhile.
-      let done = false;
-      if (id !== writingId) {
-        done = await oneAtATime(async () => {
-          if (projectId !== project) return true;
-          if (id === writingId) return false;
-          await putInDeleted();
-          return true;
-        });
-      }
-      let left: Writing | null = null;
-      if (!done) {
-        await withEditorClosed(async () => {
-          if (projectId !== project) return;
-          if (id !== writingId) {
-            await putInDeleted();
-            return;
-          }
-          // The open one gives way first, to a writing that isn't in Deleted, or to a new, empty one, so there is
-          // a page to write on. If that fails it stays open, never in Deleted while she writes in it.
-          const other = (await readOpenShelf()).writings.find((item) => item.id !== id && !item.deletedAt);
-          const next = other?.id ?? (await addWriting({ title: t("untitled"), folder: "", split: true, language: writing?.language ?? "en" })).id;
-          left = await showWriting(next);
-          await putInDeleted();
-        });
-      }
-      if (projectId !== project) return;
-      if (left) void wordCopy.update(false, left);
-      await refreshShelf();
-      rememberProject();
-      notice(t("writingDeleted", { title: source?.title ?? t("untitled") }));
-    } catch (error) {
-      reportSaveError(errorMessage(error));
-    }
-  }
-
-  async function putBackWriting(id: string) {
-    try {
-      await setWritingFields(id, { deletedAt: "" });
-      await refreshShelf();
-      rememberProject();
-    } catch (error) {
-      reportSaveError(errorMessage(error));
-    }
-  }
-
-  async function eraseWritingForGood(id: string) {
-    if (id === writingId) return;
-    try {
-      await eraseWriting(id);
-      await refreshShelf();
-    } catch (error) {
-      reportSaveError(errorMessage(error));
-    }
-  }
-
-  async function moveWriting(id: string, folder: string) {
-    try {
-      await setWritingFields(id, { folder });
-      await refreshShelf();
-    } catch (error) {
-      reportSaveError(errorMessage(error));
-    }
-  }
-
-  /**
-   * Turns "Split into chapters" on (`split`) or off for a writing. Off joins its chapters into one page
-   * (each chapter's title becomes a heading) after keeping an earlier version; on splits the page at its
-   * headings. To-dos and note links on the chapters that were joined move to the one page. Asked again
-   * while the first change was still saving (the switch still showed the old state), it does nothing.
-   */
-  async function setSplit(id: string, split: boolean) {
-    if (!writing || !shelf) return;
-    const project = projectId;
-    // The writing joined or split, after an earlier version of it is kept; null when it is so already.
-    const changed = async (target: Writing): Promise<Writing | null> => {
-      if (target.split === split) return null;
-      await keepSnapshot(target);
-      const now = new Date().toISOString();
-      if (split) return splitWriting(target, now, t("untitled"));
-      const joined = joinWriting(target, now);
-      await movePageLinks(joined.removed, joined.kept);
-      return joined.writing;
-    };
-    try {
-      let done = false;
-      if (id !== writingId) {
-        done = await oneAtATime(async () => {
-          if (projectId !== project) return true;
-          // Opened meanwhile: done below, with the page closed.
-          if (id === writingId) return false;
-          await flushNoteSave();
-          const next = await changed(await loadWriting(id));
-          if (!next) return true;
-          await sqliteStorage.save(next);
-          notice(t(next.split ? "splitDone" : "joined"));
-          return true;
-        });
-      }
-      if (!done) {
-        await withEditorClosed(async () => {
-          if (projectId !== project) return;
-          const open = writing?.id === id;
-          const target = open && writing ? writing : await loadWriting(id);
-          const before = writingWords;
-          const next = await changed(target);
-          if (!next) return;
-          await sqliteStorage.save(next);
-          if (open) {
-            writing = next;
-            keepToday(before);
-            activeId = next.chapters.find((chapter) => chapter.id === activeId)?.id ?? next.chapters[0]?.id ?? null;
-          }
-          notice(t(next.split ? "splitDone" : "joined"));
-        });
-      }
-      await refreshShelf();
-      // The to-dos and notes moved onto the joined page: the panel and the tree read them again.
-      await loadOrganizer();
-      rememberProject();
-    } catch (error) {
-      saveStatus = { state: "error", message: errorMessage(error) };
-    }
-  }
-
-  /** To-dos and note links on chapters that were joined into one page now point at that page. */
-  async function movePageLinks(removed: string[], kept: string) {
-    if (removed.length === 0 || !kept) return;
-    const gone = new Set(removed);
-    const [notes, tasks] = await Promise.all([listNotes(), listTasks()]);
-    for (const task of tasks) {
-      if (gone.has(task.chapterId)) await saveTask({ ...task, chapterId: kept });
-    }
-    for (const note of notes) {
-      if (!note.chapterIds.some((id) => gone.has(id))) continue;
-      const chapterIds = [...new Set(note.chapterIds.map((id) => (gone.has(id) ? kept : id)))];
-      await saveNote({ ...note, chapterIds });
-    }
-  }
+  // A project's writings and writing folders, from the library (writingActions.svelte.ts, IMP-28).
+  const writingOps = new WritingActions({
+    shelf: () => shelf,
+    writing: () => writing,
+    writingId: () => writingId,
+    projectId: () => projectId,
+    oneAtATime,
+    withEditorClosed,
+    flush: () => autosave.flush(),
+    openWriting: (id) => openWriting(id),
+    showWriting: (id) => showWriting(id),
+    putOpen: (next) => {
+      const before = writingWords;
+      writing = next;
+      keepToday(before);
+      activeId = next.chapters.find((chapter) => chapter.id === activeId)?.id ?? next.chapters[0]?.id ?? null;
+    },
+    renameOpen: (title) => renameOpenWriting(title),
+    copyLeft: (left) => void wordCopy.update(false, left),
+    refreshShelf,
+    rememberProject,
+    loadOrganizer,
+    notice,
+    fail: reportSaveError,
+  });
 
   /** A new note in a group of the project's notes (or tied to a chapter), opened over the page to write it. */
   async function newNoteIn(category: NoteCategory, title: string, chapterId = "") {
@@ -2585,17 +2365,17 @@
     openFile: (path) => void openLibraryFile(path),
     showInExplorer: (path) => void showInExplorer(path),
     importAsWriting: (path) => void importAsWriting(path),
-    newWriting,
-    newWritingFolder,
-    renameWritingFolder: renameWritingFolderTo,
-    deleteWritingFolder: (name) => void deleteWritingFolder(name),
-    renameWriting: (id, title) => void renameWritingTo(id, title),
-    duplicateWriting: (id) => void duplicateWritingNamed(id),
-    deleteWriting: (id) => void deleteWriting(id),
-    putBack: (id) => void putBackWriting(id),
-    eraseWriting: (id) => void eraseWritingForGood(id),
-    moveWriting: (id, folder) => void moveWriting(id, folder),
-    setSplit: (id, split) => void setSplit(id, split),
+    newWriting: (folder, name) => writingOps.make(folder, name),
+    newWritingFolder: (name) => writingOps.makeFolder(name),
+    renameWritingFolder: (from, to) => writingOps.renameFolder(from, to),
+    deleteWritingFolder: (name) => void writingOps.deleteFolder(name),
+    renameWriting: (id, title) => void writingOps.rename(id, title),
+    duplicateWriting: (id) => void writingOps.duplicate(id),
+    deleteWriting: (id) => void writingOps.delete(id),
+    putBack: (id) => void writingOps.putBack(id),
+    eraseWriting: (id) => void writingOps.erase(id),
+    moveWriting: (id, folder) => void writingOps.move(id, folder),
+    setSplit: (id, split) => void writingOps.setSplit(id, split),
     newNote: (category, title) => void newNoteIn(category, title),
     newChapter: () => void addChapter(),
     renameNote: (id, title) => void changeNote(id, { title: title.trim() || t("untitled") }),
@@ -3416,7 +3196,7 @@
       insideLibrary={!!libraryRoot && isInside(projectLocation || prefs.projectPath, libraryRoot)}
       split={writing.split}
       {writingWords}
-      onSplit={(split) => void setSplit(writing?.id ?? "", split)}
+      onSplit={(split) => void writingOps.setSplit(writing?.id ?? "", split)}
       onProjectLanguage={setProjectLanguage}
       onAddWord={(language, word) => void addDictionaryWord(language, word)}
       onRemoveWord={(language, word) => void removeDictionaryWord(language, word)}
