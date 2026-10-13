@@ -84,14 +84,31 @@ await sleep(500);
 await page.clickText(".statusbar button", "Zen");
 await until(`!!document.querySelector(".zen-tools")`);
 await sleep(600);
+// Since 13 October the page stands on the look's still scene, the text as wide as she set it.
 const zen = await page.run(`(() => {
-  const writing = getComputedStyle(document.querySelector(".writing")).backgroundColor;
-  const paper = getComputedStyle(document.querySelector(".paper")).backgroundColor;
-  const under = document.querySelector(".sheet-under") ? getComputedStyle(document.querySelector(".sheet-under")).display : "none";
-  const shadow = getComputedStyle(document.querySelector(".paper")).boxShadow;
-  return { writing, paper, under, shadow, sparks: !!document.querySelector("canvas") && getComputedStyle(document.querySelector("canvas")).display !== "none" };
+  const paper = document.querySelector(".paper");
+  const style = getComputedStyle(paper);
+  const text = document.querySelector(".paper .ProseMirror").getBoundingClientRect().width;
+  return { scene: getComputedStyle(document.querySelector(".zen-scene")).backgroundImage, paper: style.backgroundColor, shadow: style.boxShadow, text: Math.round(text), rem: parseFloat(getComputedStyle(document.documentElement).fontSize) };
 })()`);
-check("Zen is the paper's colour from edge to edge", zen.writing === zen.paper && zen.under === "none" && zen.shadow === "none", JSON.stringify(zen));
+check(
+  "Zen: an opaque page with its shadow, on the look's scene, the text as wide as she set it",
+  zen.scene.includes("/art/zen/zen-daylight.svg") && !/rgba\(.*, 0(\.\d+)?\)$/.test(zen.paper) && zen.shadow !== "none" && Math.abs(zen.text - 44 * zen.rem) <= 1,
+  JSON.stringify(zen),
+);
+const scenes = await page.run(`(async () => {
+  const root = document.documentElement;
+  const was = root.dataset.theme;
+  const found = {};
+  for (const [theme, file] of [["daylight", "zen-daylight"], ["dusk", "zen-sunset"], ["candlelit", "zen-candlelit"], ["moonlit", "zen-moonlit"], ["forest", "zen-forest"]]) {
+    root.dataset.theme = theme;
+    const url = getComputedStyle(document.querySelector(".zen-scene")).backgroundImage.match(/url\\("?([^")]+)"?\\)/)?.[1] ?? "";
+    found[theme] = url.endsWith("/art/zen/" + file + ".svg") ? (await fetch(url)).status : url;
+  }
+  root.dataset.theme = was;
+  return found;
+})()`);
+check("each look has its own scene, and every one is there", Object.values(scenes).every((status) => status === 200), JSON.stringify(scenes));
 await page.shoot(`${shots}zen-1500.png`);
 await page.selectWords("Zidani Most") === "missing" && (await toEnd());
 await page.clickText(".paper .ProseMirror", "");

@@ -116,7 +116,7 @@ said), Not started, Dropped. IDs are fixed; code comments and the backlog refer 
 
 | ID | Requirement | Pri | Status |
 |----|-------------|-----|--------|
-| ZN-1 | Full screen with only the text, on the paper's colour from edge to edge, like Grammarly | M | Done |
+| ZN-1 | Full screen with only the text, on one plain page like Grammarly's, which stands on the look's still scene (owner, 13 October, from the design's art): dawn hills in Daylight, the sunset sea in Sunset, the candlelit room, the moonlit sea, the forest. The text is as wide as she set it; the scene is a still picture, so a key is no slower (a speed check times it) | M | Done |
 | ZN-2 | A centred column with an adjustable width | M | Done |
 | ZN-3 | Light and dark looks | M | Done (the app's themes, AT-2) |
 | ZN-4 | Typewriter scrolling: the line being written stays in the middle (Settings) | C | Done |
@@ -240,7 +240,8 @@ design system said.
   of the chapter waiting (the Continue card names that, and its page); the window bar's mark small and still; the
   projects' list a table (Name, Words, Edited) with a ⋯ on each row. Chapter statuses stay out. The
   installer wears the Basin mark too. A project is deleted to the Recycle Bin, never outright and never the
-  open one; one kept elsewhere can be taken off the list.
+  open one; one kept elsewhere can be taken off the list. Zen's plain page stands on the look's still scene,
+  from the design's art.
 - **12 Oct:** Chapter statuses dropped, so a writing's progress on Home is its words against its target.
   Eva's laptop runs Windows 10 with 8 GB of memory. A bar above selected text, with formatting, a comment,
   a note and find, and the selected words counted, as in Word. Notes and to-dos open in the panel beside

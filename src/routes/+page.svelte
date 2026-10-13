@@ -2996,6 +2996,10 @@
     actions={libraryActions}
   />
   <section class="writing">
+    {#if zen}
+      <!-- Zen's still scene for the look on now, around the page. -->
+      <div class="zen-scene" aria-hidden="true"></div>
+    {/if}
     <!-- Candlelit sparks drift over the desk, behind the page and everything else here. -->
     <Particles active={resolvedTheme(prefs.theme, new Date(clock)) === "candlelit" && !prefs.gentle && !zen} />
     {#if collapsed && !zen}
@@ -3060,7 +3064,7 @@
             class="page-row"
             class:commented={commentCount > 0 && !zen}
             class:paged={sheet !== null}
-            style:--sheet={zen ? `${prefs.columnRem}rem` : sheet ? `${paperSize.width}px` : pageWidthValue(prefs.pageWidth)}
+            style:--sheet={zen ? `calc(${prefs.columnRem}rem + 2 * var(--zen-margin))` : sheet ? `${paperSize.width}px` : pageWidthValue(prefs.pageWidth)}
             style:--leaf-h={sheet ? `${paperSize.height}px` : undefined}
             style:--leaf-margin={sheet ? `${paperSize.margin}px` : undefined}
           >
@@ -3739,19 +3743,53 @@
     color: var(--pv-ink);
   }
 
-  /* Zen is one plain page, as in Grammarly: the paper's colour from edge to edge and only the text on it. */
+  /*
+   * Zen is one plain page with only the text on it, as in Grammarly, on the look's still scene (owner, 13
+   * October): dawn hills, the sunset sea, the candlelit room, the moonlit sea, the forest. The scene is its
+   * own layer, painted once, so typing on the page above never paints it again; the page stays opaque, so
+   * the text keeps its sharp edges.
+   */
   .app.zen .writing {
-    background: var(--pv-paper);
+    --zen-margin: 56px;
+    background: var(--pv-desk);
   }
 
   .app.zen .writing::before {
     display: none;
   }
 
+  .zen-scene {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: var(--pv-desk) center bottom / cover no-repeat;
+    pointer-events: none;
+    will-change: transform;
+  }
+
+  :global(:root[data-theme="daylight"]) .zen-scene {
+    background-image: url("/art/zen/zen-daylight.svg");
+  }
+
+  :global(:root[data-theme="dusk"]) .zen-scene {
+    background-image: url("/art/zen/zen-sunset.svg");
+  }
+
+  :global(:root[data-theme="candlelit"]) .zen-scene {
+    background-image: url("/art/zen/zen-candlelit.svg");
+  }
+
+  :global(:root[data-theme="moonlit"]) .zen-scene {
+    background-image: url("/art/zen/zen-moonlit.svg");
+  }
+
+  :global(:root[data-theme="forest"]) .zen-scene {
+    background-image: url("/art/zen/zen-forest.svg");
+  }
+
   .app.zen .sheet .paper {
-    padding: 64px 0 160px;
+    padding: 64px var(--zen-margin) 160px;
     background-image: none;
-    box-shadow: none;
   }
 
   :global(:root[data-grain="true"]) .paper {

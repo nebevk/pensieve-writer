@@ -9,6 +9,7 @@ npm run test:browser                  every check but the speed ones (about 45 m
 npm run test:browser -- find home     only the checks whose names have these words
 npm run test:browser -- --speed       the speed checks too: typing timed with the processor slowed four times
 npm run test:browser -- --no-build    the build already in build/, as it is
+npm run test:browser -- --verbose     every line a check says, the passing ones too (their times, say)
 ```
 
 `run.mjs` builds the app, serves `build/` on a free port, starts its own headless Edge on another, runs

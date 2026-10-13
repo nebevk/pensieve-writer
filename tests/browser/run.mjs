@@ -16,6 +16,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..", "..");
 const args = process.argv.slice(2);
 const withSpeed = args.includes("--speed");
+// Every line each check says, the passing ones too (their times, say).
+const verbose = args.includes("--verbose");
 const words = args.filter((arg) => !arg.startsWith("--"));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -113,6 +115,7 @@ for (const name of checks) {
   const verdict = out.split("\n").reverse().find((line) => /ALL PASSED|\d+ FAILED/.test(line))?.trim() ?? "";
   if (verdict === "ALL PASSED") {
     console.log(`ok    ${name}`);
+    if (verbose) for (const line of out.split("\n").filter((line) => /^(ok  |FAIL)/.test(line))) console.log(`        ${line.trim()}`);
   } else {
     failed.push(name);
     console.log(`FAIL  ${name}${verdict ? ` (${verdict})` : ""}`);
