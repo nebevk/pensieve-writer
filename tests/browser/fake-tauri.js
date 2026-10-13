@@ -311,6 +311,28 @@
         if (!files.has(lower(args.path)) && !folders.has(lower(args.path)) && !fileExists(args.path)) throw "That isn't there any more";
         window.__PV_HARNESS__.revealed.push(args.path);
         return null;
+      case "write_backup": {
+        // backup.rs write_backup: the backup as a file in her folder; what was written is in __PV_HARNESS__.backups.
+        const folder = String(args.folder).replace(/[\\/]+$/, "");
+        addFolder(folder);
+        const path = `${folder}\\${args.filename}`;
+        const bytes = new TextEncoder().encode(String(args.contents));
+        let binary = "";
+        for (let at = 0; at < bytes.length; at += 0x8000) binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+        files.set(lower(path), { path, base64: btoa(binary) });
+        (window.__PV_HARNESS__.backups ??= []).push(path);
+        return path;
+      }
+      case "read_backup_file": {
+        const file = files.get(lower(String(args.path)));
+        if (!file) throw "That file isn't there any more";
+        return new TextDecoder().decode(bytesOf(file.base64));
+      }
+      case "read_image_file": {
+        const file = files.get(lower(String(args.path)));
+        if (!file) throw "That file isn't there any more";
+        return [...bytesOf(file.base64)];
+      }
       case "read_document_file": {
         if (!/\.(docx|txt|md|markdown)$/i.test(args.path)) throw "Only a Word, text or Markdown file can come in as a writing";
         const file = files.get(lower(args.path));
