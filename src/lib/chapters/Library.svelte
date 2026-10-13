@@ -7,9 +7,10 @@
   import { answered, isOpen, setOpen } from "./treeState.svelte";
   import { LONG_PAGE_WORDS } from "./page";
   import TreeMenu, { type MenuItem } from "./TreeMenu.svelte";
-  import { locale, plural, t } from "$lib/ui.svelte";
+  import { agoCapital, locale, num, plural, t } from "$lib/ui.svelte";
   import type { UiKey } from "$lib/i18n";
   import Icon from "$lib/editor/Icon.svelte";
+  import { roman } from "./labels";
 
   let {
     library,
@@ -20,6 +21,7 @@
     writingTitle,
     writingSplit,
     writingWords,
+    table = false,
   }: {
     library: LibraryView;
     actions: LibraryActions;
@@ -32,6 +34,11 @@
     chapterRows?: Snippet<[number]>;
     /** The header's "New writing" or "New folder", by the time it was asked. */
     createRequest?: { kind: "writing" | "folder"; at: number } | null;
+    /**
+     * Home's list (owner's design, 13 October): the rows as a table on a card, each with what it holds,
+     * its words and when it was last written in, under a row that names the columns.
+     */
+    table?: boolean;
   } = $props();
 
   type Kind =
@@ -82,6 +89,9 @@
     empty?: boolean;
     /** How many levels of folders and projects a library folder holds below itself, as listed. */
     below?: number;
+    /** What it holds, as the table says it ("2 writings"), and when it was last written in. */
+    meta?: string;
+    edited?: string;
   };
 
   /** A name being typed in the tree: for something new, or for a new name. */
@@ -113,6 +123,8 @@
   /** How many levels of folders and projects an entry holds below itself, as listed: 0 for none. */
   const levelsIn = (entry: LibraryEntry): number =>
     entry.project || entry.file ? 0 : Math.max(0, ...entry.children.filter((child) => !child.file).map((child) => 1 + levelsIn(child)));
+  /** How many projects a library folder holds, at any depth. */
+  const projectsIn = (entry: LibraryEntry): number => entry.children.reduce((sum, child) => sum + (child.project ? 1 : child.file ? 0 : projectsIn(child)), 0);
 
   let editing = $state<Editing | null>(null);
   let committing = false;
@@ -236,6 +248,8 @@
         deleted,
         split,
         folder: outline.folder,
+        meta: split ? plural("chapters", outline.chapters.length) : "",
+        edited: outline.updatedAt,
       });
       if (!open) return;
       if (current) list.push({ key: `chapters:${outline.id}`, depth: depth + 1, kind: "chapters", name: "", icon: "", expandable: false, open: false });
@@ -251,7 +265,7 @@
         if (renamed(key, depth, "layers")) continue;
         const inside = live.filter((item) => item.folder === folder);
         const open = isOpen(key, inside.some((item) => item.id === writingId));
-        list.push({ key, depth, kind: "wfolder", name: folder, icon: "layers", expandable: true, open, count: inside.length, folder });
+        list.push({ key, depth, kind: "wfolder", name: folder, icon: "layers", expandable: true, open, count: inside.length, folder, meta: plural("writings", inside.length) });
         if (!open) continue;
         pushInput(key, depth + 1);
         for (const item of inside) pushWriting(item, depth + 1);
@@ -259,14 +273,14 @@
       for (const item of live.filter((entry) => !entry.folder || !shelf.folders.includes(entry.folder))) pushWriting(item, depth);
 
       const notesOpen = isOpen("notes", false);
-      list.push({ key: "notes", depth, kind: "notes", name: t("notes"), icon: "notebook", expandable: true, open: notesOpen, count: library.notes.length });
+      list.push({ key: "notes", depth, kind: "notes", name: t("notes"), icon: "notebook", expandable: true, open: notesOpen, count: library.notes.length, meta: plural("noteCount", library.notes.length) });
       if (notesOpen) {
         pushInput("notes", depth + 1);
         for (const group of GROUPS) {
           const key = `group:${group.id}`;
           const inGroup = library.notes.filter((note) => note.category === group.id).sort((a, b) => order.compare(a.title, b.title));
           const open = isOpen(key, false);
-          list.push({ key, depth: depth + 1, kind: "group", name: t(group.key), icon: group.icon, expandable: inGroup.length > 0, open, count: inGroup.length, category: group.id });
+          list.push({ key, depth: depth + 1, kind: "group", name: t(group.key), icon: group.icon, expandable: inGroup.length > 0, open, count: inGroup.length, category: group.id, meta: plural("noteCount", inGroup.length) });
           pushInput(key, depth + 2);
           if (!open) continue;
           for (const note of inGroup) {
@@ -276,20 +290,20 @@
           }
         }
       }
-      list.push({ key: "todos", depth, kind: "todos", name: t("todos"), icon: "todos", expandable: false, open: false, count: library.openTodos });
+      list.push({ key: "todos", depth, kind: "todos", name: t("todos"), icon: "todos", expandable: false, open: false, count: library.openTodos, meta: plural("openCount", library.openTodos) });
 
       // Her own files and folders in the project's folder, as Explorer would show them.
       const own = openEntry?.children ?? [];
       if (openEntry && own.length > 0) {
         const open = isOpen("files", false);
-        list.push({ key: "files", depth, kind: "files", name: t("files"), icon: open ? "folderOpen" : "folder", expandable: true, open, count: own.length, path: openEntry.path });
+        list.push({ key: "files", depth, kind: "files", name: t("files"), icon: open ? "folderOpen" : "folder", expandable: true, open, count: own.length, path: openEntry.path, meta: plural("fileCount", own.length) });
         if (open) pushFiles(own, depth + 1);
       }
 
       const deleted = shelf.writings.filter((item) => item.deletedAt);
       if (deleted.length > 0) {
         const open = isOpen("deleted", false);
-        list.push({ key: "deleted", depth, kind: "deleted", name: t("deletedFolder"), icon: "trash", expandable: true, open, count: deleted.length });
+        list.push({ key: "deleted", depth, kind: "deleted", name: t("deletedFolder"), icon: "trash", expandable: true, open, count: deleted.length, meta: plural("writings", deleted.length) });
         if (open) for (const item of deleted) pushWriting(item, depth + 1, true);
       }
     };
@@ -314,7 +328,9 @@
       if (same(file, currentFile) && shelf) {
         const open = isOpen(key, true);
         if (!renamed(key, depth, "library")) {
-          list.push({ key, depth, kind: "project", name: name || shelf.title, icon: "library", expandable: true, open, current: true, path: file, live: "project" });
+          const live = shelf.writings.filter((item) => !item.deletedAt);
+          const edited = live.reduce((latest, item) => (item.updatedAt > latest ? item.updatedAt : latest), "");
+          list.push({ key, depth, kind: "project", name: name || shelf.title, icon: "library", expandable: true, open, current: true, path: file, live: "project", meta: plural("writings", live.length), edited });
         }
         if (open) pushShelf(depth + 1);
         return;
@@ -323,7 +339,7 @@
       const writings = summary?.writings ?? [];
       const open = writings.length > 0 && isOpen(key, false);
       if (!renamed(key, depth, "library")) {
-        list.push({ key, depth, kind: "project", name, icon: "library", expandable: writings.length > 0, open, path: file, words: summary?.words });
+        list.push({ key, depth, kind: "project", name, icon: "library", expandable: writings.length > 0, open, path: file, words: summary?.words, meta: summary ? plural("writings", writings.length) : "", edited: summary?.editedAt });
       }
       if (!open) return;
       for (const item of writings) {
@@ -339,6 +355,8 @@
           path: file,
           words: item.words,
           split: item.split,
+          meta: item.split ? plural("chapters", item.chapters) : "",
+          edited: item.editedAt,
         });
       }
     };
@@ -350,7 +368,7 @@
         // everything unfolded does (owner, 8 October), unless the project on the page is in it.
         const open = isOpen(key, (depth === 0 && holdsProjects(folder)) || (!!currentFile && isInside(currentFile, folder.path)));
         if (!renamed(key, depth, open ? "folderOpen" : "folder")) {
-          list.push({ key, depth, kind: "folder", name: folder.name, icon: open ? "folderOpen" : "folder", expandable: true, open, path: folder.path, empty: folder.children.length === 0, below: levelsIn(folder) });
+          list.push({ key, depth, kind: "folder", name: folder.name, icon: open ? "folderOpen" : "folder", expandable: true, open, path: folder.path, empty: folder.children.length === 0, below: levelsIn(folder), meta: plural("projectCount", projectsIn(folder)) });
         }
         if (!open) continue;
         pushInput(key, depth + 1);
@@ -372,7 +390,7 @@
     }
     if (elsewhere.length > 0) {
       const open = isOpen("elsewhere", true);
-      list.push({ key: "elsewhere", depth: 0, kind: "elsewhere", name: t("elsewhere"), icon: open ? "folderOpen" : "folder", expandable: true, open });
+      list.push({ key: "elsewhere", depth: 0, kind: "elsewhere", name: t("elsewhere"), icon: open ? "folderOpen" : "folder", expandable: true, open, meta: plural("projectCount", elsewhere.length) });
       if (open) for (const item of elsewhere) pushProject(item.path, item.title || shelf?.title || "", 1);
     }
     return list;
@@ -764,6 +782,7 @@
 <!-- The empty space below the rows is the library's top: a folder or project dropped there goes to it. -->
 <div
   class="library tree-list"
+  class:table
   class:drop-root={dropKey === "root"}
   role="presentation"
   bind:this={tree}
@@ -796,6 +815,13 @@
     };
   }}
 >
+  {#if table}
+    <div class="table-head" aria-hidden="true">
+      <span class="head-name">{t("columnName")}</span>
+      <span class="col-words">{t("columnWords")}</span>
+      <span class="col-edited">{t("columnEdited")}</span>
+    </div>
+  {/if}
   {#each rows as row (row.key)}
     {#if row.kind === "chapters"}
       {@render chapterRows?.(row.depth)}
@@ -831,7 +857,7 @@
       </div>
     {:else if row.kind === "writing" && row.current && row.split && !row.deleted && chapterRows}
       <!-- The open book has a + for a new chapter at its end, as the notes have (owner, 9 October). -->
-      <div class="with-add">
+      <div class="with-add" class:two={table}>
         {@render rowButton(row)}
         <button
           type="button"
@@ -845,6 +871,12 @@
         >
           <Icon name="plus" />
         </button>
+        {#if table}{@render more(row)}{/if}
+      </div>
+    {:else if table && (row.kind === "folder" || row.kind === "project" || row.kind === "wfolder" || row.kind === "writing")}
+      <div class="with-add">
+        {@render rowButton(row)}
+        {@render more(row)}
       </div>
     {:else}
       {@render rowButton(row)}
@@ -898,12 +930,18 @@
       >
         <span class="twist" class:open={row.open} aria-hidden="true">{#if row.expandable}<Icon name="chevronRight" />{/if}</span>
         {#if row.kind === "chapter"}
-          <span class="num">{row.number}</span>
+          <!-- In the table, a chapter's number is Roman, as its page's running head writes it. -->
+          <span class="num">{table ? roman(row.number ?? 0) : row.number}</span>
         {:else}
           <span class="tree-icon" aria-hidden="true"><Icon name={row.icon} /></span>
         {/if}
         <span class="name">{row.name}</span>
-        {#if row.live}
+        {#if table}
+          {#if row.kind === "project" && row.current}<span class="badge">{t("openNow")}</span>{/if}
+          <span class="meta">{row.meta ?? ""}</span>
+          <span class="col-words">{row.live ? num(row.live === "writing" ? writingWords : otherWords + writingWords) : row.words !== undefined ? num(row.words) : ""}</span>
+          <span class="col-edited">{row.edited ? agoCapital(row.edited) : ""}</span>
+        {:else if row.live}
           <span class="words">{compactWords(row.live === "writing" ? writingWords : otherWords + writingWords)}</span>
         {:else if row.words !== undefined}
           <span class="words">{compactWords(row.words)}</span>
@@ -911,6 +949,12 @@
           <span class="words">{row.count}</span>
         {/if}
       </button>
+{/snippet}
+{#snippet more(row: Row)}
+  <!-- The row's menu, as a right-click opens it, for her who doesn't know to right-click (owner's design, 13 October). -->
+  <button type="button" class="row-add row-more" title={t("rowMore")} aria-label="{t('rowMore')}: {row.name}" onclick={(event) => openMenu(row, event.currentTarget)}>
+    <Icon name="ellipsis" />
+  </button>
 {/snippet}
 {#if menu}
   <!-- A question that takes a menu's place is a menu of its own: it fits the window and takes the keyboard. -->
@@ -1021,5 +1065,173 @@
     margin: 8px 10px;
     color: var(--pv-text-faint);
     font-size: var(--pv-text-sm);
+  }
+
+  /*
+   * Home's list as a table (owner's design, 13 October): a card, a row naming the columns, then each
+   * folder and project on a line of its own, what's inside an open one closer together under it.
+   */
+  .library.table {
+    flex: none;
+    overflow: visible;
+    padding: 0 0 6px;
+    border: 1px solid var(--pv-line);
+    border-radius: 8px;
+    background: var(--pv-field);
+    box-shadow: var(--pv-shadow-card);
+  }
+
+  .table-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 62px 0 20px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--pv-text-subtle);
+  }
+
+  .head-name {
+    flex: 1;
+  }
+
+  .library.table :global(.tree-row),
+  .library.table .tree-input {
+    height: 31px;
+    gap: 6px;
+    /* Room at the end, on every row so the columns line up, for the "+" and "⋯". */
+    padding: 0 62px 0 calc(14px + var(--depth, 0) * 18px);
+    border-radius: 0;
+    background-image: repeating-linear-gradient(90deg, var(--tree-guide, transparent) 0 1px, transparent 1px 18px);
+    background-position: 21px 0;
+    background-size: calc(var(--depth, 0) * 18px) 100%;
+    font-size: 13.5px;
+  }
+
+  /* Folders and projects each on a line of their own, a folder's a shade darker. */
+  .library.table .tree-row.folder,
+  .library.table .tree-row.project,
+  .library.table .tree-row.elsewhere {
+    height: 40px;
+    border-top: 1px solid var(--pv-divider);
+  }
+
+  .library.table .tree-row.folder,
+  .library.table .tree-row.elsewhere {
+    background-color: color-mix(in srgb, var(--pv-selected) 45%, transparent);
+  }
+
+  .library.table :global(.tree-row:hover),
+  .library.table .tree-row.folder:hover,
+  .library.table .tree-row.elsewhere:hover {
+    background-color: var(--pv-selected);
+  }
+
+  .library.table .tree-row.project > .name {
+    font-weight: 600;
+  }
+
+  /* A project's mark in a soft square; the open one's in the accent. */
+  .library.table .tree-row.project .tree-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: var(--pv-selected);
+  }
+
+  .library.table .tree-row.project.current .tree-icon {
+    background: var(--pv-ink-tint);
+    color: var(--pv-ink-tint-text);
+  }
+
+  .library.table .tree-row.project .tree-icon :global(svg) {
+    width: 14px;
+    height: 14px;
+  }
+
+  .library.table .name {
+    flex: 0 1 auto;
+  }
+
+  .badge {
+    flex: none;
+    margin-left: 4px;
+    border-radius: 4px;
+    padding: 2px 6px;
+    background: var(--pv-ink-tint);
+    color: var(--pv-ink-tint-text);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .library.table :global(.meta) {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    padding-left: 6px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 12px;
+    color: var(--pv-text-faint);
+  }
+
+  .library.table :global(.col-words) {
+    flex: none;
+    width: 76px;
+    text-align: right;
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--pv-text-2);
+  }
+
+  .library.table :global(.col-edited) {
+    flex: none;
+    width: 104px;
+    overflow: hidden;
+    padding-left: 26px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 12.5px;
+    color: var(--pv-text-subtle);
+  }
+
+  .library.table .num {
+    width: auto;
+    min-width: 14px;
+    font-family: var(--pv-font-heading);
+    font-size: 13px;
+    color: var(--pv-accent);
+  }
+
+  /* The "+" and the "⋯" at a row's end, in the middle of its height; the "⋯" shows on the row the pointer is on. */
+  .library.table .with-add > :global(.tree-row) {
+    padding-right: 62px;
+  }
+
+  .library.table .row-add {
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+  }
+
+  /* With both, the "+" keeps the end, where every other row's "+" is, and the "⋯" comes in beside it. */
+  .library.table .with-add.two .row-more {
+    right: 34px;
+  }
+
+  .library.table .row-more {
+    opacity: 0;
+  }
+
+  .library.table .with-add:hover .row-more,
+  .library.table .row-more:focus-visible {
+    opacity: 1;
   }
 </style>

@@ -5,16 +5,17 @@
   import { roman } from "$lib/chapters/labels";
   import Library from "$lib/chapters/Library.svelte";
   import type { LibraryActions, LibraryView } from "$lib/chapters/library";
-  import type { AmbienceName, KnownProject, OutlineLayout, Prefs } from "$lib/prefs";
+  import type { AmbienceName, KnownProject, OutlineLayout, Prefs, ThemeName } from "$lib/prefs";
   import type { Chapter, Writing } from "$lib/model";
   import { isUntitled, type UiKey } from "$lib/i18n";
-  import { ago, locale, num, plural, t, ui } from "$lib/ui.svelte";
+  import { ago, agoCapital, locale, num, plural, t, ui } from "$lib/ui.svelte";
   import Icon from "$lib/editor/Icon.svelte";
   import { chapterTitle, isWelcomePage } from "$lib/chapters/welcome";
   import { WRITER } from "$lib/writer";
   import { randomVerse, verse } from "$lib/quotes";
   import { listTasks, saveTask, type Task } from "$lib/storage/organize";
   import ChecklistItem from "./ChecklistItem.svelte";
+  import BrandMark from "$lib/editor/BrandMark.svelte";
 
   let {
     writing,
@@ -38,6 +39,7 @@
     onSaveError,
     currentPath = "",
     books = [],
+    appearance = "daylight",
   }: {
     /** The writing open in Write. */
     writing: Writing;
@@ -68,6 +70,8 @@
     onSaveError?: (message: string) => void;
     currentPath?: string;
     books?: KnownProject[];
+    /** The look on now, for the large mark's colours. */
+    appearance?: Exclude<ThemeName, "sunset">;
   } = $props();
 
   // A short verse for Eva under her greeting, a different one each time Home opens, in her language.
@@ -96,7 +100,6 @@
   );
   const lines = $derived(paragraphs(latest));
   const currentLine = $derived(lines.at(-1) ?? "");
-  const previousLine = $derived(lines.at(-2) ?? "");
   const otherBooks = $derived(books.filter((book) => book.path.toLowerCase() !== currentPath.toLowerCase()));
   // Doing first, as on the board.
   const openTasks = $derived(
@@ -115,21 +118,27 @@
   }
 
   /**
-   * "Good evening, Eva. The Attic is waiting." (HOME-10): the time of day, then the chapter Continue
-   * opens. Late at night it's "Late again, Eva."; a new book's welcome page gets the greeting alone.
+   * "Good evening, Eva." and below it "The Attic is waiting." (HOME-10): the time of day, then the chapter
+   * Continue opens. Late at night it's "Late again, Eva."; a new book's welcome page gets the greeting alone.
    */
-  function greeting(at: number): string {
+  function hello(at: number): string {
     const hour = new Date(at).getHours();
-    const hello =
-      hour >= 23 || hour < 5 ? t("lateAgain") : hour < 12 ? t("morning") : hour < 18 ? t("afternoon") : t("evening");
-    const greet = `${hello}, ${WRITER}.`;
+    const word = hour >= 23 || hour < 5 ? t("lateAgain") : hour < 12 ? t("morning") : hour < 18 ? t("afternoon") : t("evening");
+    return `${word}, ${WRITER}.`;
+  }
+
+  /** The chapter waiting, its name apart (in the accent, owner's design of 13 October), with the quotation marks round it. */
+  const waiting = $derived.by(() => {
     const chapter = latest;
-    if (!chapter || isWelcomePage(chapter)) return greet;
+    if (!chapter || isWelcomePage(chapter)) return null;
     const name = isUntitled(chapter.title)
       ? chapterTitle(ui.language, chapters.findIndex((item) => item.id === chapter.id) + 1)
       : chapter.title.trim();
-    return `${greet} ${t("chapterWaiting", { chapter: name })}`;
-  }
+    const [before, after = ""] = t("chapterWaiting").split("{chapter}");
+    const open = /[»«„“”"']$/.exec(before)?.[0] ?? "";
+    const close = /^[»«„“”"']/.exec(after)?.[0] ?? "";
+    return { before: before.slice(0, before.length - open.length), name: `${open}${name}${close}`, after: after.slice(close.length) };
+  });
 
   function clip(text: string, max = 88): string {
     if (text.length <= max) return text;
@@ -190,16 +199,18 @@
   </button>
 {/snippet}
 
-<!-- The open writing's chapters in the tree, each opening in Write. -->
+<!-- The open writing's chapters in the table, each opening in Write; the one Continue opens is lit. -->
 {#snippet chapterRows(depth: number)}
   <ul class="chapters">
     {#each chapters as chapter, index (chapter.id)}
       <li>
-        <button type="button" class="tree-row" style:--depth={depth} title={chapter.title} onclick={() => onContinue(chapter.id)}>
+        <button type="button" class="tree-row chapter" class:latest={chapter.id === latest?.id} style:--depth={depth} title={chapter.title} onclick={() => onContinue(chapter.id)}>
           <span class="twist" aria-hidden="true"></span>
-          <span class="num">{index + 1}</span>
+          <span class="num">{roman(index + 1)}</span>
           <span class="chapter-name" class:untitled={isUntitled(chapter.title)}>{chapter.title}</span>
-          <span class="words">{compactWords(wordsFor(chapter.id, chapter.plainText))}</span>
+          <span class="meta"></span>
+          <span class="col-words">{num(wordsFor(chapter.id, chapter.plainText))}</span>
+          <span class="col-edited">{agoCapital(chapter.updatedAt)}</span>
         </button>
       </li>
     {/each}
@@ -210,11 +221,20 @@
 <section class="home">
   <div class="left">
     <div class="intro">
-      <p class="date">
-        {new Date(now).toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long" })} ·
-        {new Date(now).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })}
-      </p>
-      <h1>{greeting(now)}</h1>
+      <div class="hero">
+        <!-- The large mark beside the greeting (owner's design, 13 October): it moves, except in Gentle mode. -->
+        <span class="glow" aria-hidden="true"><BrandMark {appearance} size={108} animated={!prefs.gentle} /></span>
+        <div class="hello">
+          <p class="date">
+            {new Date(now).toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long" })} ·
+            {new Date(now).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })}
+          </p>
+          <h1>
+            <span>{hello(now)}</span>
+            {#if waiting}<span class="waits">{waiting.before}<em>{waiting.name}</em>{waiting.after}</span>{/if}
+          </h1>
+        </div>
+      </div>
       <blockquote class="quote">
         <p>{quote.text}</p>
         <footer>{quote.reference}</footer>
@@ -234,30 +254,26 @@
     <div class="continue">
       <div class="sheet">
         <div class="running">
-          <span>{writing.title}</span>
-          <!-- The chapter in Roman numerals, as the page's own running head writes it. -->
-          <span>{latest ? t("chapterShort", { n: roman(chapters.findIndex((chapter) => chapter.id === latest.id) + 1) }) : ""}</span>
+          <!-- The writing and its chapter in Roman numerals, as the page's own running head writes them; a writing of one page has no chapters to name. -->
+          <span>{writing.title}{#if latest && writing.split}{` · ${t("chapterShort", { n: roman(chapters.findIndex((chapter) => chapter.id === latest.id) + 1) })}`}{/if}</span>
+          <span class="edited">{latest ? t("editedAgo", { ago: ago(latest.updatedAt) }) : ""}</span>
         </div>
         <div class="excerpt">
-          {#if previousLine}
-            <p class="faded">{clip(previousLine, 140)}</p>
-          {/if}
           <p>{currentLine ? clip(currentLine, 160) : t("blankPage")}<span class="caret" aria-hidden="true"></span></p>
         </div>
         <div class="foot">
-          <span class="edited">{latest ? t("editedAgo", { ago: ago(latest.updatedAt) }) : ""}</span>
-          <!-- The two buttons stay together: short of room, they go under the time, not into it. -->
+          <p class="sound">
+            <Icon name={sound?.icon ?? "volumeX"} />
+            <span>{sound ? t("ambienceStarts", { sound: t(sound.key) }) : t("ambienceSilent")} ·</span>
+            <button type="button" onclick={onAmbience}>{t("change")}</button>
+          </p>
+          <!-- The two buttons stay together: short of room, they go under the sound, not into it. -->
           <span class="buttons">
             <button type="button" class="zen" onclick={() => onZen(latest?.id ?? null)}><Icon name="moon" />{t("zen")}</button>
             <button type="button" class="go" onclick={() => onContinue(latest?.id ?? null)}>{t("continue")} <Icon name="arrowRight" /></button>
           </span>
         </div>
       </div>
-      <p class="sound">
-        {#if sound?.icon}<Icon name={sound.icon} />{/if}
-        {sound ? t("ambienceStarts", { sound: t(sound.key) }) : t("ambienceSilent")} ·
-        <button type="button" onclick={onAmbience}>{t("change")}</button>
-      </p>
     </div>
 
     <div class="todos">
@@ -294,6 +310,7 @@
       <!-- The library's own tree: folders, projects, writings, notes and her files, as beside the page. -->
       <div class="tree">
         <Library
+          table
           {library}
           {actions}
           writingId={writing.id}
@@ -332,14 +349,14 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-items: start;
     gap: 48px;
-    padding: 36px 56px 48px;
+    padding: 30px 56px 40px;
     color: var(--pv-text);
   }
 
   .left {
     display: flex;
     flex-direction: column;
-    gap: 26px;
+    gap: 24px;
     min-width: 0;
   }
 
@@ -352,6 +369,29 @@
     flex-direction: column;
   }
 
+  /* The large mark, and the greeting beside it (owner's design, 13 October). */
+  .hero {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+  }
+
+  /* A soft light round the mark, in the look's accent; it reaches a little past the column, as light does. */
+  .glow {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 150px;
+    height: 150px;
+    margin: -16px -4px -16px -22px;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--pv-accent) 17%, transparent), color-mix(in srgb, var(--pv-accent) 6%, transparent) 72%, transparent);
+  }
+
+  .hello {
+    min-width: 0;
+  }
+
   .date {
     margin: 0;
     font-size: 12px;
@@ -361,25 +401,36 @@
     color: var(--pv-text-faint);
   }
 
-  /* The greeting is quieter than the verse under it (owner, 12 October). */
+  /* The greeting, and on a line of its own the chapter waiting, its name in the accent. */
   h1 {
     margin: 10px 0 0;
     font-family: var(--pv-font-heading);
-    font-size: 30px;
+    font-size: 36px;
     font-weight: 400;
-    line-height: 1.15;
+    line-height: 1.12;
     text-wrap: pretty;
   }
 
+  h1 span {
+    display: block;
+  }
+
+  h1 em {
+    font-style: normal;
+    color: var(--pv-accent);
+  }
+
+  /* The verse, quieter than the greeting now, in the manuscript's italic. */
   .quote {
-    margin: 16px 0 0;
+    margin: 20px 0 0;
   }
 
   .quote p {
     margin: 0;
     font-family: var(--pv-font-manuscript);
-    font-size: 24px;
-    line-height: 1.4;
+    font-size: 17px;
+    font-style: italic;
+    line-height: 1.5;
     color: var(--pv-text);
     text-wrap: pretty;
   }
@@ -427,8 +478,8 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    min-height: 250px;
-    padding: 30px 36px;
+    min-height: 228px;
+    padding: 26px 34px 24px;
     background-color: var(--pv-paper);
     box-shadow: var(--pv-shadow-sheet);
     color: var(--pv-ink);
@@ -442,10 +493,19 @@
   .running {
     display: flex;
     justify-content: space-between;
+    gap: 16px;
     font-size: var(--pv-text-xs);
     letter-spacing: var(--pv-track-running);
     text-transform: uppercase;
     color: var(--pv-ink-meta);
+  }
+
+  .running .edited {
+    flex: none;
+    letter-spacing: 0;
+    text-transform: none;
+    font-size: 12px;
+    color: var(--pv-ink-muted);
   }
 
   .excerpt {
@@ -453,19 +513,14 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 10px;
+    padding: 18px 0;
     font-family: var(--pv-font-manuscript);
-    font-size: 15px;
-    line-height: 1.75;
+    font-size: 16px;
+    line-height: 1.7;
   }
 
   .excerpt p {
     margin: 0;
-  }
-
-  .faded {
-    opacity: 0.55;
-    color: var(--pv-ink-2);
   }
 
   .caret {
@@ -483,14 +538,8 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 10px 8px;
-  }
-
-  /* One line: the buttons wrap below it rather than squeeze it onto two. */
-  .edited {
-    flex: 1 0 auto;
-    white-space: nowrap;
-    font-size: var(--pv-text-md);
-    color: var(--pv-ink-muted);
+    padding-top: 16px;
+    border-top: 1px solid var(--pv-ink-rule);
   }
 
   .buttons {
@@ -548,17 +597,20 @@
     height: 15px;
   }
 
+  /* The sound that starts with writing, on the card's paper; one line, the buttons wrap below it rather than squeeze it. */
   .sound {
+    flex: 1 0 auto;
     display: flex;
     align-items: center;
     gap: 6px;
     margin: 0;
-    padding-left: 2px;
     font-size: 12px;
-    color: var(--pv-text-subtle);
+    white-space: nowrap;
+    color: var(--pv-ink-muted);
   }
 
   .sound :global(svg) {
+    flex: none;
     width: 13px;
     height: 13px;
   }
@@ -567,7 +619,7 @@
     border: 0;
     padding: 0;
     background: none;
-    color: var(--pv-accent);
+    color: var(--pv-ink-accent);
     font: inherit;
     font-weight: 600;
   }
@@ -818,25 +870,23 @@
   }
 
   /* The tree, as beside the page, but with the room Home has. */
-  .tree {
-    max-width: 640px;
-  }
-
   .chapters {
     margin: 0;
     padding: 0;
     list-style: none;
   }
 
+  /* The chapter's number in Roman, as its running head writes it. */
   .num {
     flex: none;
-    min-width: 16px;
-    font-size: var(--pv-text-sm);
-    color: var(--pv-text-faint);
+    min-width: 14px;
+    font-family: var(--pv-font-heading);
+    font-size: 13px;
+    color: var(--pv-accent);
   }
 
   .chapter-name {
-    flex: 1;
+    flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
     white-space: nowrap;
@@ -848,10 +898,13 @@
     color: var(--pv-text-faint);
   }
 
-  .words {
-    flex: none;
-    font-size: var(--pv-text-sm);
-    color: var(--pv-text-faint);
+  /* The chapter Continue opens. */
+  .tree-row.latest {
+    background-color: color-mix(in srgb, var(--pv-accent) 10%, transparent);
+  }
+
+  .tree-row.latest .chapter-name {
+    font-weight: 600;
   }
 
   .error {

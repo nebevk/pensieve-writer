@@ -58,12 +58,15 @@
 <!-- Home's own window bar (HOME-6). Home sits above all books, so it has no view tabs. -->
 <header class="home-header" data-tauri-drag-region="deep">
   <span class="brand">
-    <!-- Home's mark is the large one, and moves, except in Gentle mode. -->
-    <BrandMark {appearance} size={34} animated={!prefs.gentle} />
+    <!-- Home's large mark, the one that moves, is beside the greeting (owner, 13 October); here it is small and still. -->
+    <BrandMark {appearance} size={22} />
     <span class="name">Pensieve</span>
   </span>
   <span class="spacer"></span>
-  <button type="button" class="find" title="{t("searchEverything")} (Ctrl+Shift+F)" onclick={onSearch}><Icon name="search" />{t("searchEverything")}</button>
+  <!-- Drawn as a search field, with its shortcut (owner, 13 October); a press opens the search. -->
+  <button type="button" class="find" title="{t("searchEverything")} (Ctrl+Shift+F)" onclick={onSearch}>
+    <Icon name="search" /><span class="label">{t("searchEverything")}</span><kbd>Ctrl ⇧ F</kbd>
+  </button>
   {#if update}
     <UpdatePill offer={update} {onUpdate} />
   {/if}
@@ -125,17 +128,17 @@
   .brand {
     display: inline-flex;
     align-items: center;
-    gap: 9px;
+    gap: 8px;
     /* The basin starts an eighth of the way in: the mark moves out by that, so the basin lines up. */
-    margin-left: -4px;
+    margin-left: -3px;
   }
 
   .name {
     font-family: var(--pv-font-heading);
-    font-size: 22px;
+    font-size: 18px;
     line-height: 1;
     /* The heading face sits a little high in its line: down to the middle of the basin. */
-    padding-top: 3px;
+    padding-top: 2px;
   }
 
   .spacer {
@@ -228,29 +231,57 @@
   .find {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    height: 28px;
+    gap: 8px;
+    width: 236px;
+    height: 30px;
     border: 1px solid var(--pv-line-strong);
-    border-radius: var(--pv-radius-xs);
-    padding: 0 10px;
-    background: transparent;
-    color: var(--pv-text-muted);
+    border-radius: var(--pv-radius-sm);
+    padding: 0 5px 0 10px;
+    background: var(--pv-field);
+    color: var(--pv-text-subtle);
     font-size: 12.5px;
-    font-weight: 600;
     white-space: nowrap;
   }
 
   .find :global(svg) {
+    flex: none;
     width: 14px;
     height: 14px;
   }
 
+  .find .label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: left;
+  }
+
+  .find kbd {
+    flex: none;
+    border: 1px solid var(--pv-line);
+    border-radius: 4px;
+    padding: 1px 5px;
+    background: var(--pv-chrome);
+    color: var(--pv-text-subtle);
+    font-family: inherit;
+    font-size: 10.5px;
+    font-weight: 600;
+  }
+
   .find:hover {
-    background: var(--pv-selected);
+    border-color: var(--pv-accent);
+    color: var(--pv-text);
   }
 
   .find:active {
-    background: var(--pv-pressed);
+    background: var(--pv-selected);
+  }
+
+  @media (max-width: 1250px) {
+    .find {
+      width: 190px;
+    }
   }
 
   .lang {

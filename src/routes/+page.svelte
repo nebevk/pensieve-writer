@@ -3698,6 +3698,7 @@
           books={homeProjects}
           currentPath={projectLocation}
           onOpenBook={(path) => void openFromLibrary(path)}
+          appearance={resolvedTheme(prefs.theme, new Date(clock))}
         />
       {:else if view === "notes" && NotesPart.current}
         {@const Notes = NotesPart.current}

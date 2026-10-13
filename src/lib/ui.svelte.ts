@@ -21,6 +21,12 @@ export const num = (value: number) => formatNumber(ui.language, value);
 
 export const ago = (iso: string) => relativeTime(ui.language, iso);
 
+/** "Just now", "5 min ago", "Yesterday": ago() starting a line or a table's cell. */
+export const agoCapital = (iso: string) => {
+  const text = ago(iso);
+  return text.charAt(0).toLocaleUpperCase(locale()) + text.slice(1);
+};
+
 export const locale = () => dateLocale(ui.language);
 
 const SNAPSHOT_KINDS: Record<string, UiKey> = {
