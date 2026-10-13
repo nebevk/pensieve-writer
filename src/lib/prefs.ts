@@ -34,6 +34,8 @@ export type Prefs = {
   toolsExpanded: boolean;
   /** Tutorial tips the first time she reaches each place (Settings → General). */
   tips: boolean;
+  /** The welcome window has been seen: it shows once, the first time Pensieve opens (owner, 13 October). */
+  welcomed: boolean;
   /** The places whose tips she has been through: home, write, notes, book. */
   tipsSeen: string[];
   backupFolder: string;
@@ -138,6 +140,7 @@ export const defaultPrefs = (): Prefs => ({
   gentle: false,
   toolsExpanded: true,
   tips: true,
+  welcomed: false,
   tipsSeen: [],
   backupFolder: "",
   projectPath: "",
@@ -209,6 +212,8 @@ function fromStored(raw: string): Prefs {
     ambience: "off",
     toolsExpanded: rest.toolsExpanded !== false,
     tips: rest.tips !== false,
+    // Settings kept from before the welcome are someone who knows Pensieve already.
+    welcomed: rest.welcomed !== false,
     smoothTyping: rest.smoothTyping !== false,
     repetitions: rest.repetitions === true,
     keySounds: rest.keySounds === "typewriter" || rest.keySounds === "mechanical" || rest.keySounds === "soft" ? rest.keySounds : "off",

@@ -46,10 +46,12 @@ await page.run(`window.__PV_HARNESS__?.forget?.(), localStorage.clear(), true`);
 await page.open(`http://127.0.0.1:${port}/`, 500);
 await until(`!!document.querySelector(".home .continue")`);
 
-// Home: a welcome, then where Settings are.
-check("a first start welcomes her on Home", await until(`!!document.querySelector(".tip")`, 40));
+// Home: the welcome window first (welcome-check.mjs), then Continue writing, then where Settings are.
+await until(`!!document.querySelector(".welcome")`, 40);
+await page.run(`[...document.querySelectorAll(".window footer button")].find((el) => el.textContent.trim() === "Preskoči")?.click(), true`);
+check("after the welcome, the tips begin on Home", await until(`!!document.querySelector(".tip")`, 40));
 let info = await tip();
-check("the welcome points at Continue writing", info?.title === "Dobrodošli v Pensieve" && info.count === "Namig 1 od 2" && (await ringOn(".home .continue", info)) && info.inside, JSON.stringify(info));
+check("the first points at Continue writing", info?.title === "To je domača stran" && info.count === "Namig 1 od 2" && (await ringOn(".home .continue", info)) && info.inside, JSON.stringify(info));
 await page.shoot(join(shots, "tips-home.png"), { x: 0, y: 0, width: 1366, height: 768 });
 await next();
 await sleep(300);

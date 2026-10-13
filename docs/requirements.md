@@ -168,6 +168,7 @@ Coziness is the top product priority, within the performance budget in Section 5
 | ST-6 | What opens over the page is a window like Settings: its name and ✕ at the top, its buttons at the foot; Escape or a click beside it closes it, and the keyboard goes back to what opened it. Settings and Earlier versions do; notes and to-dos open in the panel beside the page instead (NT-7) | S | Done |
 | ST-7 | Updates: Pensieve looks for a newer signed version on GitHub Releases, offers it quietly in the window bar, and installs it with one click, keeping her projects and settings | S | Done |
 | ST-8 | Example books, and a long test book of about 151,000 words for checking speed (Settings → General) | C | Done |
+| ST-9 | A welcome the first time Pensieve opens (owner, 13 October, with the design's art for the look on now): three steps over Home, the scene and a welcome, her writing and its notes, and the five looks to pick from, which change at once; then the tips (ST-5). Skip, ✕ or Esc end it too. It never comes again, nor to someone whose settings are kept from before it | C | Done |
 
 ## 5. Non-functional requirements
 
@@ -241,7 +242,7 @@ design system said.
   projects' list a table (Name, Words, Edited) with a ⋯ on each row. Chapter statuses stay out. The
   installer wears the Basin mark too. A project is deleted to the Recycle Bin, never outright and never the
   open one; one kept elsewhere can be taken off the list. Zen's plain page stands on the look's still scene,
-  from the design's art.
+  from the design's art, and the first start has a welcome of three steps with it, the look picked there.
 - **12 Oct:** Chapter statuses dropped, so a writing's progress on Home is its words against its target.
   Eva's laptop runs Windows 10 with 8 GB of memory. A bar above selected text, with formatting, a comment,
   a note and find, and the selected words counted, as in Word. Notes and to-dos open in the panel beside

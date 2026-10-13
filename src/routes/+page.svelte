@@ -63,6 +63,7 @@
   const OutlinePart = lazy(() => import("$lib/views/Outline.svelte"));
   const BookPart = lazy(() => import("$lib/views/Book.svelte"));
   const HistoryPart = lazy(() => import("$lib/views/History.svelte"));
+  const WelcomePart = lazy(() => import("$lib/views/Welcome.svelte"));
   const NotePanePart = lazy(() => import("$lib/views/NotePane.svelte"));
   const SelectionBarPart = lazy(() => import("$lib/editor/SelectionBar.svelte"));
   const NewProjectPart = lazy(() => import("$lib/views/NewProjectWindow.svelte"));
@@ -181,11 +182,13 @@
   // she stops them. Not over Settings or in Zen, and a moment after the place appears, so passing
   // through doesn't bring them and what they point at has settled.
   const tourWanted = $derived.by((): TourPlace | null => {
-    if (!prefs.tips || settingsOpen || versions.open || zen || !writing) return null;
+    if (!prefs.tips || !prefs.welcomed || settingsOpen || versions.open || zen || !writing) return null;
     const place = view === "home" || view === "write" || view === "notes" || view === "book" ? view : null;
     return place && !prefs.tipsSeen.includes(place) ? place : null;
   });
   let tourShown = $state<TourPlace | null>(null);
+  // The welcome (owner, 13 October): the first time Pensieve opens, on Home, before the tips.
+  const welcomeShown = $derived(!prefs.welcomed && view === "home" && !!writing && !settingsOpen);
   $effect(() => {
     const place = tourWanted;
     tourShown = null;
@@ -3374,6 +3377,15 @@
       {@render homeHeader()}
       <p class="opening">{t("opening")}</p>
     </div>
+  {/if}
+  {#if welcomeShown && WelcomePart.current}
+    {@const Welcome = WelcomePart.current}
+    <Welcome
+      theme={prefs.theme}
+      appearance={resolvedTheme(prefs.theme, new Date(clock))}
+      onTheme={(theme) => (prefs = { ...prefs, theme })}
+      onDone={() => (prefs = { ...prefs, welcomed: true })}
+    />
   {/if}
   {#if tourShown}
     {@const place = tourShown}
