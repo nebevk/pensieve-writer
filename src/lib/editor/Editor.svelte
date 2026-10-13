@@ -16,6 +16,7 @@
   import { UndoSteps } from "./undoSteps";
   import { SmoothTyping, refreshSmoothTyping } from "./smoothTyping";
   import { RepetitionMarks, refreshRepetitions } from "./repetitions";
+  import { FindMarks, type Found } from "./findMarks";
   import { keySound, prepareKeySounds, type KeySoundStyle } from "$lib/keySounds";
 
   let {
@@ -39,6 +40,7 @@
     keyVolume = 0.5,
     smoothTyping = false,
     repetitions = false,
+    onFound,
   }: {
     /** The chapter or note this editor opened. Every change is handed back with it. */
     docId?: string;
@@ -71,6 +73,8 @@
     smoothTyping?: boolean;
     /** Words said again close by, and very long sentences, marked (the toolbar's Repetitions). */
     repetitions?: boolean;
+    /** How many matches find has on the page, and which she is at, whenever that changes. */
+    onFound?: (found: Found) => void;
   } = $props();
 
   let typewriterOn = false;
@@ -87,6 +91,7 @@
   let notify = () => {};
   let openNote: ((target: NoteTarget) => void) | undefined;
   let countSheets: ((count: number) => void) | undefined;
+  let reportFound: ((found: Found) => void) | undefined;
   let keysSound: KeySoundStyle = "off";
   let keysVolume = 0.5;
   let smoothOn = false;
@@ -104,6 +109,7 @@
     markEdited = onEdit;
     openNote = onOpenNote;
     countSheets = onSheets;
+    reportFound = onFound;
     keysSound = keySounds;
     keysVolume = keyVolume;
     // Ready before the first key, so that one sounds too.
@@ -165,6 +171,7 @@
                 isOn: () => repetitionsOn,
                 labels: { again: (word) => t("wordAgain", { word }), long: (words) => plural("longSentence", words) },
               }),
+              FindMarks.configure({ onFound: (found) => reportFound?.(found) }),
             ]
           : []),
         NoteLinks.configure({ brackets: noteLinkBrackets, onOpen: (target) => openNote?.(target) }),
@@ -295,6 +302,18 @@
   .editor-host :global(.pv-long-sentence) {
     border-radius: 2px;
     background: rgba(201, 150, 47, 0.1);
+  }
+
+  /* Find (owner, 13 October): every match tinted, the one she is at stronger and outlined; never the yellow of her own highlighter. */
+  .editor-host :global(.pv-find) {
+    border-radius: 2px;
+    background: var(--pv-ink-tint);
+    box-decoration-break: clone;
+  }
+
+  .editor-host :global(.pv-find-current) {
+    background: color-mix(in srgb, var(--pv-ink-accent) 28%, var(--pv-paper));
+    box-shadow: 0 0 0 1.5px var(--pv-ink-accent);
   }
 
   /* A veil of paper over letters just typed, faded away by smoothTyping.ts, so they seem to ink in. */

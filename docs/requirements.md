@@ -59,15 +59,15 @@ said), Not started, Dropped. IDs are fixed; code comments and the backlog refer 
 | ED-4 | Alignment: left, centre, right, justify | M | Done |
 | ED-5 | Font, size, text colour, highlight | S | Partial: font and size apply to the whole manuscript, not the selection as in Word; text colour and highlight each apply one fixed colour (TOOL-5, TOOL-6) |
 | ED-6 | Undo and redo with deep history, about a word per step as in Word; a paste is a step of its own | M | Done |
-| ED-7 | Word's shortcuts: Ctrl+B, I, U, Z, Y, S, F; also Ctrl+Alt+M for a comment, Ctrl+Shift+N for a quick idea, Ctrl+Shift+F to search everything and Ctrl+/ for the list of shortcuts | M | Done |
-| ED-8 | Find and replace in the chapter or across the book, with a list of matches; it starts with the selected words, as in Word | S | Done |
+| ED-7 | Word's shortcuts: Ctrl+B, I, U, Z, Y, S, F, H; also Ctrl+Alt+M for a comment, Ctrl+Shift+N for a quick idea, Ctrl+Shift+F to search everything and Ctrl+/ for the list of shortcuts | M | Done |
+| ED-8 | Find and replace (owner, 13 October): a box under the toolbar's Find, which is lit while it is open; it starts with the selected words, as in Word. In This chapter every match on the page is marked and counted ("2 of 7"), and Enter, Shift+Enter and the arrows go round them; Aa matches the capitals, ab whole words only. Replace (Ctrl+H) has Replace and All, and one Ctrl+Z takes All back. This project and All projects list every place project by project, each with its words in their sentence and its chapter (or page, in a writing of one page); Enter opens one on that very match. This project's All replaces in every writing of the project, never in their names or the notes, after keeping each writing's earlier version | S | Done |
 | ED-9 | Live word counts for the chapter, the writing and the project; with words selected, the floating bar says "12 of 1,240 words", as Word's does | M | Done |
 | ED-10 | Paste from Word keeps headings, italics and paragraphs | S | Partial: works, but not tried with a real manuscript (IMP-18) |
 | ED-11 | Spell check in English and Slovenian | M | Done |
 | ED-12 | Images and footnotes; simple tables | C | Partial: images and footnotes; no tables |
 | ED-13 | A writing language per project, chapter or selection, which spell check follows; a personal dictionary | M | Done |
 | ED-14 | Comments on selected words, as in Word, written beside the page; a comment can become a to-do or a note; comments go to and from Word files | M | Done |
-| ED-15 | A small bar above selected text, as Word's mini toolbar, shown once the selection settles: bold, italic, underline and highlight; a comment; Make a note (a name becomes a note linked to those words, or is linked to the note of that name; a passage is quoted in a new note); and Find in the book. A title line offers only Find, Zen only the formatting. Ctrl+Shift+V pastes plain text | S | Done |
+| ED-15 | A small bar above selected text, as Word's mini toolbar, shown once the selection settles: bold, italic, underline and highlight; a comment; Make a note (a name becomes a note linked to those words, or is linked to the note of that name; a passage is quoted in a new note); and Find, which lists the words' places in the project. A title line offers only Find, Zen only the formatting. Ctrl+Shift+V pastes plain text | S | Done |
 | ED-16 | Repetitions (owner, 12 October), switched on in the toolbar's View group: a word said again within forty words (both times, and a long word in another form) is dotted under, and a sentence of more than forty words faintly tinted, each saying what it is when pointed at. Small words and the verbs of dialogue are left out; English and Slovenian, all on her computer. Off to start with, and hidden in Zen. Only what she sees is marked, at most 150 words at once, worked out when she pauses and not in the paragraph she types in, so typing stays as quick | S | Done |
 
 ### 4.2 Projects, writings and chapters
@@ -85,7 +85,7 @@ said), Not started, Dropped. IDs are fixed; code comments and the backlog refer 
 | CH-9 | A library folder, chosen in Settings (Documents\Pensieve to start; a cloud-synced folder is refused), holds the projects, each in its own folder with one file. Beside the page it is a tree, as in Explorer: folders, projects, a project's writing folders and writings, a writing's parts and chapters, its Notes by group, To-dos, a Deleted folder, and the project's own files, which open in their program. Projects kept elsewhere are listed under Elsewhere and can be moved in. Folders and projects are renamed and dragged on disk; writings are dragged into folders and order, notes into groups; a Word, text or Markdown file can come in as a new writing | M | Done |
 | CH-10 | Notes and to-dos belong to the project and are shared by its writings. The tree makes, renames, duplicates, moves and deletes notes, with a + on Notes and on each of its groups | M | Done |
 | CH-11 | New project is a window (owner, 12 October), from Home's + New and its new-project card, the library's + and a library folder's menu: a name, where it goes (the library or one of its folders), and what it starts with: an empty page, a Word, text or Markdown file (which names it, unless she typed a name), or a folder of them, each file its own writing or one book with a chapter for each, in the order Explorer shows them. The files are read before anything is made; a folder's files that can't be read stay out, and she is told which | S | Done |
-| CH-12 | Search everything (owner, 12 October), from Home's button, Ctrl+Shift+F anywhere, or the find bar's In all projects: every project's chapters (their titles too) and notes, what she has just written included, matched as Find matches (any case; č, š, ž apart from c, s, z), project by project with the words shown in place. A chapter opens with the find bar on the words, a note beside the page; the arrow keys and Enter choose. Other projects' files are read and let go at once, so their folders can still be moved | S | Done |
+| CH-12 | Search everything (owner, 12 October), from Home's button or Ctrl+Shift+F, and in Write as find's All projects (Ctrl+Shift+F there): every project's chapters (their titles too) and notes, what she has just written included, matched as Find matches (any case; č, š, ž apart from c, s, z), every place listed project by project with the words shown in place, the first few of each project and the rest a click away. A chapter opens with find on the page at that match, a note beside the page; the arrow keys and Enter choose. Other projects' files are read and let go at once, so their folders can still be moved | S | Done |
 
 ### 4.3 Notes and to-dos
 
@@ -232,7 +232,9 @@ design system said.
 - **13 Oct:** Home has no Ideas box: ideas have their own tab, as cards with one open beside, This project or
   All projects (other projects' ideas only read, written in their own project), and links between them as
   [[links]], drawn on a map. The Notes group Zamisli is Ideje. The floating bar has the looks as icons, and
-  the sound and the keys' sound with their volumes.
+  the sound and the keys' sound with their volumes. Find is a box under the toolbar's Find: This chapter
+  (every match marked and counted), This project or All projects (every place listed), with Aa and ab; the
+  project's Replace all changes every writing, never names or notes.
 - **12 Oct:** Chapter statuses dropped, so a writing's progress on Home is its words against its target.
   Eva's laptop runs Windows 10 with 8 GB of memory. A bar above selected text, with formatting, a comment,
   a note and find, and the selected words counted, as in Word. Notes and to-dos open in the panel beside

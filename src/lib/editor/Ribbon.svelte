@@ -22,6 +22,7 @@
     onToggleNotes,
     onToggleTodos,
     onToggleGoals,
+    findOpen = false,
     onFind,
     manuscriptFont,
     manuscriptPt,
@@ -54,6 +55,8 @@
     onToggleNotes: () => void;
     onToggleTodos: () => void;
     onToggleGoals: () => void;
+    /** Whether find is open: its button is lit, and a press closes it. */
+    findOpen?: boolean;
     onFind: () => void;
     manuscriptFont: ManuscriptFont;
     /** The writing's text size in points. */
@@ -357,8 +360,9 @@
       <Icon name="target" />{t("wordGoals")}<span class="count">{num(wordsToday)}</span>
     </button>
     <span class="rule"></span>
-    <button type="button" class="tool" title={`${t("find")} (Ctrl+F)`} aria-label={t("find")} onmousedown={(event) => event.preventDefault()} onclick={onFind}>
-      <Icon name="search" />
+    <!-- Find with its name, lit while open (owner, 13 October). -->
+    <button type="button" class="panel-toggle" class:on={findOpen} aria-pressed={findOpen} title={`${t("find")} (Ctrl+F)`} onmousedown={(event) => event.preventDefault()} onclick={onFind}>
+      <Icon name="search" />{t("find")}
     </button>
     <span class="rule"></span>
     <select class="paper-pick" aria-label={t("paper")} title={t("paper")} value={paper === "pages" ? paperSize : "continuous"} onchange={(event) => pickPaper(event.currentTarget.value)}>
@@ -479,8 +483,8 @@
     </section>
     <section class="group">
       <div class="tools">
-        <button type="button" class="tool" title={`${t("find")} (Ctrl+F)`} aria-label={t("find")} onmousedown={(event) => event.preventDefault()} onclick={onFind}><Icon name="search" /></button>
-        <button type="button" class="tool" title={t("replace")} aria-label={t("replace")} onmousedown={(event) => event.preventDefault()} onclick={onReplace}><Icon name="replace" /></button>
+        <button type="button" class="tool" class:active={findOpen} title={`${t("find")} (Ctrl+F)`} aria-label={t("find")} aria-pressed={findOpen} onmousedown={(event) => event.preventDefault()} onclick={onFind}><Icon name="search" /></button>
+        <button type="button" class="tool" title={`${t("replace")} (Ctrl+H)`} aria-label={t("replace")} onmousedown={(event) => event.preventDefault()} onclick={onReplace}><Icon name="replace" /></button>
       </div>
       <p>{t("groupFind")}</p>
     </section>

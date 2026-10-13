@@ -1,131 +1,86 @@
-import type { Editor } from "@tiptap/core";
+import type { Chapter, DocumentJson } from "$lib/model";
+import { findPattern, type FindOptions } from "./findPattern";
 
-export type ChapterHit = {
-  chapterId: string;
-  title: string;
-  count: number;
-};
+type Inline = { type: string; text?: string; content?: Inline[]; [key: string]: unknown };
 
-export function searchChapters(
-  chapters: { id: string; title: string; plainText: string }[],
-  query: string,
-): ChapterHit[] {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return [];
-  return chapters.flatMap((chapter) => {
-    const text = chapter.plainText.toLowerCase();
-    let count = 0;
-    let index = text.indexOf(needle);
-    while (index !== -1) {
-      count += 1;
-      index = text.indexOf(needle, index + needle.length);
-    }
-    return count > 0 ? [{ chapterId: chapter.id, title: chapter.title, count }] : [];
+/** What stands for anything in a line that isn't text (a footnote, a line break), as on the page. */
+const OBJECT = String.fromCharCode(0xfffc);
+
+/**
+ * One line's words replaced where the pattern finds them, as the page does: a match partly in bold is
+ * found too, and its replacement takes the look of the match's first letter.
+ */
+function replaceInLine(content: Inline[], pattern: RegExp, replacement: string): { content: Inline[]; count: number } {
+  // The line's text, anything else in it one character, as on the page.
+  let text = "";
+  const starts = content.map((node) => {
+    const start = text.length;
+    text += node.type === "text" ? (node.text ?? "") : OBJECT;
+    return start;
   });
-}
-
-export function findNext(editor: Editor, query: string): boolean {
-  const needle = query.toLowerCase();
-  if (!needle) return false;
-
-  const matches: { from: number; to: number }[] = [];
-  editor.state.doc.descendants((node, pos) => {
-    if (!node.isText || !node.text) return;
-    const text = node.text.toLowerCase();
-    let index = text.indexOf(needle);
-    while (index !== -1) {
-      matches.push({ from: pos + index, to: pos + index + needle.length });
-      index = text.indexOf(needle, index + needle.length);
+  const matches = [...text.matchAll(pattern)].map((match) => ({ from: match.index ?? 0, to: (match.index ?? 0) + match[0].length }));
+  if (matches.length === 0) return { content, count: 0 };
+  const out: Inline[] = [];
+  let next = 0;
+  content.forEach((node, index) => {
+    if (node.type !== "text") {
+      out.push(node);
+      return;
     }
-  });
-  if (matches.length === 0) return false;
-
-  const start = editor.state.selection.to;
-  const next = matches.find((match) => match.from >= start) ?? matches[0];
-  editor.chain().focus().setTextSelection(next).scrollIntoView().run();
-  return true;
-}
-
-export function replaceNext(editor: Editor, query: string, replacement: string): boolean {
-  const found = findNext(editor, query);
-  if (!found || !query) return false;
-  const { from, to } = editor.state.selection;
-  editor.chain().focus().insertContentAt({ from, to }, replacement).run();
-  return true;
-}
-
-/** Replaces every match from position `start` on (the whole page by default) and says how many there were. */
-export function replaceAll(editor: Editor, query: string, replacement: string, start = 0): number {
-  const needle = query.toLowerCase();
-  if (!needle) return 0;
-  const matches: { from: number; to: number }[] = [];
-  editor.state.doc.descendants((node, pos) => {
-    if (!node.isText || !node.text) return;
-    const text = node.text.toLowerCase();
-    let index = text.indexOf(needle);
-    while (index !== -1) {
-      if (pos + index >= start) matches.push({ from: pos + index, to: pos + index + needle.length });
-      index = text.indexOf(needle, index + needle.length);
+    const value = node.text ?? "";
+    const start = starts[index];
+    let kept = "";
+    let offset = 0;
+    while (offset < value.length) {
+      const at = start + offset;
+      while (next < matches.length && matches[next].to <= at) next += 1;
+      const match = matches[next];
+      if (match && match.from <= at) {
+        if (match.from === at) kept += replacement;
+        offset = Math.min(value.length, match.to - start);
+      } else {
+        const end = match ? Math.min(value.length, match.from - start) : value.length;
+        kept += value.slice(offset, end);
+        offset = end;
+      }
     }
+    if (kept) out.push({ ...node, text: kept });
   });
-  const chain = editor.chain().focus();
-  for (const match of [...matches].reverse()) {
-    chain.insertContentAt(match, replacement);
-  }
-  if (matches.length > 0) chain.run();
-  return matches.length;
+  return { content: out, count: matches.length };
 }
 
-type JsonNode = {
-  type?: string;
-  text?: string;
-  content?: JsonNode[];
-  [key: string]: unknown;
-};
-
-function replaceText(text: string, query: string, replacement: string): { text: string; count: number } {
-  const needle = query.toLowerCase();
-  if (!needle) return { text, count: 0 };
-  const lower = text.toLowerCase();
-  let count = 0;
-  let result = "";
-  let from = 0;
-  let index = lower.indexOf(needle);
-  while (index !== -1) {
-    result += text.slice(from, index) + replacement;
-    count += 1;
-    from = index + query.length;
-    index = lower.indexOf(needle, from);
-  }
-  return { text: result + text.slice(from), count };
-}
-
-function replaceNode(node: JsonNode, query: string, replacement: string): { node: JsonNode; count: number } {
-  if (node.type === "text" && typeof node.text === "string") {
-    const next = replaceText(node.text, query, replacement);
-    return { node: { ...node, text: next.text }, count: next.count };
-  }
+function replaceInNode(node: Inline, pattern: RegExp, replacement: string): { node: Inline; count: number } {
   if (!node.content) return { node, count: 0 };
+  if (node.content.some((child) => child.type === "text")) {
+    const line = replaceInLine(node.content, pattern, replacement);
+    return line.count > 0 ? { node: { ...node, content: line.content }, count: line.count } : { node, count: 0 };
+  }
   let count = 0;
   const content = node.content.map((child) => {
-    const walked = replaceNode(child, query, replacement);
+    const walked = replaceInNode(child, pattern, replacement);
     count += walked.count;
     return walked.node;
   });
-  return { node: { ...node, content }, count };
+  return count > 0 ? { node: { ...node, content }, count } : { node, count: 0 };
 }
 
-export function replaceInDocument(
-  doc: { type: string; content?: unknown[] },
-  plainText: string,
+/**
+ * A saved chapter's words replaced everywhere, as find matches them (Aa, ab), in its text and its plain
+ * copy alike. Its name and part are left as they are.
+ */
+export function replaceInChapterText(
+  chapter: Pick<Chapter, "contentJson" | "plainText">,
   query: string,
   replacement: string,
-): { contentJson: { type: string; content?: unknown[] }; plainText: string; count: number } {
-  const walked = replaceNode(doc as JsonNode, query, replacement);
-  const text = replaceText(plainText, query, replacement);
+  options: FindOptions,
+): { contentJson: DocumentJson; plainText: string; count: number } {
+  const pattern = findPattern(query, options);
+  if (!pattern) return { contentJson: chapter.contentJson, plainText: chapter.plainText, count: 0 };
+  const walked = replaceInNode(chapter.contentJson as Inline, pattern, replacement);
+  if (walked.count === 0) return { contentJson: chapter.contentJson, plainText: chapter.plainText, count: 0 };
   return {
-    contentJson: walked.node as { type: string; content?: unknown[] },
-    plainText: text.text,
+    contentJson: walked.node as DocumentJson,
+    plainText: chapter.plainText.replace(pattern, () => replacement),
     count: walked.count,
   };
 }

@@ -10,7 +10,10 @@
   import ZenBar from "$lib/editor/ZenBar.svelte";
   import { countWords, wordsFor } from "$lib/editor/counts";
   import { shrinkImage } from "$lib/editor/imageSize";
-  import { replaceInDocument, searchChapters, findNext, replaceAll, replaceNext } from "$lib/editor/find";
+  import { replaceInChapterText } from "$lib/editor/find";
+  import type { FindScope } from "$lib/editor/FindPanel.svelte";
+  import type { FindTools, Found } from "$lib/editor/findMarks";
+  import type { FindOptions } from "$lib/editor/findPattern";
   import { createChapter, createWriting, effectiveLanguage, type Chapter, type DocumentJson, type Shelf, type SnapshotInfo, type Writing, type WritingLanguage } from "$lib/model";
   import { createAutosave, errorMessage, type SaveStatus } from "$lib/save/autosave";
   import { chaptersToHtml, chaptersToMarkdown, chaptersToPlain } from "$lib/export/document";
@@ -47,7 +50,7 @@
   import type { NoteTarget } from "$lib/editor/noteLinks";
   import type { CommentInfo } from "$lib/editor/comments";
   import type { ProjectRequest } from "$lib/views/NewProjectWindow.svelte";
-  import type { SearchPlace, SearchSource } from "$lib/views/searchAll";
+  import type { SearchHit, SearchSource } from "$lib/views/searchAll";
   import { otherCards, type IdeaCard } from "$lib/views/ideas";
   import { addWriting, checkpointDatabase, duplicateWriting, eraseWriting, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, moveProjectFile, readSnapshotChapters, rememberPersonalWord, renameWritingFolder, restoreChapter, restoreFromBackup, setShelf, setWritingFields, setWritingOrder, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
   import type { Editor as TiptapEditor } from "@tiptap/core";
@@ -69,6 +72,7 @@
   const QuickIdeaPart = lazy(() => import("$lib/views/QuickIdea.svelte"));
   const SearchPart = lazy(() => import("$lib/views/SearchWindow.svelte"));
   const IdeasPart = lazy(() => import("$lib/views/IdeasView.svelte"));
+  const FindPart = lazy(() => import("$lib/editor/FindPanel.svelte"));
 
   // The writing open in Write: one of the open project's writings, with all its chapters.
   let writing = $state<Writing | null>(null);
@@ -93,12 +97,20 @@
   let editorWriting = "";
   let editorSplit = true;
   let editorRevision = $state(0);
+  // Find (owner, 13 October): on the page, through the project or through every project, with Aa and ab.
   let findOpen = $state(false);
   let findQuery = $state("");
   let replaceQuery = $state("");
-  let findMissing = $state(false);
   let replaceMode = $state(false);
-  let findScope = $state<"chapter" | "book">("chapter");
+  let findScope = $state<FindScope>("chapter");
+  let findOptions = $state<FindOptions>({ matchCase: false, wholeWord: false });
+  // How many matches the page has and which she is at; the project or projects find's list looks through.
+  let findFound = $state<Found>({ current: -1, total: 0 });
+  let findSources = $state.raw<SearchSource[] | null>(null);
+  let findProgress = $state({ done: 0, total: 0 });
+  let findUnread = $state<string[]>([]);
+  // What the last replace did.
+  let findNotice = $state("");
   let historyOpen = $state(false);
   let historyList = $state<SnapshotInfo[]>([]);
   // The open chapter as it was in the snapshot picked; "missing" when the snapshot hasn't it.
@@ -236,7 +248,6 @@
   });
   const chapterWords = $derived(activeChapter ? wordsFor(activeChapter.id, activeChapter.plainText) : 0);
   const writingWords = $derived(chapters.reduce((sum, chapter) => sum + wordsFor(chapter.id, chapter.plainText), 0));
-  const bookHits = $derived(findScope === "book" ? searchChapters(chapters, findQuery) : []);
   const wordsToday = $derived(
     prefs.writingDay === dayKey(new Date(clock)) ? Math.max(0, writingWords - prefs.dayStartWords) : 0,
   );
@@ -350,7 +361,7 @@
       }
       requestIdleCallback(
         () => {
-          for (const part of [EditorPart, CommentRailPart, NotesPart, TodosPart, SettingsPart, OutlinePart, BookPart, HistoryPart, NotePanePart, SelectionBarPart, NewProjectPart, QuickIdeaPart, SearchPart, IdeasPart]) {
+          for (const part of [EditorPart, CommentRailPart, NotesPart, TodosPart, SettingsPart, OutlinePart, BookPart, HistoryPart, NotePanePart, SelectionBarPart, NewProjectPart, QuickIdeaPart, SearchPart, IdeasPart, FindPart]) {
             // A part that fails here is tried again, and reported, when it is shown.
             part.load().catch(() => undefined);
           }
@@ -448,18 +459,18 @@
       event.preventDefault();
       void autosave.flush().catch(() => undefined);
     }
-    // Search across every project (owner, 12 October); Ctrl+F stays the book's find.
+    // Search across every project (owner, 12 October): in Write, find's list through every project; elsewhere its window.
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "f") {
       event.preventDefault();
-      openSearch(findOpen ? findQuery : "");
+      if (view === "write") showFind("all");
+      else openSearch(findOpen ? findQuery : "");
       return;
     }
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+    // Ctrl+F finds on the page and Ctrl+H replaces there, as in Word.
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && (event.key.toLowerCase() === "f" || event.key.toLowerCase() === "h")) {
       event.preventDefault();
-      findSelected();
-      findOpen = true;
-      findMissing = false;
-      void tick().then(() => findInput?.select());
+      if (view === "write") showFind("chapter", event.key.toLowerCase() === "h");
+      return;
     }
     if (event.ctrlKey && event.altKey && event.code === "KeyM" && !event.getModifierState("AltGraph") && view === "write") {
       event.preventDefault();
@@ -484,11 +495,7 @@
       void setZen(false);
       return;
     }
-    if (event.key === "Escape" && findOpen) {
-      findOpen = false;
-      findMissing = false;
-      textEditor?.commands.focus();
-    }
+    if (event.key === "Escape" && findOpen) closeFind();
   }
 
   async function setZen(on: boolean) {
@@ -619,19 +626,12 @@
     if (words && !words.includes("\n") && words.length <= 100) findQuery = words;
   }
 
-  /** The selection bar's find: the selected words, looked for through the whole book. */
+  /** The selection bar's find: the selected words, looked for through the whole project, as a list. */
   function findInBook(words: string) {
     const first = words.split("\n")[0].trim().slice(0, 100);
     if (!first) return;
     findQuery = first;
-    findScope = "book";
-    replaceMode = false;
-    findMissing = false;
-    findOpen = true;
-    void tick().then(() => {
-      findInput?.focus();
-      findInput?.select();
-    });
+    showFind("project");
   }
 
   /**
@@ -800,61 +800,205 @@
     void autosave.flush().catch(() => undefined);
   }
 
-  function runFind() {
-    if (!textEditor || textEditor.isDestroyed) return;
-    findMissing = !findNext(textEditor, findQuery);
+  /** Find's work on a page (see findMarks.ts), reached through the page's editor. */
+  function findToolsOf(editor: TiptapEditor | null): FindTools | null {
+    if (!editor || editor.isDestroyed) return null;
+    return (editor.storage as unknown as Record<string, FindTools | undefined>).findMarks ?? null;
   }
 
-  async function openHit(id: string) {
-    findScope = "chapter";
-    if (id !== activeId) await selectChapter(id);
-    await tick();
-    runFind();
+  /** Opens find: on the page, or with its list through the project or every project; Replace shown or not. */
+  function showFind(scope: FindScope, replace = false) {
+    findSelected();
+    findScope = scope;
+    replaceMode = replace;
+    findNotice = "";
+    findOpen = true;
+    void tick().then(() => {
+      findInput?.focus();
+      findInput?.select();
+    });
   }
 
-  function runReplace() {
-    if (!textEditor || textEditor.isDestroyed) return;
-    findMissing = !replaceNext(textEditor, findQuery, replaceQuery);
+  /** Find closes, and the keyboard is back on the page, at the match she was at. */
+  function closeFind() {
+    findOpen = false;
+    findNotice = "";
+    textEditor?.commands.focus();
   }
 
-  async function runReplaceAll() {
-    if (findScope === "book" && writing && findQuery) {
-      captureEditor();
-      if (bookHits.length === 0) {
-        findMissing = true;
-        return;
-      }
-      try {
-        // Undo only reaches the open chapter, so keep the whole book first.
-        await keepSnapshot(writing);
-      } catch (error) {
-        saveStatus = { state: "error", message: errorMessage(error) };
-        return;
-      }
-      if (!writing) return;
-      let total = 0;
-      const now = new Date().toISOString();
-      const chapters = writing.chapters.map((chapter) => {
-        if (chapter.id === activeId && textEditor && !textEditor.isDestroyed) return chapter;
-        const next = replaceInDocument(chapter.contentJson, chapter.plainText, findQuery, replaceQuery);
-        total += next.count;
-        return next.count > 0
-          ? { ...chapter, contentJson: next.contentJson, plainText: next.plainText, updatedAt: now }
-          : chapter;
-      });
-      writing = { ...writing, chapters };
-      if (textEditor && !textEditor.isDestroyed) total += replaceAll(textEditor, findQuery, replaceQuery, textStart(textEditor.state.doc));
-      findMissing = total === 0;
-      if (total > 0) {
-        autosave.schedule();
-        void autosave.flush().catch(() => undefined);
-      }
+  function stepFind(step: 1 | -1) {
+    const tools = findToolsOf(textEditor);
+    if (tools && textEditor) findFound = tools.step(textEditor.view, step);
+  }
+
+  function replaceOne() {
+    const tools = findToolsOf(textEditor);
+    if (!tools || !textEditor) return;
+    findNotice = "";
+    tools.replace(textEditor.view, replaceQuery);
+    findFound = tools.found(textEditor.state);
+  }
+
+  async function replaceEvery() {
+    findNotice = "";
+    if (findScope === "project") {
+      await replaceInProject();
       return;
     }
-    if (!textEditor || textEditor.isDestroyed) return;
-    const count = replaceAll(textEditor, findQuery, replaceQuery);
-    findMissing = count === 0;
+    const tools = findToolsOf(textEditor);
+    if (!tools || !textEditor) return;
+    const count = tools.replaceAll(textEditor.view, replaceQuery, 0, { query: findQuery, options: findOptions });
+    findFound = tools.found(textEditor.state);
+    findNotice = t("replacedSome", { n: count });
   }
+
+  /**
+   * Replace all through This project (owner, 13 October): every writing's chapters, not their names nor the
+   * notes. Each writing that changes is kept as an earlier version first, as Undo only reaches the page;
+   * the open writing changes where it is, its page in the editor.
+   */
+  async function replaceInProject() {
+    const query = findQuery;
+    const replacement = replaceQuery;
+    const options = findOptions;
+    const open = writing;
+    const project = shelf;
+    if (!query.trim() || !open || !project) return;
+    captureEditor();
+    const now = new Date().toISOString();
+    const replaced = (chapter: Chapter) => {
+      const next = replaceInChapterText(chapter, query, replacement, options);
+      return { count: next.count, chapter: next.count > 0 ? { ...chapter, contentJson: next.contentJson, plainText: next.plainText, updatedAt: now } : chapter };
+    };
+    let total = 0;
+    try {
+      const tools = findToolsOf(textEditor);
+      const page = tools && textEditor && editorWriting === open.id ? { tools, editor: textEditor } : null;
+      const pageStart = page ? textStart(page.editor.state.doc) : 0;
+      const onPage = page ? page.tools.matches(page.editor.state.doc, query, options).filter((match) => match.from >= pageStart).length : 0;
+      const chapters = open.chapters.map((chapter) => (page && chapter.id === editorChapter ? { count: 0, chapter } : replaced(chapter)));
+      const here = chapters.reduce((sum, item) => sum + item.count, 0) + onPage;
+      if (here > 0) {
+        await keepSnapshot(open);
+        if (writing?.id !== open.id) return;
+        writing = { ...writing, chapters: writing.chapters.map((chapter) => chapters.find((item) => item.chapter.id === chapter.id)?.chapter ?? chapter) };
+        if (page && onPage > 0) page.tools.replaceAll(page.editor.view, replacement, pageStart, { query, options });
+        total += here;
+        autosave.schedule();
+        await autosave.flush().catch(() => undefined);
+      }
+      let others = false;
+      for (const item of project.writings.filter((entry) => !entry.deletedAt && entry.id !== open.id)) {
+        const other = await loadWriting(item.id);
+        const changed = other.chapters.map(replaced);
+        const count = changed.reduce((sum, entry) => sum + entry.count, 0);
+        if (count === 0) continue;
+        await keepSnapshot(other);
+        await sqliteStorage.save({ ...other, chapters: changed.map((entry) => entry.chapter), updatedAt: now });
+        total += count;
+        others = true;
+      }
+      if (others) await refreshShelf();
+      findNotice = t("replacedSome", { n: total });
+    } catch (error) {
+      findNotice = errorMessage(error);
+    }
+    if (textEditor) findFound = findToolsOf(textEditor)?.found(textEditor.state) ?? findFound;
+    void readFindSources("project");
+  }
+
+  // Each reading of the projects for find's list, so an earlier one finishing late is set aside.
+  let findReading = 0;
+
+  /** The project, or every project, for find's list: what she has just written saved first. */
+  async function readFindSources(scope: "project" | "all") {
+    const reading = ++findReading;
+    findSources = null;
+    findUnread = [];
+    findProgress = { done: 0, total: 0 };
+    try {
+      const read =
+        scope === "all"
+          ? await readEveryProject((done, total) => {
+              if (reading === findReading) findProgress = { done, total };
+            })
+          : await readOpenProject();
+      if (reading !== findReading) return;
+      findSources = read.sources;
+      findUnread = read.unread;
+    } catch (error) {
+      if (reading !== findReading) return;
+      findSources = [];
+      findNotice = errorMessage(error);
+    }
+  }
+
+  async function readOpenProject(): Promise<{ sources: SearchSource[]; unread: string[] }> {
+    await autosave.flush().catch(() => undefined);
+    await flushNoteSave().catch(() => undefined);
+    const path = projectLocation || prefs.projectPath;
+    return { sources: [{ path, name: shelf?.title || projectName(path), text: await readProjectText(path) }], unread: [] };
+  }
+
+  /** A place in find's list: its chapter opens on that very match, with find on the page; a note opens beside the page. */
+  async function openFindHit(hit: SearchHit) {
+    findScope = "chapter";
+    findNotice = "";
+    const here = hit.path.toLowerCase() === (projectLocation || prefs.projectPath).toLowerCase();
+    if (hit.kind === "note") {
+      if (!here) await openFromLibrary(hit.path);
+      view = "write";
+      noteToShow = hit.noteId;
+      return;
+    }
+    if (here && hit.writingId === writingId && hit.chapterId === editorChapter && textEditor && !textEditor.isDestroyed) {
+      view = "write";
+      showMatchAt(textEditor, hit.nth);
+      return;
+    }
+    pageFind = { id: hit.chapterId, query: findQuery, nth: hit.nth };
+    await openFromLibrary(hit.path, { writingId: hit.writingId, chapterId: hit.chapterId });
+    view = "write";
+  }
+
+  /** The `nth` time find's words are on the page, counted from its title line as the list counts them. */
+  function showMatchAt(editor: TiptapEditor, nth: number) {
+    const tools = findToolsOf(editor);
+    if (!tools) return;
+    const doc = editor.state.doc;
+    // A part's name above the title line isn't in the list's count.
+    const start = leadLines(doc) === 2 ? doc.child(0).nodeSize : 0;
+    findFound = tools.searchAt(editor.view, findQuery, findOptions, nth, start);
+  }
+
+  // The page's matches follow find's words, Aa and ab as she types them, and leave when find closes.
+  $effect(() => {
+    const editor = textEditor;
+    const open = findOpen;
+    const query = findQuery;
+    const options = findOptions;
+    const tools = findToolsOf(editor);
+    if (!editor || !tools) return;
+    if (!open || !query.trim()) {
+      tools.clear(editor.view);
+      findFound = { current: -1, total: 0 };
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      if (editor.isDestroyed) return;
+      const now = tools.queryOf(editor.state);
+      if (now.query === query && now.options.matchCase === options.matchCase && now.options.wholeWord === options.wholeWord) return;
+      findFound = tools.search(editor.view, query, options);
+    }, 120);
+    return () => window.clearTimeout(timer);
+  });
+
+  // Find's list reads the project, or every project, each time she turns to it.
+  $effect(() => {
+    const scope = findScope;
+    if (!findOpen || (scope !== "project" && scope !== "all")) return;
+    untrack(() => void readFindSources(scope));
+  });
 
   function captureEditor() {
     const editor = textEditor;
@@ -1918,7 +2062,6 @@
     splitBack = null;
     pageSpot = null;
     commentFocus = "";
-    findMissing = false;
   }
 
   /**
@@ -2019,7 +2162,7 @@
   /** The search across every project, while open: the words it started with. */
   let searchAsk = $state<{ query: string } | null>(null);
   /** The words to find on a chapter's page once it opens, from the search across projects. */
-  let pageFind: { id: string; query: string } | null = null;
+  let pageFind: { id: string; query: string; nth: number } | null = null;
   /** A note to open beside the page once its project's notes are read, from the search across projects. */
   let noteToShow = $state("");
 
@@ -2063,34 +2206,16 @@
     return { sources, unread };
   }
 
-  /** A place found by the search: the chapter opens with the find bar on the words, a note opens beside the page. */
-  async function openSearchPlace(place: SearchPlace, query: string) {
+  /** A place found by the search across projects: it opens as from find's list, a chapter with find on the words. */
+  async function openSearchHit(hit: SearchHit, query: string) {
     searchAsk = null;
-    const here = place.path.toLowerCase() === (projectLocation || prefs.projectPath).toLowerCase();
-    if (place.kind === "note") {
-      if (!here) await openFromLibrary(place.path);
-      view = "write";
-      noteToShow = place.noteId;
-      return;
+    if (hit.kind === "chapter") {
+      findQuery = query;
+      findOptions = { matchCase: false, wholeWord: false };
+      replaceMode = false;
+      findOpen = true;
     }
-    if (here && place.writingId === writingId && place.chapterId === editorChapter && textEditor && !textEditor.isDestroyed) {
-      view = "write";
-      showFound(textEditor, query);
-      return;
-    }
-    pageFind = { id: place.chapterId, query };
-    await openFromLibrary(place.path, { writingId: place.writingId, chapterId: place.chapterId });
-    view = "write";
-  }
-
-  /** The words found on the page from its start, with the find bar open on them, as Ctrl+F shows them. */
-  function showFound(editor: TiptapEditor, query: string) {
-    findQuery = query;
-    findScope = "chapter";
-    replaceMode = false;
-    findOpen = true;
-    editor.commands.focus("start");
-    findMissing = !findNext(editor, query);
+    await openFindHit(hit);
   }
 
   // A note from the search opens once its project's notes are there.
@@ -3236,23 +3361,19 @@
     onToggleNotes={() => togglePanel("notes")}
     onToggleTodos={() => togglePanel("todos")}
     onToggleGoals={() => togglePanel("goals")}
+    {findOpen}
     onFind={() => {
-      findSelected();
-      replaceMode = false;
-      findOpen = true;
-      findMissing = false;
       view = "write";
+      if (findOpen) closeFind();
+      else showFind("chapter");
     }}
     manuscriptFont={prefs.manuscriptFont}
     manuscriptPt={prefs.manuscriptPt}
     onFont={(font) => (prefs.manuscriptFont = font)}
     onSize={(size) => (prefs.manuscriptPt = size)}
     onReplace={() => {
-      findSelected();
-      replaceMode = true;
-      findOpen = true;
-      findMissing = false;
       view = "write";
+      showFind(findScope === "all" ? "chapter" : findScope, true);
     }}
     loadNotes={() => (projectId ? listNotes() : Promise.resolve([]))}
     onComment={newComment}
@@ -3292,48 +3413,27 @@
         <Icon name="panelLeftOpen" />
       </button>
     {/if}
-    {#if findOpen}
-      <form
-        class="find"
-        onsubmit={(event) => {
-          event.preventDefault();
-          runFind();
-        }}
-      >
-        <input
-          bind:this={findInput}
-          bind:value={findQuery}
-          aria-label={findScope === "book" ? t("findInBook") : t("findInChapter")}
-          placeholder={findScope === "book" ? t("findInBook") : t("findInChapter")}
-          oninput={() => (findMissing = false)}
-        />
-        <button type="button" onclick={() => (findScope = findScope === "book" ? "chapter" : "book")}>
-          {findScope === "book" ? t("wholeBook") : t("thisChapter")}
-        </button>
-        <button type="submit">{t("find")}</button>
-        <button type="button" onclick={() => openSearch(findQuery)}>{t("searchAllProjects")}</button>
-        {#if replaceMode}
-          <input bind:value={replaceQuery} aria-label={t("replaceWith")} placeholder={t("replaceWith")} />
-          <button type="button" onclick={runReplace}>{t("replace")}</button>
-          <button type="button" onclick={() => void runReplaceAll()}>{t("replaceAllShort")}</button>
-        {/if}
-        {#if findMissing}
-          <span>{t("notFound")}</span>
-        {/if}
-      </form>
-      {#if findScope === "book" && findQuery.trim()}
-        <ul class="hits">
-          {#each bookHits as hit (hit.chapterId)}
-            <li>
-              <button type="button" onclick={() => void openHit(hit.chapterId)}>
-                {hit.title} · {hit.count}
-              </button>
-            </li>
-          {:else}
-            <li>{t("notFound")}</li>
-          {/each}
-        </ul>
-      {/if}
+    {#if findOpen && FindPart.current}
+      {@const FindPanel = FindPart.current}
+      <FindPanel
+        bind:query={findQuery}
+        bind:replacement={replaceQuery}
+        bind:scope={findScope}
+        bind:options={findOptions}
+        bind:replaceShown={replaceMode}
+        bind:input={findInput}
+        found={findFound}
+        sources={findSources}
+        progress={findProgress}
+        unread={findUnread}
+        openPath={projectLocation || prefs.projectPath}
+        notice={findNotice}
+        onStep={stepFind}
+        onReplace={replaceOne}
+        onReplaceAll={() => void replaceEvery()}
+        onOpen={(hit) => void openFindHit(hit)}
+        onClose={closeFind}
+      />
     {/if}
     {#if splitBack}
       <!-- A heading just made a new chapter: a few seconds to take it back, as Ctrl+Z can't reach it. -->
@@ -3398,6 +3498,7 @@
                   keySounds={prefs.keySounds}
                   smoothTyping={prefs.smoothTyping}
                   repetitions={prefs.repetitions && !zen}
+                  onFound={(found) => (findFound = found)}
                   keyVolume={prefs.keySoundVolume}
                   onSheets={(count) => {
                     sheetCount = count;
@@ -3420,7 +3521,7 @@
                     const finding = pageFind;
                     if (next && finding?.id === chapter.id) {
                       pageFind = null;
-                      showFound(next, finding.query);
+                      showMatchAt(next, finding.nth);
                     }
                     const opened = pageSpot;
                     if (next && opened?.id === chapter.id) {
@@ -3782,7 +3883,7 @@
       initial={searchAsk.query}
       openPath={projectLocation || prefs.projectPath}
       load={readEveryProject}
-      onOpen={(place, query) => void openSearchPlace(place, query)}
+      onOpen={(hit, query) => void openSearchHit(hit, query)}
       onClose={() => (searchAsk = null)}
     />
   {/if}
@@ -3966,60 +4067,13 @@
     background: radial-gradient(closest-side, var(--pv-glow), color-mix(in srgb, var(--pv-glow) 36%, transparent) 55%, transparent);
   }
 
-  .find {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    padding: 0 0.9rem 0.45rem;
-    color: var(--pv-text-muted);
-    font-size: var(--pv-text-base);
-  }
-
-  .find input {
-    width: 16rem;
-    max-width: 100%;
-    border: 1px solid var(--pv-line-strong);
-    background: var(--pv-field);
-    color: var(--pv-text);
-    border-radius: var(--pv-radius-xs);
-    padding: 0.3rem 0.5rem;
-  }
-
-  .hits {
-    margin: 0 0.9rem 0.6rem;
-    padding: 0;
-    list-style: none;
-    color: var(--pv-text-muted);
-    font-size: var(--pv-text-base);
-  }
-
-  .find button,
-  .hits button {
-    border: 0;
-    border-radius: var(--pv-radius-xs);
-    padding: 0.25rem 0.4rem;
-    background: transparent;
-    color: var(--pv-text);
-  }
-
-  .find button:hover,
-  .hits button:hover {
-    background: var(--pv-selected);
-  }
-
-  .find button:active,
-  .hits button:active {
-    background: var(--pv-pressed);
-  }
-
   @media print {
     :global(.titlebar),
     :global(.ribbon),
     :global(.sidebar),
     :global(.statusbar),
     :global(.panel),
-    .find,
-    .hits {
+    :global(.find-panel) {
       display: none !important;
     }
 

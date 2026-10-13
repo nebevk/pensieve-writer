@@ -2,8 +2,9 @@
   import { onMount, tick, untrack } from "svelte";
   import Modal from "./Modal.svelte";
   import Icon from "$lib/editor/Icon.svelte";
-  import { plural, t } from "$lib/ui.svelte";
-  import { searchProjects, type SearchPlace, type SearchSource } from "./searchAll";
+  import { num, plural, t } from "$lib/ui.svelte";
+  import SearchResults from "./SearchResults.svelte";
+  import { searchHits, shownHits, type SearchHit, type SearchSource } from "./searchAll";
 
   let {
     initial = "",
@@ -18,11 +19,12 @@
     openPath: string;
     /** Reads every project, saying how far it has got, and names those that couldn't be read. */
     load: (progress: (done: number, total: number) => void) => Promise<{ sources: SearchSource[]; unread: string[] }>;
-    onOpen: (place: SearchPlace, query: string) => void;
+    onOpen: (hit: SearchHit, query: string) => void;
     onClose: () => void;
   } = $props();
 
   const listId = $props.id();
+  const ANY = { matchCase: false, wholeWord: false };
   let query = $state(untrack(() => initial));
   // The words last searched for: typing waits a moment, so a long book isn't searched at every letter.
   let searched = $state(untrack(() => initial));
@@ -30,6 +32,8 @@
   let unread = $state<string[]>([]);
   let progress = $state({ done: 0, total: 0 });
   let chosen = $state(0);
+  // How far she opened each project's places, by its file.
+  let opened = $state<Record<string, number>>({});
   let timer = 0;
 
   onMount(() => {
@@ -40,29 +44,24 @@
     return () => window.clearTimeout(timer);
   });
 
-  const result = $derived(sources ? searchProjects(sources, searched) : null);
-  // Every place with its number in the list, for the arrow keys.
-  const rows = $derived.by(() => {
-    let index = 0;
-    return (result?.groups ?? []).map((group) => ({ ...group, rows: group.places.map((place) => ({ place, index: index++ })) }));
-  });
-  const places = $derived(rows.flatMap((group) => group.rows.map((row) => row.place)));
-  const matches = $derived(places.reduce((sum, place) => sum + place.count, 0));
-  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
-  const optionId = (index: number) => `${listId}-${index}`;
+  const result = $derived(sources ? searchHits(sources, searched, ANY) : null);
+  // The first three places of each project, as find's list in Write shows them.
+  const groups = $derived(result ? shownHits(result.groups, opened, 3) : []);
+  const visible = $derived(groups.flatMap((group) => group.shown.map((row) => row.hit)));
 
   function typed() {
     window.clearTimeout(timer);
     timer = window.setTimeout(() => {
       searched = query;
       chosen = 0;
+      opened = {};
     }, 150);
   }
 
   async function choose(index: number) {
-    chosen = Math.max(0, Math.min(places.length - 1, index));
+    chosen = Math.max(0, Math.min(visible.length - 1, index));
     await tick();
-    document.getElementById(optionId(chosen))?.scrollIntoView({ block: "nearest" });
+    document.getElementById(`${listId}-${chosen}`)?.scrollIntoView({ block: "nearest" });
   }
 
   function keys(event: KeyboardEvent) {
@@ -77,8 +76,8 @@
         searched = query;
         chosen = 0;
       }
-      const place = places[chosen];
-      if (place) onOpen(place, query.trim());
+      const hit = visible[chosen];
+      if (hit) onOpen(hit, query.trim());
     }
   }
 </script>
@@ -96,9 +95,9 @@
         placeholder={t("searchEverything")}
         autofocus
         role="combobox"
-        aria-expanded={places.length > 0}
+        aria-expanded={visible.length > 0}
         aria-controls={listId}
-        aria-activedescendant={places.length > 0 ? optionId(chosen) : undefined}
+        aria-activedescendant={visible.length > 0 ? `${listId}-${chosen}` : undefined}
         aria-autocomplete="list"
       />
     </label>
@@ -107,40 +106,26 @@
         {t("searchReading", { done: progress.done, total: progress.total })}
       {:else if !searched.trim()}
         {t("searchEverythingHint")}
-      {:else if places.length === 0}
+      {:else if result.total === 0}
         {t("searchNothing")}
       {:else}
-        {plural("matchCount", matches)} {plural("inProjects", rows.length)}{#if result.capped} · {t("searchCapped", { n: places.length })}{/if}
+        {plural("matchCount", result.total)} {plural("inProjects", result.groups.length)}{#if result.capped} · {t("searchCapped", { n: num(visible.length) })}{/if}
       {/if}
     </p>
     {#if unread.length > 0}
       <p class="status unread">{t("searchUnread", { names: unread.join(", ") })}</p>
     {/if}
-    <div class="results" id={listId} role="listbox" aria-label={t("searchEverything")}>
-      {#each rows as group (group.path)}
-        <h3>
-          {group.name}
-          {#if same(group.path, openPath)}<span class="open">{t("openNow")}</span>{/if}
-        </h3>
-        {#each group.rows as row (row.place.kind + row.place.chapterId + row.place.noteId)}
-          <button
-            type="button"
-            role="option"
-            id={optionId(row.index)}
-            aria-selected={row.index === chosen}
-            class:chosen={row.index === chosen}
-            onmousemove={() => (chosen = row.index)}
-            onclick={() => onOpen(row.place, searched.trim())}
-          >
-            <span class="where">
-              <Icon name={row.place.kind === "note" ? "notes" : "book"} />
-              <span class="label">{row.place.label}</span>
-              {#if row.place.count > 1}<span class="count">{row.place.count}</span>{/if}
-            </span>
-            <span class="text">{row.place.before}<mark>{row.place.match}</mark>{row.place.after}</span>
-          </button>
-        {/each}
-      {/each}
+    <div class="list">
+      <SearchResults
+        {groups}
+        {chosen}
+        {listId}
+        label={t("searchEverything")}
+        {openPath}
+        onChoose={(index) => (chosen = index)}
+        onOpen={(hit) => onOpen(hit, searched.trim())}
+        onMore={(path) => (opened = { ...opened, [path]: (groups.find((group) => group.path === path)?.shown.length ?? 0) + 50 })}
+      />
     </div>
   </div>
 </Modal>
@@ -198,96 +183,13 @@
     color: var(--pv-danger);
   }
 
-  .results {
+  .list {
     flex: 1;
     min-height: 0;
-    overflow: auto;
-    margin: 0 -20px;
-    padding: 0 20px 16px;
-  }
-
-  h3 {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 14px 0 4px;
-    font-family: var(--pv-font-heading);
-    font-size: 17px;
-    font-weight: 400;
-  }
-
-  .open {
-    font-family: var(--pv-font-ui);
-    font-size: 10.5px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--pv-accent);
-  }
-
-  button {
     display: flex;
     flex-direction: column;
-    gap: 3px;
-    width: 100%;
-    border: 0;
-    border-radius: var(--pv-radius-sm);
-    padding: 8px 10px;
-    background: transparent;
-    color: var(--pv-text);
-    text-align: left;
-  }
-
-  button.chosen {
-    background: var(--pv-selected);
-  }
-
-  .where {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    min-width: 0;
-    font-size: var(--pv-text-md);
-    font-weight: 600;
-  }
-
-  .where :global(svg) {
-    flex: none;
-    width: 14px;
-    height: 14px;
-    color: var(--pv-text-subtle);
-  }
-
-  .label {
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-  .count {
-    flex: none;
-    padding: 0 6px;
-    border-radius: 8px;
-    background: var(--pv-ink-chip);
-    color: var(--pv-ink-chip-text);
-    font-size: 11px;
-    font-weight: 600;
-    line-height: 16px;
-  }
-
-  .text {
-    padding-left: 21px;
-    font-family: var(--pv-font-manuscript);
-    font-size: 14px;
-    line-height: 1.45;
-    color: var(--pv-text-muted);
-  }
-
-  mark {
-    border-radius: 2px;
-    padding: 0 1px;
-    background: var(--pv-ink-tint);
-    color: var(--pv-ink-tint-text);
+    margin: 0 -20px;
+    padding-bottom: 8px;
+    border-top: 1px solid var(--pv-divider);
   }
 </style>

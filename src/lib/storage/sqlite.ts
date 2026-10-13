@@ -710,25 +710,29 @@ export function openShelf(writingId: string, fresh: NewProject): Promise<OpenedP
   });
 }
 
-/** What the search across projects reads of one: its writings' chapters, and its notes, as text. */
+/**
+ * What the search across projects reads of one: its writings' chapters (and whether a writing is split into
+ * chapters or is one page), and its notes, as text.
+ */
 export type ProjectText = {
-  writings: { id: string; title: string; chapters: { id: string; title: string; text: string }[] }[];
+  writings: { id: string; title: string; split?: boolean; chapters: { id: string; title: string; text: string }[] }[];
   notes: { id: string; title: string; text: string }[];
 };
 
 async function readText(db: Database): Promise<ProjectText> {
   // Every column, as a file from an older Pensieve may not have them all yet.
   const rows = await db.select<Record<string, unknown>[]>("SELECT * FROM projects");
-  const writings = rows
+  const live = rows
     // A writing in Deleted isn't searched.
     .filter((row) => !row.deleted_at)
-    .sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0))
-    .map((row) => ({ id: String(row.id), title: String(row.title ?? ""), chapters: [] as ProjectText["writings"][number]["chapters"] }));
+    .sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0));
+  const writings = live.map((row) => ({ id: String(row.id), title: String(row.title ?? ""), split: true, chapters: [] as ProjectText["writings"][number]["chapters"] }));
   const byId = new Map(writings.map((writing) => [writing.id, writing]));
   const chapters = await db.select<{ id: string; project_id: string; title: string; plain_text: string | null }[]>(
     "SELECT id, project_id, title, plain_text FROM chapters ORDER BY position",
   );
   for (const chapter of chapters) byId.get(chapter.project_id)?.chapters.push({ id: chapter.id, title: chapter.title, text: chapter.plain_text ?? "" });
+  live.forEach((row, index) => (writings[index].split = splitOf(row.kind === undefined ? undefined : String(row.kind), writings[index].chapters.length)));
   let notes: ProjectText["notes"] = [];
   try {
     const noteRows = await db.select<{ id: string; title: string; plain_text: string | null }[]>("SELECT id, title, plain_text FROM notes ORDER BY title");

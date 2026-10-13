@@ -206,8 +206,8 @@
     {#if tools.format}<span class="rule" aria-hidden="true"></span>{/if}
     <button
       type="button"
-      title={t("findInBook")}
-      aria-label={t("findInBook")}
+      title={t("findInProject")}
+      aria-label={t("findInProject")}
       tabindex={shown ? 0 : -1}
       onmousedown={keep}
       onclick={() => {

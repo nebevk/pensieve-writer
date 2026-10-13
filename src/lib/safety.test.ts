@@ -3,7 +3,7 @@ import { createChapter, createWriting } from "$lib/model";
 import { manuscriptText, withRestoredChapter, writingFromSnapshot } from "$lib/storage/restore";
 import { backupFile } from "$lib/storage/backupFile";
 import { wordsFor } from "$lib/editor/counts";
-import { replaceInDocument, searchChapters } from "$lib/editor/find";
+import { replaceInChapterText } from "$lib/editor/find";
 import { chaptersToMarkdown, documentToBlocks } from "$lib/export/document";
 import { wordFile } from "$lib/export/word";
 import { readWordFile } from "$lib/export/wordImport";
@@ -57,23 +57,12 @@ describe("word counts", () => {
 });
 
 describe("find", () => {
-  it("lists matches by chapter", () => {
-    const hits = searchChapters(
-      [
-        { id: "1", title: "One", plainText: "cat and cat" },
-        { id: "2", title: "Two", plainText: "dog" },
-      ],
-      "cat",
-    );
-    expect(hits).toEqual([{ chapterId: "1", title: "One", count: 2 }]);
-  });
-
   it("replaces in the chapter document and the plain text", () => {
-    const next = replaceInDocument(
-      { type: "doc", content: [{ type: "text", text: "Cat cat" }] },
-      "Cat cat",
+    const next = replaceInChapterText(
+      { contentJson: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Cat cat" }] }] }, plainText: "Cat cat" },
       "cat",
       "dog",
+      { matchCase: false, wholeWord: false },
     );
     expect(next.count).toBe(2);
     expect(next.plainText).toBe("dog dog");

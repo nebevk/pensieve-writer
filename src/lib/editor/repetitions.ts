@@ -2,6 +2,7 @@ import { Extension } from "@tiptap/core";
 import type { Node as ProseNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
+import { onScreen, type Range } from "./onScreen";
 
 /**
  * Repetitions (owner, 12 October): a word said again close by, and a very long sentence, marked gently on
@@ -116,9 +117,6 @@ export function findRepetitions(doc: ProseNode, range?: { from: number; to: numb
 export type RepetitionLabels = { again: (word: string) => string; long: (words: number) => string };
 
 
-/** Where marks are drawn: from one position to another. */
-type Range = { from: number; to: number };
-
 /** The marks drawn, and the part of the page they are for. */
 type State = { shown: DecorationSet; range: Range };
 
@@ -148,32 +146,6 @@ function decorate(doc: ProseNode, labels: RepetitionLabels, range: Range): Decor
     ...long.filter(inside).map((sentence) => Decoration.inline(sentence.from, sentence.to, { class: "pv-long-sentence", title: labels.long(sentence.words) })),
     ...words.map((word) => Decoration.inline(word.from, word.to, { class: "pv-echo", title: labels.again(word.word) })),
   ]);
-}
-
-/**
- * The part of the page she sees, with half a screen above and below, as positions. The page's blocks are
- * in order down it, so halving finds the ends with only a few of them measured.
- */
-function onScreen(view: EditorView): Range {
-  const offsets: number[] = [];
-  view.state.doc.forEach((_node, offset) => offsets.push(offset));
-  const height = window.innerHeight;
-  // The first block whose edge is past `limit`.
-  const firstPast = (limit: number, edge: "top" | "bottom") => {
-    let low = 0;
-    let high = offsets.length;
-    while (low < high) {
-      const middle = (low + high) >> 1;
-      const dom = view.nodeDOM(offsets[middle]);
-      if (dom instanceof HTMLElement && dom.getBoundingClientRect()[edge] > limit) high = middle;
-      else low = middle + 1;
-    }
-    return low;
-  };
-  const first = firstPast(-height / 2, "bottom");
-  const end = firstPast(1.5 * height, "top");
-  if (first >= end) return { from: 0, to: 0 };
-  return { from: offsets[first], to: end < offsets.length ? offsets[end] : view.state.doc.content.size };
 }
 
 /** Works the marks out again now, for the part of the page she sees: after the switch, and after a pause. */
