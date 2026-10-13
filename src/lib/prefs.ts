@@ -89,7 +89,7 @@ export type Prefs = {
   wordCopyFolder: string;
   /**
    * Per Word copy path: the stamp Pensieve last wrote, the book's fingerprint at that time, and the writing it
-   * is a copy of (missing in copies made before 14 October).
+   * is a copy of (missing in copies made before copies knew their writing, 13 October).
    */
   wordCopies: Record<string, { stamp: string; signature: string; writing?: string }>;
   wordCopyAt: string;

@@ -2,7 +2,7 @@ import type { UiKey } from "$lib/i18n";
 
 /**
  * The colours of the toolbar's text colour and highlight (TOOL-5), as Word offers them: the look's own accent
- * first (the colour Pensieve had alone before 14 October), then a few that read well on every look's paper.
+ * first (the only colour Pensieve had before 13 October), then a few that read well on every look's paper.
  * In a Word file each is a character style of its own, so the colour comes back when the file is read in.
  */
 export type TextColour = "accent" | "red" | "orange" | "green" | "blue" | "purple" | "gray";
