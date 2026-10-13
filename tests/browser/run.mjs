@@ -6,7 +6,7 @@
 //   npm run test:browser -- --speed       the speed checks too (each takes a few minutes)
 //   npm run test:browser -- --no-build    the build already in build/, as it is
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -66,8 +66,11 @@ if (!edgePath) {
 const appPort = await freePort();
 const cdpPort = await freePort();
 const profile = mkdtempSync(join(tmpdir(), "pensieve-checks-"));
+// The checks run against a copy of the build, so building again meanwhile changes nothing under them.
+const served = join(profile, "app");
+cpSync(join(root, "build"), served, { recursive: true });
 mkdirSync(join(here, "shots"), { recursive: true });
-const server = spawn(process.execPath, [join(here, "serve.mjs"), join(root, "build"), String(appPort)], { stdio: "ignore" });
+const server = spawn(process.execPath, [join(here, "serve.mjs"), served, String(appPort)], { stdio: "ignore" });
 const edge = spawn(
   edgePath,
   ["--headless=new", `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${profile}`, "--no-first-run", "--disable-gpu", "--restore-last-session=false", "--noerrdialogs", "about:blank"],
