@@ -12,25 +12,26 @@
   import { shrinkImage } from "$lib/editor/imageSize";
   import { PageFind } from "$lib/editor/pageFind.svelte";
   import { Updates } from "$lib/updates.svelte";
+  import { DriveBackup, WordCopy, safeName } from "$lib/save/copies.svelte";
   import { EarlierVersions } from "$lib/views/earlierVersions.svelte";
   import { createChapter, createWriting, effectiveLanguage, type Chapter, type DocumentJson, type Shelf, type Writing, type WritingLanguage } from "$lib/model";
   import { createAutosave, errorMessage, type SaveStatus } from "$lib/save/autosave";
   import { chaptersToHtml, chaptersToMarkdown, chaptersToPlain } from "$lib/export/document";
-  import { ALREADY_EXISTS, CHANGED_ELSEWHERE, MUST_BE_NEW, chooseSavePath, inFolder, writeFileTo, type ExportKind } from "$lib/export/files";
-  import { wordFileFor, wordLook } from "$lib/export/wordAssets";
+  import { chooseSavePath, writeFileTo, type ExportKind } from "$lib/export/files";
+  import { wordFileFor } from "$lib/export/wordAssets";
   import { appendBookChapters, readWordFile, replaceBookChapters, type WordImport } from "$lib/export/wordImport";
   import { bookFromDocuments, byFileName, documentKind, documentName, draftChapters, writingFromDocument, type WritingDraft } from "$lib/export/importWriting";
   import { createAmbience } from "$lib/ambience";
   import { onPomodoroTurn, pomodoro } from "$lib/pomodoro.svelte";
-  import { chooseBackupFile, chooseBackupFolder, chooseDocumentFile, chooseProjectFile, readBackupFile, writeBackup } from "$lib/storage/backup";
-  import { backupSignature, type BackupContent } from "$lib/storage/backupFile";
+  import { chooseBackupFile, chooseBackupFolder, chooseDocumentFile, chooseProjectFile, readBackupFile } from "$lib/storage/backup";
+  import type { BackupContent } from "$lib/storage/backupFile";
   import Particles from "$lib/views/Particles.svelte";
   import Tour from "$lib/views/Tour.svelte";
   import { tourFor, type TourPlace } from "$lib/views/tours";
   import Dashboard from "$lib/views/Dashboard.svelte";
   import HomeHeader from "$lib/views/HomeHeader.svelte";
   import ChapterPanel from "$lib/views/ChapterPanel.svelte";
-  import { PAPER, SHEET_GAP, flushPrefs, loadPrefs, loadPrefsFile, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs, type KnownProject } from "$lib/prefs";
+  import { PAPER, SHEET_GAP, flushPrefs, loadPrefs, loadPrefsFile, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs, type KnownProject, type Prefs } from "$lib/prefs";
   import { duplicateChapterIn, insertChapterAfter, patchChapter, removeChapter, renameChapterIn, reorderChapterList, setChapterText } from "$lib/chapters/mutate";
   import { chapterTitle } from "$lib/chapters/welcome";
   import { applyPage, chapterBreak, composePage, heldHeading, isLeadLine, joinWriting, leadLines, readPage, splitWriting, startsPart, withoutBreaks } from "$lib/chapters/page";
@@ -202,8 +203,23 @@
   let closings = 0;
   let pendingBackup = $state<BackupContent | null>(null);
   let importOffer = $state<{ fileName: string; result: WordImport } | null>(null);
-  // A Word copy path that was changed elsewhere; automatic updates leave it alone until "Update now".
-  let wordCopyHeld = "";
+  // Her copies outside Pensieve: the backup in a folder she chose, and the Word copy (see copies.svelte.ts).
+  const copiesHost = {
+    writing: () => writing,
+    shelf: () => shelf,
+    prefs: () => prefs,
+    setPrefs: (patch: Partial<Prefs>) => (prefs = { ...prefs, ...patch }),
+    switching: () => switchingBooks,
+    flush: async () => {
+      await flushNoteSave();
+      await autosave.flush();
+    },
+    libraryRoot: () => libraryRoot,
+    say: (message: string) => (backupMessage = message),
+    fail: (message: string) => (saveStatus = { state: "error", message }),
+  };
+  const driveBackup = new DriveBackup(copiesHost);
+  const wordCopy = new WordCopy(copiesHost);
   // True while the database points at another book file; backups and the Word copy wait.
   let switchingBooks = false;
   let clock = $state(Date.now());
@@ -383,12 +399,12 @@
             await autosave.flush();
             await flushPrefs();
             try {
-              await runDriveBackup(false);
+              await driveBackup.run(false);
             } catch {
               // The live book is already saved. Home shows the backup failure.
             }
             // Never throws; a problem is shown in Settings next time.
-            await updateWordCopy();
+            await wordCopy.update();
             await win.destroy();
           } catch {
             closing = false;
@@ -401,7 +417,7 @@
             // Leaving the window is a good moment to refresh the Word copy: nobody is typing.
             void flushNoteSave()
               .then(() => autosave.flush())
-              .then(() => updateWordCopy())
+              .then(() => wordCopy.update())
               .catch(() => undefined);
           }
         });
@@ -418,12 +434,7 @@
       clock = Date.now();
     }, 60_000);
 
-    const backupTimer = window.setInterval(() => {
-      if (!prefs.backupFolder || !writing) return;
-      const last = Date.parse(prefs.lastBackupAt);
-      if (!Number.isNaN(last) && Date.now() - last < 60 * 60 * 1000) return;
-      void runDriveBackup(false);
-    }, 60_000);
+    const stopBackups = driveBackup.start();
 
     // A newer Pensieve: looked for a while after the start, then every six hours (see updates.svelte.ts).
     const stopUpdates = updates.start();
@@ -432,7 +443,7 @@
       disposed = true;
       stopUpdates();
       window.clearInterval(clockTimer);
-      window.clearInterval(backupTimer);
+      stopBackups();
       ambience.stop();
       unlistenClose?.();
       unlistenFocus?.();
@@ -1248,11 +1259,6 @@
     void autosave.flush().catch(() => undefined);
   }
 
-  function safeName(title: string): string {
-    const cleaned = title.trim().replace(/[<>:"/\\|?*]/g, "") || "pensieve";
-    return cleaned;
-  }
-
   /** Saves pending edits, asks where to save, then writes the export there. */
   async function saveExport(kind: ExportKind, contents: (book: Writing) => Promise<Uint8Array>) {
     if (!writing) return;
@@ -1279,78 +1285,6 @@
       const text = kind === "markdown" ? chaptersToMarkdown(title, book.chapters) : chaptersToPlain(title, book.chapters);
       return new TextEncoder().encode(text);
     });
-  }
-
-  // Word copies are written one after another: a request is never lost to one for another writing.
-  let wordCopyQueue: Promise<void> = Promise.resolve();
-
-  /** The Word copy's name: the writing's title, after its project's when they differ, as writings of different projects may share a title. */
-  function wordCopyName(book: Pick<Writing, "title">): string {
-    const projectTitle = shelf?.title.trim() ?? "";
-    return projectTitle && projectTitle !== book.title.trim() ? `${projectTitle} - ${book.title}` : book.title;
-  }
-
-  /**
-   * Keeps "<book title>.docx" in the chosen folder up to date. It only writes when the book or its
-   * look changed, and never replaces a copy that was changed in Word or a file Pensieve didn't make.
-   */
-  function updateWordCopy(force = false, of: Writing | null = null): Promise<void> {
-    if (!(of ?? writing) || !prefs.wordCopyFolder || switchingBooks) return Promise.resolve();
-    const folder = prefs.wordCopyFolder;
-    // A writing just left keeps the name it had then, in the project it was in.
-    const leftName = of ? wordCopyName(of) : "";
-    const run = wordCopyQueue.then(async () => {
-      let path = "";
-      try {
-        // Stopped, moved to another folder, or another project opening since it was asked for: nothing to write.
-        if (switchingBooks || prefs.wordCopyFolder !== folder) return;
-        // A writing just left is written as it was when it closed; the open one after its last words are saved.
-        if (!of) {
-          await flushNoteSave();
-          await autosave.flush();
-        }
-        const book = of ?? writing;
-        if (!book) return;
-        path = inFolder(folder, `${safeName(leftName || wordCopyName(book))}.docx`);
-        if (!force && path === wordCopyHeld) return;
-        const signature = `${backupSignature(book.id, book)}|${JSON.stringify(wordLook(prefs))}`;
-        const known = prefs.wordCopies[path];
-        if (!force && known?.signature === signature && !prefs.wordCopyError) return;
-        const written = await writeFileTo(path, await wordFileFor(book, prefs), force ? "" : (known?.stamp ?? MUST_BE_NEW));
-        wordCopyHeld = "";
-        prefs = {
-          ...prefs,
-          wordCopies: { ...prefs.wordCopies, [path]: { stamp: written.stamp, signature } },
-          wordCopyAt: new Date().toISOString(),
-          wordCopyError: "",
-        };
-      } catch (error) {
-        const message = errorMessage(error);
-        const name = path.split(/[\\/]/).pop() || t("theWordCopy");
-        if (message === CHANGED_ELSEWHERE || message === ALREADY_EXISTS) wordCopyHeld = path;
-        const wordCopyError =
-          message === CHANGED_ELSEWHERE
-            ? t("wordCopyChanged", { name })
-            : message === ALREADY_EXISTS
-              ? t("wordCopyForeign", { name })
-              : message;
-        prefs = { ...prefs, wordCopyError };
-      }
-    });
-    wordCopyQueue = run.catch(() => undefined);
-    return run;
-  }
-
-  async function pickWordCopyFolder() {
-    try {
-      const folder = await chooseBackupFolder(t("dialogWordCopyFolder"));
-      if (!folder) return;
-      wordCopyHeld = "";
-      prefs = { ...prefs, wordCopyFolder: folder, wordCopyError: "" };
-      await updateWordCopy();
-    } catch (error) {
-      backupMessage = errorMessage(error);
-    }
   }
 
   /** Reads a Word file and shows its chapters before anything changes. */
@@ -1604,7 +1538,7 @@
     await withEditorClosed(async () => {
       // The project being left keeps its row on Home, with today's numbers and the page just closed.
       rememberProject();
-      await updateWordCopy();
+      await wordCopy.update();
       const written = wordsToday;
       const previous = projectLocation || prefs.projectPath || (await invoke<string>("default_project_path"));
       switchingBooks = true;
@@ -1819,7 +1753,7 @@
         left = await showWriting(id, chapterId);
       });
       view = "write";
-      if (left) void updateWordCopy(false, left);
+      if (left) void wordCopy.update(false, left);
       await refreshShelf();
     } catch (error) {
       saveStatus = { state: "error", message: errorMessage(error) };
@@ -2240,7 +2174,7 @@
         });
       }
       if (projectId !== project) return;
-      if (left) void updateWordCopy(false, left);
+      if (left) void wordCopy.update(false, left);
       await refreshShelf();
       rememberProject();
       notice(t("writingDeleted", { title: source?.title ?? t("untitled") }));
@@ -2462,7 +2396,7 @@
       wordCopyFolder: moved(prefs.wordCopyFolder),
       wordCopies: Object.fromEntries(Object.entries(prefs.wordCopies).map(([path, copy]) => [moved(path), copy])),
     };
-    wordCopyHeld = moved(wordCopyHeld);
+    wordCopy.held = moved(wordCopy.held);
     if (projectLocation) projectLocation = moved(projectLocation);
     moveOpen(from, to);
   }
@@ -2671,7 +2605,7 @@
         // The project open when this change runs, which may not be the one open when it was asked for.
         const home = projectLocation || prefs.projectPath || (await invoke<string>("default_project_path"));
         const homeWriting = writingId;
-        await updateWordCopy();
+        await wordCopy.update();
         rememberProject();
         switchingBooks = true;
         try {
@@ -2881,60 +2815,6 @@
     } catch (error) {
       backupMessage = errorMessage(error);
       reportSaveError(errorMessage(error));
-    }
-  }
-  async function pickBackupFolder() {
-    try {
-      const folder = await chooseBackupFolder(t("dialogBackupFolder"));
-      if (!folder) return;
-      if (libraryRoot && (isInside(folder, libraryRoot) || isInside(libraryRoot, folder))) {
-        backupMessage = t("libraryBackupApart");
-        return;
-      }
-      prefs = { ...prefs, backupFolder: folder };
-    } catch (error) {
-      backupMessage = errorMessage(error);
-    }
-  }
-
-  let driveBackup: Promise<void> | null = null;
-
-  function runDriveBackup(announce: boolean): Promise<void> {
-    if (!writing || !prefs.backupFolder || switchingBooks) return Promise.resolve();
-    if (driveBackup) return driveBackup;
-    const folder = prefs.backupFolder;
-    driveBackup = (async () => {
-      try {
-        await flushNoteSave();
-        await autosave.flush();
-        if (!writing) return;
-        // Automatic backups skip identical copies, so idle hours don't push older versions out of the folder.
-        const result = await writeBackup(folder, announce ? "" : prefs.lastBackupSignature);
-        prefs = {
-          ...prefs,
-          lastBackupAt: new Date().toISOString(),
-          lastBackupError: "",
-          lastBackupSignature: result.signature,
-        };
-        if (announce) backupMessage = result.path ? t("savedTo", { path: result.path }) : t("saved");
-      } catch (error) {
-        const message = errorMessage(error);
-        prefs = { ...prefs, lastBackupError: message };
-        if (announce) backupMessage = message;
-        else saveStatus = { state: "error", message: t("backupFailedMessage", { message }) };
-        throw error;
-      } finally {
-        driveBackup = null;
-      }
-    })();
-    return driveBackup;
-  }
-
-  async function backupNow() {
-    try {
-      await runDriveBackup(true);
-    } catch {
-      // The message is already on screen.
     }
   }
 
@@ -3471,8 +3351,8 @@
       {prefs}
       {backupMessage}
       onChange={(patch) => (prefs = { ...prefs, ...patch })}
-      onChooseFolder={() => void pickBackupFolder()}
-      onBackup={() => void backupNow()}
+      onChooseFolder={() => void driveBackup.pickFolder()}
+      onBackup={() => void driveBackup.now()}
       {projectLocation}
       projectLanguage={writing.language}
       bookGoal={writing.wordGoal}
@@ -3507,13 +3387,13 @@
       onAddExamples={() => void addExampleBooks()}
       examplesAdded={sampleNames.some((name) => name !== "long-test-book")}
       projectTitle={shelf?.title ?? ""}
-      wordCopyName={safeName(wordCopyName(writing))}
+      wordCopyName={safeName(wordCopy.name(writing))}
       onAddLongBook={() => void addLongBook()}
       longBookAdded={sampleNames.includes("long-test-book")}
-      onChooseWordFolder={() => void pickWordCopyFolder()}
+      onChooseWordFolder={() => void wordCopy.pickFolder()}
       onUpdateWordCopy={() => {
-        wordCopyHeld = "";
-        void updateWordCopy(true);
+        wordCopy.held = "";
+        void wordCopy.update(true);
       }}
       onStopWordCopy={() => (prefs = { ...prefs, wordCopyFolder: "", wordCopyError: "" })}
       startSection={settingsSection}
