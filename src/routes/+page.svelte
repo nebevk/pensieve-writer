@@ -11,6 +11,7 @@
   import { countWords, wordsFor } from "$lib/editor/counts";
   import { shrinkImage } from "$lib/editor/imageSize";
   import { PageFind } from "$lib/editor/pageFind.svelte";
+  import { Updates } from "$lib/updates.svelte";
   import { EarlierVersions } from "$lib/views/earlierVersions.svelte";
   import { createChapter, createWriting, effectiveLanguage, type Chapter, type DocumentJson, type Shelf, type Writing, type WritingLanguage } from "$lib/model";
   import { createAutosave, errorMessage, type SaveStatus } from "$lib/save/autosave";
@@ -21,9 +22,6 @@
   import { bookFromDocuments, byFileName, documentKind, documentName, draftChapters, writingFromDocument, type WritingDraft } from "$lib/export/importWriting";
   import { createAmbience } from "$lib/ambience";
   import { onPomodoroTurn, pomodoro } from "$lib/pomodoro.svelte";
-  import { check, type Update } from "@tauri-apps/plugin-updater";
-  import { getVersion } from "@tauri-apps/api/app";
-  import type { UpdateOffer } from "$lib/editor/UpdatePill.svelte";
   import { chooseBackupFile, chooseBackupFolder, chooseDocumentFile, chooseProjectFile, readBackupFile, writeBackup } from "$lib/storage/backup";
   import { backupSignature, type BackupContent } from "$lib/storage/backupFile";
   import Particles from "$lib/views/Particles.svelte";
@@ -211,13 +209,7 @@
   let clock = $state(Date.now());
   const ambience = createAmbience();
   // A newer Pensieve on GitHub Releases, offered in the window bar; and what Settings' check last found.
-  let update = $state.raw<Update | null>(null);
-  let updateProgress = $state<number | null>(null);
-  let updateFailed = $state("");
-  let updateCheck = $state<"" | "checking" | "none" | "failed">("");
-  let updateCheckMessage = $state("");
-  let appVersion = $state("");
-  const updateOffer = $derived<UpdateOffer | null>(update ? { version: update.version, progress: updateProgress, failed: updateFailed } : null);
+  const updates = new Updates((work) => withEditorClosed(work));
 
   const autosave = createAutosave({
     delayMs: 2000,
@@ -433,22 +425,12 @@
       void runDriveBackup(false);
     }, 60_000);
 
-    // A newer Pensieve: looked for a while after the start, then every six hours. Not while developing,
-    // where there is no installed Pensieve to replace.
-    let updateTimer = 0;
-    let updateStart = 0;
-    if (!import.meta.env.DEV) {
-      updateStart = window.setTimeout(() => void checkForUpdate(), 20_000);
-      updateTimer = window.setInterval(() => void checkForUpdate(), 6 * 60 * 60 * 1000);
-    }
-    void getVersion()
-      .then((version) => (appVersion = version ?? ""))
-      .catch(() => undefined);
+    // A newer Pensieve: looked for a while after the start, then every six hours (see updates.svelte.ts).
+    const stopUpdates = updates.start();
 
     return () => {
       disposed = true;
-      window.clearTimeout(updateStart);
-      window.clearInterval(updateTimer);
+      stopUpdates();
       window.clearInterval(clockTimer);
       window.clearInterval(backupTimer);
       ambience.stop();
@@ -2613,52 +2595,6 @@
     }
   }
 
-  /** Asks GitHub Releases whether a newer Pensieve is out: quietly, unless she asked in Settings. */
-  async function checkForUpdate(asked = false) {
-    if (asked) updateCheck = "checking";
-    try {
-      const found = await check();
-      if (found) {
-        update = found;
-        updateFailed = "";
-      }
-      if (asked) updateCheck = found ? "" : "none";
-    } catch (error) {
-      if (!asked) return;
-      updateCheck = "failed";
-      updateCheckMessage = errorMessage(error);
-    }
-  }
-
-  /**
-   * Saves everything, then downloads the update and runs its installer. On Windows Pensieve closes for
-   * that at once, without its own closing steps (hence everything saved first, with the page closed), and
-   * the installer opens it again, updated. Her projects and settings stay where they are.
-   */
-  async function installUpdate() {
-    const next = update;
-    if (!next || updateProgress !== null) return;
-    updateFailed = "";
-    updateProgress = 0;
-    try {
-      await withEditorClosed(async () => {
-        await flushPrefs();
-        let total = 0;
-        let received = 0;
-        await next.downloadAndInstall((event) => {
-          if (event.event === "Started") total = event.data.contentLength ?? 0;
-          else if (event.event === "Progress") {
-            received += event.data.chunkLength;
-            updateProgress = total ? Math.min(99, Math.round((received / total) * 100)) : 0;
-          } else updateProgress = 100;
-        });
-      });
-    } catch (error) {
-      updateFailed = errorMessage(error);
-      updateProgress = null;
-    }
-  }
-
   /** What the library's tree can do, in one place. */
   const libraryActions: LibraryActions = {
     openProject: (path) => void openFromLibrary(path),
@@ -3027,8 +2963,8 @@
 
 {#snippet homeHeader()}
   <HomeHeader
-    update={updateOffer}
-    onUpdate={() => void installUpdate()}
+    update={updates.offer}
+    onUpdate={() => void updates.install()}
     {prefs}
     now={clock}
     error={saveStatus.state === "error" ? saveStatus.message : homeNotice}
@@ -3048,8 +2984,8 @@
 <div class="app" class:zen>
   {#if view !== "home"}
   <TitleBar
-    update={updateOffer}
-    onUpdate={() => void installUpdate()}
+    update={updates.offer}
+    onUpdate={() => void updates.install()}
     project={writing?.title ?? t("untitled")}
     {view}
     saveLabel={statusText(saveStatus)}
@@ -3526,12 +3462,12 @@
   {#if settingsOpen && writing && SettingsPart.current}
     {@const Settings = SettingsPart.current}
     <Settings
-      {appVersion}
-      updateVersion={update?.version ?? ""}
-      {updateCheck}
-      {updateCheckMessage}
-      onCheckUpdate={() => void checkForUpdate(true)}
-      onInstallUpdate={() => void installUpdate()}
+      appVersion={updates.appVersion}
+      updateVersion={updates.found?.version ?? ""}
+      updateCheck={updates.checking}
+      updateCheckMessage={updates.checkMessage}
+      onCheckUpdate={() => void updates.check(true)}
+      onInstallUpdate={() => void updates.install()}
       {prefs}
       {backupMessage}
       onChange={(patch) => (prefs = { ...prefs, ...patch })}
