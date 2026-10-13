@@ -15,6 +15,9 @@ declare module "mammoth" {
     isStrikethrough?: boolean;
     verticalAlignment?: string;
     highlight?: string | null;
+    /** A run's own font and size (in points), when it has them. */
+    font?: string | null;
+    fontSize?: number | null;
     href?: string;
     anchor?: string;
     breakType?: string;

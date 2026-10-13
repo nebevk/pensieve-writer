@@ -2,6 +2,7 @@ import type { MammothDocument, MammothElement } from "mammoth";
 import { createChapter, emptyDocument, type Chapter, type DocumentJson, type Writing } from "$lib/model";
 import { WORD_STYLES } from "./wordStyles";
 import { HIGHLIGHTS, TEXT_COLOURS, highlightFromWord } from "$lib/editor/colours";
+import { fontFromWord } from "./wordFonts";
 import { t } from "$lib/ui.svelte";
 
 /** A chapter read from a Word file, ready to become part of a book. */
@@ -113,7 +114,7 @@ function withMark(marks: JsonMark[], mark: JsonMark): JsonMark[] {
   return [...marks.filter((item) => item.type !== mark.type), mark];
 }
 
-function runMarks(run: MammothElement, marks: JsonMark[]): JsonMark[] {
+function runMarks(run: MammothElement, marks: JsonMark[], fonts = false): JsonMark[] {
   let next = marks;
   if (run.isBold) next = withMark(next, { type: "bold" });
   if (run.isItalic) next = withMark(next, { type: "italic" });
@@ -126,6 +127,13 @@ function runMarks(run: MammothElement, marks: JsonMark[]): JsonMark[] {
   else if (run.highlight) next = withMark(next, { type: "highlight", attrs: { color: highlightFromWord(run.highlight) } });
   const ink = TEXT_COLOURS.find((colour) => run.styleId === colour.style || run.styleName === colour.styleName);
   if (ink) next = withMark(next, { type: "textColor", attrs: { color: ink.name } });
+  // A Pensieve file's words keep the font and size they were given (TOOL-6); another writer's take the
+  // manuscript's, as they do when pasted.
+  if (fonts) {
+    const font = fontFromWord(run.font);
+    if (font) next = withMark(next, { type: "font", attrs: { name: font } });
+    if (run.fontSize) next = withMark(next, { type: "fontSize", attrs: { pt: run.fontSize } });
+  }
   return next;
 }
 
@@ -139,6 +147,8 @@ type Reader = {
   noteText: (reference: MammothElement) => string | null;
   /** The comment a reference points to, as a mark for the words before it. */
   comment: (reference: MammothElement) => JsonMark | null;
+  /** Whether words keep their own fonts and sizes: in a file Pensieve wrote. */
+  fonts: boolean;
 };
 
 /**
@@ -173,7 +183,7 @@ function inlineNodes(elements: MammothElement[], marks: JsonMark[], out: JsonNod
     } else if (element.type === "break") {
       if (element.breakType === "line") out.push({ type: "hardBreak" });
     } else if (element.type === "run") {
-      inlineNodes(element.children ?? [], runMarks(element, marks), out, images, reader);
+      inlineNodes(element.children ?? [], runMarks(element, marks, reader.fonts), out, images, reader);
     } else if (element.type === "hyperlink") {
       const linked = element.href ? withMark(marks, { type: "link", attrs: { href: element.href } }) : marks;
       inlineNodes(element.children ?? [], linked, out, images, reader);
@@ -269,6 +279,7 @@ export function wordToChapters(
   const importedAt = new Date().toISOString();
   const reader: Reader = {
     pictures,
+    fonts: fromPensieve,
     noteText: (reference) => {
       const note = document.notes?.resolve(reference);
       return note ? note.body.map(plainOf).join(" ").trim() : null;

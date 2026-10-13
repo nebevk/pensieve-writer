@@ -1,5 +1,6 @@
 import { Extension, Mark, Node, mergeAttributes } from "@tiptap/core";
 import { highlightColour, textColour } from "./colours";
+import { fontName, manuscriptFamily, pointSize } from "$lib/prefs";
 
 export const Superscript = Mark.create({
   name: "superscript",
@@ -36,6 +37,38 @@ export const TextColor = Mark.create({
     };
   },
   parseHTML: () => [{ tag: "span[data-color]" }],
+  renderHTML: ({ HTMLAttributes }) => ["span", mergeAttributes(HTMLAttributes), 0],
+});
+
+/** Words in another of the manuscript's fonts than the page's (TOOL-6). Pasted text doesn't bring its fonts. */
+export const FontMark = Mark.create({
+  name: "font",
+  addAttributes() {
+    return {
+      name: {
+        default: "literata",
+        parseHTML: (element) => fontName(element.getAttribute("data-font")),
+        renderHTML: (attributes) => ({ "data-font": fontName(attributes.name), style: `font-family: ${manuscriptFamily(fontName(attributes.name))}` }),
+      },
+    };
+  },
+  parseHTML: () => [{ tag: "span[data-font]" }],
+  renderHTML: ({ HTMLAttributes }) => ["span", mergeAttributes(HTMLAttributes), 0],
+});
+
+/** Words at another size than the page's, in points as in Word (TOOL-6). Pasted text doesn't bring its sizes. */
+export const SizeMark = Mark.create({
+  name: "fontSize",
+  addAttributes() {
+    return {
+      pt: {
+        default: 12,
+        parseHTML: (element) => pointSize(element.getAttribute("data-size")),
+        renderHTML: (attributes) => ({ "data-size": String(pointSize(attributes.pt)), style: `font-size: ${pointSize(attributes.pt)}pt` }),
+      },
+    };
+  },
+  parseHTML: () => [{ tag: "span[data-size]" }],
   renderHTML: ({ HTMLAttributes }) => ["span", mergeAttributes(HTMLAttributes), 0],
 });
 

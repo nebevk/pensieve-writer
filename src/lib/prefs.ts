@@ -110,6 +110,17 @@ export function resolvedTheme(theme: ThemeName, now = new Date()): Exclude<Theme
   return hour >= 19 || hour < 7 ? "candlelit" : "daylight";
 }
 
+/** One of the manuscript's fonts, or `fallback` for anything else (TOOL-6). */
+export function fontName(value: unknown, fallback: ManuscriptFont = "literata"): ManuscriptFont {
+  return value === "literata" || value === "garamond" || value === "typewriter" ? value : fallback;
+}
+
+/** A text size in points, as Word has them, or `fallback` for anything that isn't one (TOOL-6). */
+export function pointSize(value: unknown, fallback = 12): number {
+  const pt = Number(value);
+  return Number.isFinite(pt) && pt >= 4 && pt <= 96 ? Math.round(pt * 2) / 2 : fallback;
+}
+
 export function manuscriptFamily(font: ManuscriptFont): string {
   if (font === "garamond") return 'var(--pv-font-garamond)';
   if (font === "typewriter") return 'var(--pv-font-typewriter)';

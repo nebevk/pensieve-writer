@@ -22,6 +22,7 @@ const chapter: DocumentJson = {
     para(text("A "), text("link", [{ type: "link", attrs: { href: "https://example.com" } }]), text(" and "), text("bad", [{ type: "link", attrs: { href: "javascript:alert(1)" } }])),
     para(text("x"), text("2", [{ type: "superscript" }]), text(" marked", [{ type: "highlight" }]), text(" struck", [{ type: "strike" }])),
     para(text("rdeče", [{ type: "textColor", attrs: { color: "red" } }]), text(" in zeleno", [{ type: "highlight", attrs: { color: "green" } }])),
+    para(text("Garamond", [{ type: "font", attrs: { name: "garamond" } }, { type: "fontSize", attrs: { pt: 16 } }])),
     { type: "horizontalRule" },
   ],
 };
@@ -40,6 +41,8 @@ describe("Book view and text exports", () => {
     expect(html).toContain("x<sup>2</sup><mark> marked</mark><s> struck</s>");
     // The toolbar's colours (TOOL-5): yellow, every highlight's colour before, stays a plain mark.
     expect(html).toContain('<span style="color: #b3261e">rdeče</span><mark style="background: #cfe8c4"> in zeleno</mark>');
+    // A font and size of their own (TOOL-6), the size against the manuscript's usual 12 pt.
+    expect(html).toContain('<span style="font-family: var(--pv-font-garamond); font-size: 1.333em">Garamond</span>');
     expect(html).toContain("<hr />");
   });
 

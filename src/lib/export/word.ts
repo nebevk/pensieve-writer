@@ -26,6 +26,8 @@ import type { Chapter, DocumentJson, WritingLanguage } from "$lib/model";
 import { startsPart } from "$lib/chapters/page";
 import { WORD_STYLES } from "./wordStyles";
 import { HIGHLIGHTS, TEXT_COLOURS, highlightColour, textColour } from "$lib/editor/colours";
+import { fontName, pointSize } from "$lib/prefs";
+import { WORD_FONTS } from "./wordFonts";
 
 /**
  * Writes a book as a Word document that looks like the page in Pensieve: the manuscript font, the
@@ -200,7 +202,9 @@ function runOptions(marks: JsonMark[], ctx: Context): RunOptions {
     superScript: has("superscript") || undefined,
     color: ink ? ink.hex : undefined,
     shading: lit ? { type: ShadingType.CLEAR, fill: lit.hex, color: "auto" } : undefined,
-    font: has("code") ? "Consolas" : undefined,
+    // A font and size of their own (TOOL-6), as Word names the manuscript's fonts; sizes in half-points.
+    font: has("code") ? "Consolas" : has("font") ? WORD_FONTS[fontName(marks.find((mark) => mark.type === "font")?.attrs?.name)].name : undefined,
+    size: has("fontSize") ? Math.round(pointSize(marks.find((mark) => mark.type === "fontSize")?.attrs?.pt) * 2) : undefined,
     language,
   };
 }

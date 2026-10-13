@@ -14,7 +14,6 @@ Each item keeps its ID so it can be asked for by name; a new one gets the next f
 |----|------|--------|-----|
 | **IMP-10** Speed on the real laptop | Time typing in a chapter of the long test book on her laptop, in Candlelit with the sparks on, with the panel open and a note pinned; time the start with that book open. The browser checks (processor slowed four times) give about 40 ms a key; this confirms it on the hardware that matters (Windows 10, 8 GB of memory) | Open | P2 |
 | **WIN-1** One window bar | The app draws its own window bar (Windows' is off). Check it in the desktop window: dragging, a double-click to maximise, the three buttons, and resizing from the edges | Check | P2 |
-| **TOOL-6** Font and size (ED-5) | The toolbar's font and size change the whole manuscript (as Settings does), not the selected text as in Word | Differs | P3 |
 | **WIN-3** Language badge | The design's badge shows the project's writing language; the app's marks the selected text, or the open chapter, as EN or SL. Decide which | Differs | P3 |
 | **IMP-18** Paste from Word (ED-10) | Paste a chapter from a real manuscript and check headings, italics and paragraphs survive; an automatic test would need a browser-like document in the tests (a test-only package such as `happy-dom`) | Open | P3 |
 | **IMP-25** Keyboard and screen reader | Settings and the windows trap the keyboard and give it back; buttons have spoken names; svelte-check reports no accessibility warnings. Still to do: someone tabbing through the running app | Partial | P3 |

@@ -40,6 +40,8 @@ function richChapter(): DocumentJson {
         text(" accent", [{ type: "textColor" }]),
         text(" red", [{ type: "textColor", attrs: { color: "red" } }]),
         text(" green", [{ type: "highlight", attrs: { color: "green" } }]),
+        text(" garamond", [{ type: "font", attrs: { name: "garamond" } }]),
+        text(" big", [{ type: "fontSize", attrs: { pt: 16 } }]),
         text(" link", [{ type: "link", attrs: { href: "https://example.com" } }]),
         text(" slovensko", [{ type: "textLanguage", attrs: { lang: "sl" } }]),
         text(" line one"),
@@ -117,6 +119,9 @@ describe("Word export", () => {
     expect(xml).toContain('w:rStyle w:val="PensieveRed"');
     expect(xml).toContain('w:rStyle w:val="PensieveHighlightGreen"');
     expect(xml).toContain('w:fill="CFE8C4"');
+    // Words in a font and size of their own (TOOL-6): Word's name for the font, the size in half-points.
+    expect(xml).toMatch(/w:ascii="EB Garamond"[\s\S]{0,300}?> garamond</);
+    expect(xml).toMatch(/<w:sz w:val="32"\/>[\s\S]{0,300}?> big</);
     expect(xml).toContain("<w:hyperlink");
     expect(xml).toContain('w:lang w:val="sl-SI"');
     expect(xml).toMatch(/line one<\/w:t>[\s\S]*?<w:br\/>[\s\S]*?line two/);
@@ -276,6 +281,11 @@ describe("Word import", () => {
     expect(colourOf(" red", "textColor")).toBe("red");
     expect(colourOf(" marked", "highlight")).toBe("yellow");
     expect(colourOf(" green", "highlight")).toBe("green");
+    // And their fonts and sizes, from a file Pensieve wrote (TOOL-6).
+    const attrsOf = (words: string, mark: string) => all(nodes).find((node) => node.text === words)?.marks?.find((item) => item.type === mark)?.attrs;
+    expect(attrsOf(" garamond", "font")?.name).toBe("garamond");
+    expect(attrsOf(" big", "fontSize")?.pt).toBe(16);
+    expect(all(nodes).filter((node) => node.marks?.some((item) => item.type === "font" || item.type === "fontSize")).map((node) => node.text)).toEqual([" garamond", " big"]);
     const link = all(nodes).find((node) => node.text === " link");
     expect(link?.marks?.find((mark) => mark.type === "link")?.attrs?.href).toBe("https://example.com");
     expect(all(nodes).some((node) => node.type === "hardBreak")).toBe(true);
@@ -514,7 +524,7 @@ describe("Word import", () => {
             chapterLine("Chapter One"),
             new Paragraph({
               children: [
-                new TextRun("Plain, "),
+                new TextRun({ text: "Plain, ", font: "EB Garamond", size: 28 }),
                 new TextRun({ text: "underlined", underline: {} }),
                 new TextRun(", line one"),
                 new TextRun({ text: "line two", break: 1 }),
@@ -539,6 +549,8 @@ describe("Word import", () => {
     const first = result.chapters[0];
     const nodes = (first.contentJson.content ?? []) as Node[];
     expect(marked(nodes, "underline")).toContain("underlined");
+    // Another writer's fonts and sizes stay out: her words take the manuscript's, as when pasted (TOOL-6).
+    expect(all(nodes).some((node) => node.marks?.some((item) => item.type === "font" || item.type === "fontSize"))).toBe(false);
     expect(first.plainText).toContain("line one\nline two");
     expect(first.plainText).toContain("cell A\tcell B");
     // A Word footnote comes back as a footnote, not as a number with a list of notes.

@@ -6,7 +6,7 @@
   import StarterKit from "@tiptap/starter-kit";
   import TextAlign from "@tiptap/extension-text-align";
   import type { DocumentJson, WritingLanguage } from "$lib/model";
-  import { Highlight, ImageBlock, Indent, LinkMark, Superscript, TextColor } from "./marks";
+  import { FontMark, Highlight, ImageBlock, Indent, LinkMark, SizeMark, Superscript, TextColor } from "./marks";
   import { TextLanguage } from "./textLanguage";
   import { NoteLinkMark, NoteLinks, type NoteTarget } from "./noteLinks";
   import { Footnote } from "./footnote";
@@ -155,6 +155,8 @@
         Superscript,
         Highlight,
         TextColor,
+        FontMark,
+        SizeMark,
         LinkMark,
         ImageBlock,
         Indent,

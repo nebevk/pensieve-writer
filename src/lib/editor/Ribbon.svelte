@@ -2,7 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import type { Editor } from "@tiptap/core";
   import { tick } from "svelte";
-  import type { ManuscriptFont, PaperMode, PaperSize } from "$lib/prefs";
+  import { fontName, pointSize, type ManuscriptFont, type PaperMode, type PaperSize } from "$lib/prefs";
   import { isLeadLine } from "$lib/chapters/page";
   import { chooseImageFile } from "$lib/storage/backup";
   import { HIGHLIGHTS, TEXT_COLOURS, highlightColour, textColour, type HighlightColour, type TextColour } from "./colours";
@@ -28,8 +28,6 @@
     onFind,
     manuscriptFont,
     manuscriptPt,
-    onFont,
-    onSize,
     loadNotes,
     onReplace,
     onComment,
@@ -60,11 +58,10 @@
     /** Whether find is open: its button is lit, and a press closes it. */
     findOpen?: boolean;
     onFind: () => void;
+    /** The manuscript's own font and size, from Settings: what words without their own have. */
     manuscriptFont: ManuscriptFont;
     /** The writing's text size in points. */
     manuscriptPt: number;
-    onFont: (font: ManuscriptFont) => void;
-    onSize: (size: number) => void;
     onReplace: () => void;
     /** The book's notes, for "Link a note". */
     loadNotes: () => Promise<{ id: string; title: string; aliases: string }[]>;
@@ -91,8 +88,36 @@
     else onPaper("continuous", paperSize);
   }
 
-  // Word's usual sizes for running text, in points, and the one set in Settings if it is between them.
-  const textSizes = $derived([...new Set([10, 11, 12, 13, 14, 16, 18, manuscriptPt])].sort((a, b) => a - b));
+  // The font and size where the cursor is, as Word's boxes show them (TOOL-6): the words' own, or the manuscript's.
+  const fontHere = $derived.by((): ManuscriptFont => {
+    const current = ready();
+    if (!current || revision < 0) return manuscriptFont;
+    return fontName(current.getAttributes("font").name, manuscriptFont);
+  });
+  const sizeHere = $derived.by((): number => {
+    const current = ready();
+    if (!current || revision < 0) return manuscriptPt;
+    return pointSize(current.getAttributes("fontSize").pt, manuscriptPt);
+  });
+  // Word's sizes (but 10.5, which would widen the box past the laptop's row), the manuscript's and the one
+  // where the cursor is.
+  const textSizes = $derived([...new Set([8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 36, 48, manuscriptPt, sizeHere])].sort((a, b) => a - b));
+
+  /** A font for the selected words, or what is typed next (TOOL-6); the manuscript's own font is no mark at all. */
+  function pickFont(name: ManuscriptFont) {
+    const chain = ready()?.chain().focus();
+    if (!chain) return;
+    if (name === manuscriptFont) chain.unsetMark("font").run();
+    else chain.setMark("font", { name }).run();
+  }
+
+  /** A size for the selected words, or what is typed next (TOOL-6); the manuscript's own size is no mark at all. */
+  function pickSize(pt: number) {
+    const chain = ready()?.chain().focus();
+    if (!chain) return;
+    if (pt === manuscriptPt) chain.unsetMark("fontSize").run();
+    else chain.setMark("fontSize", { pt }).run();
+  }
 
   // The full toolbar's state comes from Settings (open by default) and goes back there.
   // The quiet row's one Alignment button opens the four alignments (design TOOL-8).
@@ -419,12 +444,12 @@
           <option value="h2">{t("heading2")}</option>
           <option value="h3">{t("heading3")}</option>
         </select>
-        <select aria-label={t("manuscriptFont")} value={manuscriptFont} onchange={(event) => onFont(event.currentTarget.value as ManuscriptFont)}>
+        <select aria-label={t("fontPick")} value={fontHere} onchange={(event) => pickFont(event.currentTarget.value as ManuscriptFont)}>
           <option value="literata">Literata</option>
           <option value="garamond">Garamond</option>
           <option value="typewriter">{t("fontTypewriter")}</option>
         </select>
-        <select aria-label={t("textSize")} value={manuscriptPt} onchange={(event) => onSize(Number(event.currentTarget.value))}>
+        <select aria-label={t("textSize")} value={sizeHere} onchange={(event) => pickSize(Number(event.currentTarget.value))}>
           {#each textSizes as size (size)}
             <option value={size}>{num(size)}</option>
           {/each}

@@ -3,15 +3,12 @@ import type { ManuscriptFont, Prefs } from "$lib/prefs";
 // Types only: the writer and its docx library load on the first export, not at startup.
 import type { FontFace, WordFont, WordImage, WordLook } from "./word";
 import { t } from "$lib/ui.svelte";
+import { WORD_FONTS } from "./wordFonts";
+import { fontName } from "$lib/prefs";
 
 /** Browser-side preparation for Word files: the manuscript font's static styles and measured pictures. */
 
-const FAMILIES: Record<ManuscriptFont, { name: string; file?: string }> = {
-  literata: { name: "Literata", file: "Literata" },
-  garamond: { name: "EB Garamond", file: "EBGaramond" },
-  // Every Windows computer has Courier New, so nothing needs packing.
-  typewriter: { name: "Courier New" },
-};
+const FAMILIES = WORD_FONTS;
 
 const FACES: [FontFace, string][] = [
   ["regular", "Regular"],
@@ -53,6 +50,15 @@ async function fontsFor(font: ManuscriptFont): Promise<WordFont[]> {
     fontCache.delete(font);
     return [];
   }
+}
+
+/** The manuscript's fonts some words of a document are set in (TOOL-6). */
+function fontsUsed(doc: DocumentJson, found: Set<ManuscriptFont>) {
+  const walk = (node: { marks?: { type?: string; attrs?: { name?: unknown } }[]; content?: unknown[] }) => {
+    for (const mark of node.marks ?? []) if (mark.type === "font") found.add(fontName(mark.attrs?.name));
+    for (const child of node.content ?? []) walk(child as typeof node);
+  };
+  walk(doc as unknown as Parameters<typeof walk>[0]);
 }
 
 function pictureSources(doc: DocumentJson, found: Set<string>) {
@@ -102,11 +108,17 @@ export async function wordFileFor(
 ): Promise<Uint8Array> {
   const { wordFile } = await import("./word");
   const sources = new Set<string>();
-  for (const chapter of project.chapters) pictureSources(chapter.contentJson, sources);
+  // The manuscript's font, and any other of its fonts some words are in (TOOL-6), packed into the file.
+  const used = new Set<ManuscriptFont>([prefs.manuscriptFont]);
+  for (const chapter of project.chapters) {
+    pictureSources(chapter.contentJson, sources);
+    fontsUsed(chapter.contentJson, used);
+  }
   const images = new Map<string, WordImage>();
   for (const src of sources) {
     const image = await wordImage(src);
     if (image) images.set(src, image);
   }
-  return wordFile(project, wordLook(prefs), { fonts: await fontsFor(prefs.manuscriptFont), images });
+  const fonts = (await Promise.all([...used].map(fontsFor))).flat();
+  return wordFile(project, wordLook(prefs), { fonts, images });
 }

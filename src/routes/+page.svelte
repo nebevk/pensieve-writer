@@ -2963,8 +2963,6 @@
     }}
     manuscriptFont={prefs.manuscriptFont}
     manuscriptPt={prefs.manuscriptPt}
-    onFont={(font) => (prefs.manuscriptFont = font)}
-    onSize={(size) => (prefs.manuscriptPt = size)}
     onReplace={() => {
       view = "write";
       find.show(find.scope === "all" ? "chapter" : find.scope, true);

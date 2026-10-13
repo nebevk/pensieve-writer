@@ -142,13 +142,16 @@ await until(`!document.querySelector(".window")`);
 await page.click(".ribbon .more");
 await sleep(300);
 const sizes = await page.run(`(() => { const select = document.querySelector('select[aria-label="Text size"]'); return select ? select.value + " | " + [...select.options].map((option) => option.textContent).join(" ") : ""; })()`);
-check("All tools offer Word's sizes, 12 chosen", sizes === "12 | 10 11 12 13 14 16 18", sizes);
+check("All tools offer Word's sizes, 12 chosen", sizes === "12 | 8 9 10 11 12 13 14 16 18 20 24 28 36 48", sizes);
+// Since TOOL-6 the toolbar's size goes on the words, as in Word: here on what is typed next. Settings keep the manuscript's.
+await page.run(`(() => { const editor = document.querySelector(".paper .ProseMirror"); editor.focus(); const range = document.createRange(); range.selectNodeContents(editor); range.collapse(false); getSelection().removeAllRanges(); getSelection().addRange(range); return true; })()`);
 await page.run(`(() => { const select = document.querySelector('select[aria-label="Text size"]'); select.value = "14"; select.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
+await sleep(200);
+await page.type(" Večje.");
 await sleep(300);
-const bigger = await page.run(`getComputedStyle(document.querySelector(".paper .ProseMirror")).fontSize`);
-check("14 pt is 18.67 px on screen", Math.abs(parseFloat(bigger) - 18.667) < 0.05, bigger);
-check("the size is saved in points", (await saved()).manuscriptPt === 14 && !("manuscriptSize" in (await saved())));
-await page.run(`(() => { const select = document.querySelector('select[aria-label="Text size"]'); select.value = "12"; select.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
+const bigger = await page.run(`(() => { const span = [...document.querySelectorAll('.paper .ProseMirror span[data-size="14"]')].find((el) => el.textContent.includes("Večje")); return span ? getComputedStyle(span).fontSize : ""; })()`);
+check("14 pt on the words typed next is 18.67 px on screen", Math.abs(parseFloat(bigger) - 18.667) < 0.05, bigger);
+check("the manuscript's size stays 12 pt, Settings' own", (await saved()).manuscriptPt === 12 && !("manuscriptSize" in (await saved())));
 
 // Scrollbars: slim and rounded, from the app's own rules, which nothing switches off.
 const scroll = await page.run(`(() => {

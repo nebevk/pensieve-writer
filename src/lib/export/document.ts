@@ -1,5 +1,6 @@
 import type { Chapter, DocumentJson } from "$lib/model";
 import { highlightColour, textColour } from "$lib/editor/colours";
+import { fontName, manuscriptFamily, pointSize } from "$lib/prefs";
 
 /** The Book view, Markdown, plain-text and HTML exports. Word files are written by word.ts. */
 
@@ -15,6 +16,10 @@ export type Inline = {
   highlightColor?: string;
   /** Text in one of the toolbar's colours, as CSS. */
   color?: string;
+  /** Words in a font of their own, as CSS (TOOL-6). */
+  font?: string;
+  /** Words at a size of their own, in points (TOOL-6). */
+  size?: number;
   href?: string;
   /** A line break inside the paragraph (Shift+Enter). */
   lineBreak?: boolean;
@@ -39,7 +44,7 @@ type JsonNode = {
   type?: string;
   text?: string;
   attrs?: { level?: number; textAlign?: string; src?: string; alt?: string; text?: string };
-  marks?: { type?: string; attrs?: { href?: string; color?: string } }[];
+  marks?: { type?: string; attrs?: { href?: string; color?: string; name?: string; pt?: number } }[];
   content?: JsonNode[];
 };
 
@@ -72,6 +77,8 @@ function inlinesFrom(nodes: JsonNode[] | undefined, notes: Notes): Inline[] {
         highlight: marks.has("highlight"),
         highlightColor: marks.has("highlight") && highlightColour(marks.get("highlight")?.attrs?.color).name !== "yellow" ? highlightColour(marks.get("highlight")?.attrs?.color).css : undefined,
         color: marks.has("textColor") ? textColour(marks.get("textColor")?.attrs?.color).css : undefined,
+        font: marks.has("font") ? manuscriptFamily(fontName(marks.get("font")?.attrs?.name)) : undefined,
+        size: marks.has("fontSize") ? pointSize(marks.get("fontSize")?.attrs?.pt) : undefined,
         href: marks.get("link")?.attrs?.href || undefined,
       },
     ];
@@ -151,6 +158,11 @@ function inlineHtml(inlines: Inline[]): string {
       if (inline.strike) text = `<s>${text}</s>`;
       if (inline.superscript) text = `<sup>${text}</sup>`;
       if (inline.color) text = `<span style="color: ${inline.color}">${text}</span>`;
+      // A size of its own as against the manuscript's usual 12 pt, so it scales with the Book's pages.
+      if (inline.font || inline.size) {
+        const style = [inline.font ? `font-family: ${inline.font}` : "", inline.size ? `font-size: ${Math.round((inline.size / 12) * 1000) / 1000}em` : ""].filter(Boolean).join("; ");
+        text = `<span style="${style}">${text}</span>`;
+      }
       if (inline.highlight) text = inline.highlightColor ? `<mark style="background: ${inline.highlightColor}">${text}</mark>` : `<mark>${text}</mark>`;
       if (inline.href && SAFE_LINK.test(inline.href)) text = `<a href="${escapeAttribute(inline.href)}">${text}</a>`;
       return text;
