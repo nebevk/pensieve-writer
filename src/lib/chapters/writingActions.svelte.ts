@@ -1,5 +1,7 @@
 import { folderNameProblem } from "$lib/chapters/library";
 import { joinWriting, splitWriting } from "$lib/chapters/page";
+import { documentName, draftChapters, writingFromDocument } from "$lib/export/importWriting";
+import type { WordImport } from "$lib/export/wordImport";
 import type { Shelf, Writing } from "$lib/model";
 import { errorMessage } from "$lib/save/autosave";
 import { flushNoteSave, listNotes, listTasks, saveNote, saveTask } from "$lib/storage/organize";
@@ -13,6 +15,7 @@ import {
   renameWritingFolder,
   setShelf,
   setWritingFields,
+  setWritingOrder,
   sqliteStorage,
 } from "$lib/storage/sqlite";
 import { t } from "$lib/ui.svelte";
@@ -45,6 +48,8 @@ export type WritingsHost = {
   loadOrganizer: () => Promise<void>;
   notice: (message: string) => void;
   fail: (message: string) => void;
+  /** A Word, text or Markdown file, read into chapters, its pictures made small. */
+  readDocument: (path: string) => Promise<WordImport>;
 };
 
 /** A folder name for writings: one Windows takes, and not one the project has already. */
@@ -61,6 +66,8 @@ export function nameCheck(name: string, taken: string[]): string | null {
  */
 export class WritingActions {
   #host: WritingsHost;
+  // A file being brought in: another waits until it is.
+  #importing = false;
 
   constructor(host: WritingsHost) {
     this.#host = host;
@@ -295,6 +302,58 @@ export class WritingActions {
       host.rememberProject();
     } catch (error) {
       host.fail(errorMessage(error));
+    }
+  }
+
+  /** Puts a writing just before another one of the open project, in that one's writing folder. */
+  async place(id: string, beforeId: string) {
+    const shelf = this.#host.shelf();
+    if (!shelf || id === beforeId) return;
+    const order = [...shelf.writings].sort((a, b) => a.position - b.position).map((item) => item.id).filter((item) => item !== id);
+    const at = order.indexOf(beforeId);
+    if (at < 0) return;
+    order.splice(at, 0, id);
+    const folder = shelf.writings.find((item) => item.id === beforeId)?.folder ?? "";
+    try {
+      await setWritingOrder(order);
+      await setWritingFields(id, { folder });
+      await this.#host.refreshShelf();
+    } catch (error) {
+      this.#host.fail(errorMessage(error));
+    }
+  }
+
+  /**
+   * A Word, text or Markdown file brought into the open project as a new writing, and opened: its chapters
+   * begin at its top headings (or chapter lines), and a file without any is one page.
+   */
+  async importFile(path: string) {
+    const host = this.#host;
+    const writing = host.writing();
+    if (!writing || !host.shelf() || this.#importing) return;
+    this.#importing = true;
+    // The project it was asked for, and its language: another project may open while the file is read.
+    const project = host.projectId();
+    const language = writing.language;
+    try {
+      const name = documentName(path);
+      host.notice(t("importingWord", { name }));
+      const draft = writingFromDocument(await host.readDocument(path), name, t("untitled"));
+      // After any switch under way, and only into the project it was asked for.
+      const made = await host.oneAtATime(async () =>
+        host.projectId() === project ? addWriting({ title: draft.title, folder: "", split: draft.split, language, chapters: draftChapters(draft) }) : null,
+      );
+      if (!made) {
+        host.notice(t("importOtherProject", { title: draft.title }));
+        return;
+      }
+      // Outside the queued change: openWriting queues its own.
+      await host.openWriting(made.id);
+      if (host.projectId() === project) host.notice(t("importedAsWriting", { title: draft.title }));
+    } catch (error) {
+      host.notice(errorMessage(error));
+    } finally {
+      this.#importing = false;
     }
   }
 

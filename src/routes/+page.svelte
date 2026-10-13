@@ -37,7 +37,7 @@
   import { chapterTitle } from "$lib/chapters/welcome";
   import { applyPage, chapterBreak, composePage, heldHeading, isLeadLine, leadLines, readPage, startsPart, withoutBreaks } from "$lib/chapters/page";
   import { summarize, summarizeOutline, summarizeProject } from "$lib/chapters/progress";
-  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, joinPath, lastName, looksSynced, parentFolder, projectFile, projectFiles, projectFolders, projectName, rebasePath, sameFolder, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "$lib/chapters/library";
+  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, joinPath, lastName, looksSynced, parentFolder, prefsAfterMove, prefsWithoutProject, projectFile, projectFiles, projectFolders, projectName, rebasePath, sameFolder, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "$lib/chapters/library";
   import { moveOpen } from "$lib/chapters/treeState.svelte";
   import { notesInChapter } from "$lib/chapters/mentions";
   import { panelNotes, panelOrder } from "$lib/views/panelNotes";
@@ -50,7 +50,7 @@
   import type { ProjectRequest } from "$lib/views/NewProjectWindow.svelte";
   import type { SearchHit, SearchSource } from "$lib/views/searchAll";
   import { otherCards, type IdeaCard } from "$lib/views/ideas";
-  import { addWriting, checkpointDatabase, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, moveProjectFile, rememberPersonalWord, restoreFromBackup, setShelf, setWritingFields, setWritingOrder, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
+  import { addWriting, checkpointDatabase, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, moveProjectFile, rememberPersonalWord, restoreFromBackup, setShelf, setWritingFields, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
   import type { Editor as TiptapEditor } from "@tiptap/core";
   import type { NodeSelection } from "@tiptap/pm/state";
   import { lazy } from "$lib/lazy.svelte";
@@ -2077,6 +2077,7 @@
     loadOrganizer,
     notice,
     fail: reportSaveError,
+    readDocument,
   });
 
   /** A new note in a group of the project's notes (or tied to a chapter), opened over the page to write it. */
@@ -2171,23 +2172,7 @@
   /** After a folder of the library was renamed or moved: the paths Pensieve keeps in it follow it. */
   function followMove(from: string, to: string) {
     const moved = (path: string) => rebasePath(path, from, to);
-    prefs = {
-      ...prefs,
-      projectPath: moved(prefs.projectPath),
-      lastOpened: { ...prefs.lastOpened, path: moved(prefs.lastOpened.path) },
-      samples: Object.fromEntries(Object.entries(prefs.samples).map(([slug, path]) => [slug, moved(path)])),
-      // A project in the library is called by its folder's name, a renamed one too. Nothing was where it went
-      // (a folder never moves over another), so a project remembered there was deleted or moved in Explorer.
-      knownProjects: prefs.knownProjects
-        .filter((item) => isInside(item.path, from) || !isInside(item.path, to))
-        .map((item) => {
-          const path = moved(item.path);
-          return path === item.path ? item : { ...item, path, title: projectName(path) || item.title };
-        }),
-      // The Word copy's folder may be in it too; its files moved as they were, so their stamps still hold.
-      wordCopyFolder: moved(prefs.wordCopyFolder),
-      wordCopies: Object.fromEntries(Object.entries(prefs.wordCopies).map(([path, copy]) => [moved(path), copy])),
-    };
+    prefs = prefsAfterMove(prefs, from, to);
     wordCopy.held = moved(wordCopy.held);
     if (projectLocation) projectLocation = moved(projectLocation);
     moveOpen(from, to);
@@ -2271,31 +2256,7 @@
 
   /** Takes a project off Pensieve's lists; its files stay where they are. */
   function forgetProject(path: string) {
-    const gone = (file: string) => file.toLowerCase() === path.toLowerCase();
-    prefs = {
-      ...prefs,
-      knownProjects: prefs.knownProjects.filter((item) => !gone(item.path)),
-      // Settings offers the examples as new again once none of them is left.
-      samples: Object.fromEntries(Object.entries(prefs.samples).filter(([, file]) => !gone(file))),
-      lastOpened: gone(prefs.lastOpened.path) ? { path: "", writingId: "", chapterId: "" } : prefs.lastOpened,
-    };
-  }
-
-  /** Puts a writing just before another one of the open project, in that one's writing folder. */
-  async function placeWriting(id: string, beforeId: string) {
-    if (!shelf || id === beforeId) return;
-    const order = [...shelf.writings].sort((a, b) => a.position - b.position).map((item) => item.id).filter((item) => item !== id);
-    const at = order.indexOf(beforeId);
-    if (at < 0) return;
-    order.splice(at, 0, id);
-    const folder = shelf.writings.find((item) => item.id === beforeId)?.folder ?? "";
-    try {
-      await setWritingOrder(order);
-      await setWritingFields(id, { folder });
-      await refreshShelf();
-    } catch (error) {
-      reportSaveError(errorMessage(error));
-    }
+    prefs = prefsWithoutProject(prefs, path);
   }
 
   /** One of her files, opened in its own program: a Word file in Word, a picture in Photos. */
@@ -2315,39 +2276,6 @@
     }
   }
 
-  /**
-   * A Word, text or Markdown file brought into the open project as a new writing, and opened: its chapters
-   * begin at its top headings (or chapter lines), and a file without any is one page.
-   */
-  let importingFile = false;
-  async function importAsWriting(path: string) {
-    if (!writing || !shelf || importingFile) return;
-    importingFile = true;
-    // The project it was asked for, and its language: another project may open while the file is read.
-    const project = projectId;
-    const language = writing.language;
-    try {
-      const name = documentName(path);
-      notice(t("importingWord", { name }));
-      const draft = writingFromDocument(await readDocument(path), name, t("untitled"));
-      // After any switch under way, and only into the project it was asked for.
-      const made = await oneAtATime(async () =>
-        projectId === project ? addWriting({ title: draft.title, folder: "", split: draft.split, language, chapters: draftChapters(draft) }) : null,
-      );
-      if (!made) {
-        notice(t("importOtherProject", { title: draft.title }));
-        return;
-      }
-      // Outside the queued change: openWriting queues its own.
-      await openWriting(made.id);
-      if (projectId === project) notice(t("importedAsWriting", { title: draft.title }));
-    } catch (error) {
-      notice(errorMessage(error));
-    } finally {
-      importingFile = false;
-    }
-  }
-
   /** What the library's tree can do, in one place. */
   const libraryActions: LibraryActions = {
     openProject: (path) => void openFromLibrary(path),
@@ -2361,10 +2289,10 @@
     deleteLibraryFolder: (path) => void deleteLibraryFolder(path),
     deleteProject: (path) => void deleteProject(path),
     forgetProject,
-    placeWriting: (id, beforeId) => void placeWriting(id, beforeId),
+    placeWriting: (id, beforeId) => void writingOps.place(id, beforeId),
     openFile: (path) => void openLibraryFile(path),
     showInExplorer: (path) => void showInExplorer(path),
-    importAsWriting: (path) => void importAsWriting(path),
+    importAsWriting: (path) => void writingOps.importFile(path),
     newWriting: (folder, name) => writingOps.make(folder, name),
     newWritingFolder: (name) => writingOps.makeFolder(name),
     renameWritingFolder: (from, to) => writingOps.renameFolder(from, to),

@@ -1,6 +1,6 @@
 import type { Shelf } from "$lib/model";
 import type { Note, NoteCategory } from "$lib/storage/organize";
-import type { KnownProject } from "$lib/prefs";
+import type { KnownProject, Prefs } from "$lib/prefs";
 
 /**
  * The library beside the page: every book Pensieve knows, by the folder its file is in, as a tree to
@@ -85,6 +85,47 @@ export function lastName(path: string): string {
 }
 
 /** Where `path` is after the folder `from` became `to` (renamed or moved); a path outside `from` stays as it is. */
+/** What the settings keep of where things are, which a folder's move changes. */
+type Places = Pick<Prefs, "projectPath" | "lastOpened" | "samples" | "knownProjects" | "wordCopyFolder" | "wordCopies">;
+
+/**
+ * The settings after a folder of the library was renamed or moved (`from` → `to`): every path they keep in it
+ * follows it. A project in the library is called by its folder's name, a renamed one too. Nothing was where
+ * it went (a folder never moves over another), so a project remembered there was deleted or moved in
+ * Explorer, and goes. The Word copies moved as they were, so their stamps still hold.
+ */
+export function prefsAfterMove<P extends Places>(prefs: P, from: string, to: string): P {
+  const moved = (path: string) => rebasePath(path, from, to);
+  return {
+    ...prefs,
+    projectPath: moved(prefs.projectPath),
+    lastOpened: { ...prefs.lastOpened, path: moved(prefs.lastOpened.path) },
+    samples: Object.fromEntries(Object.entries(prefs.samples).map(([slug, path]) => [slug, moved(path)])),
+    knownProjects: prefs.knownProjects
+      .filter((item) => isInside(item.path, from) || !isInside(item.path, to))
+      .map((item) => {
+        const path = moved(item.path);
+        return path === item.path ? item : { ...item, path, title: projectName(path) || item.title };
+      }),
+    wordCopyFolder: moved(prefs.wordCopyFolder),
+    wordCopies: Object.fromEntries(Object.entries(prefs.wordCopies).map(([path, copy]) => [moved(path), copy])),
+  };
+}
+
+/**
+ * The settings without a project (its file, `path`): off the list of known projects, Settings offering the
+ * examples as new again once none of them is left, and Continue writing no longer pointing at it.
+ */
+export function prefsWithoutProject<P extends Pick<Prefs, "knownProjects" | "samples" | "lastOpened">>(prefs: P, path: string): P {
+  const gone = (file: string) => file.toLowerCase() === path.toLowerCase();
+  return {
+    ...prefs,
+    knownProjects: prefs.knownProjects.filter((item) => !gone(item.path)),
+    samples: Object.fromEntries(Object.entries(prefs.samples).filter(([, file]) => !gone(file))),
+    lastOpened: gone(prefs.lastOpened.path) ? { path: "", writingId: "", chapterId: "" } : prefs.lastOpened,
+  };
+}
+
 export function rebasePath(path: string, from: string, to: string): string {
   if (!path || !isInside(path, from)) return path;
   const tail = path.trim().replace(/[\\/]+$/, "").slice(from.trim().replace(/[\\/]+$/, "").length);

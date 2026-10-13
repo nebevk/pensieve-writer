@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultLibraryFolder, folderNameProblem, folderOf, groupBooks, isInside, joinPath, lastName, looksSynced, parentFolder, projectFolders, rebasePath, sameFolder, type LibraryEntry } from "./library";
+import { defaultLibraryFolder, folderNameProblem, folderOf, groupBooks, isInside, joinPath, lastName, looksSynced, parentFolder, prefsAfterMove, prefsWithoutProject, projectFolders, rebasePath, sameFolder, type LibraryEntry } from "./library";
 
 describe("the library folder", () => {
   it("knows folders that a sync service keeps copying", () => {
@@ -112,5 +112,44 @@ describe("a new project's place", () => {
     expect(projectFolders(entries, "sl").map((place) => place.label)).toEqual(["Romani", "Romani / Cesta", "Romani / Cesta / Globoko", "Romani / Čarovnice"]);
     // Only as deep as the tree lists.
     expect(projectFolders(entries, "sl", 2).map((place) => place.label)).toEqual(["Romani", "Romani / Cesta", "Romani / Čarovnice"]);
+  });
+});
+
+describe("the settings, when the library changes", () => {
+  const LIB = "C:/Users/Eva/Documents/Pensieve";
+  const before = {
+    projectPath: `${LIB}/Romani/Čarovnica/pensieve.db`,
+    lastOpened: { path: `${LIB}/Romani/Čarovnica/pensieve.db`, writingId: "w", chapterId: "c" },
+    samples: { "zgodbe-ob-reki": `${LIB}/Romani/Zgodbe ob reki/pensieve.db`, "the-lantern-series": `${LIB}/Primeri/The Lantern series/pensieve.db` },
+    knownProjects: [
+      { path: `${LIB}/Romani/Čarovnica/pensieve.db`, title: "Čarovnica" },
+      { path: `${LIB}/Romani in zgodbe/Stara/pensieve.db`, title: "Stara" },
+      { path: "C:/Users/Eva/Desktop/Drugje/pensieve.db", title: "Drugje" },
+    ],
+    wordCopyFolder: `${LIB}/Romani/Word`,
+    wordCopies: { [`${LIB}/Romani/Word/Čarovnica.docx`]: { stamp: "1", signature: "s", writing: "w" } },
+  };
+
+  it("follow a renamed folder: every path in it, and its projects named by their folders", () => {
+    const after = prefsAfterMove(before, `${LIB}/Romani`, `${LIB}/Romani in zgodbe`);
+    expect(after.projectPath).toBe(`${LIB}/Romani in zgodbe/Čarovnica/pensieve.db`);
+    expect(after.lastOpened).toEqual({ path: `${LIB}/Romani in zgodbe/Čarovnica/pensieve.db`, writingId: "w", chapterId: "c" });
+    expect(after.samples).toEqual({ "zgodbe-ob-reki": `${LIB}/Romani in zgodbe/Zgodbe ob reki/pensieve.db`, "the-lantern-series": `${LIB}/Primeri/The Lantern series/pensieve.db` });
+    // One remembered where the folder now is was moved or deleted in Explorer: nothing can be there.
+    expect(after.knownProjects).toEqual([
+      { path: `${LIB}/Romani in zgodbe/Čarovnica/pensieve.db`, title: "Čarovnica" },
+      { path: "C:/Users/Eva/Desktop/Drugje/pensieve.db", title: "Drugje" },
+    ]);
+    expect(after.wordCopyFolder).toBe(`${LIB}/Romani in zgodbe/Word`);
+    expect(Object.keys(after.wordCopies)).toEqual([`${LIB}/Romani in zgodbe/Word/Čarovnica.docx`]);
+  });
+
+  it("let a project go: off the list, its example offered anew, Continue no longer at it", () => {
+    const after = prefsWithoutProject(before, `${LIB}/ROMANI/čarovnica/PENSIEVE.DB`.replace("čarovnica", "Čarovnica"));
+    expect(after.knownProjects.map((item) => item.title)).toEqual(["Stara", "Drugje"]);
+    expect(after.lastOpened).toEqual({ path: "", writingId: "", chapterId: "" });
+    const example = prefsWithoutProject(before, `${LIB}/Romani/Zgodbe ob reki/pensieve.db`);
+    expect(Object.keys(example.samples)).toEqual(["the-lantern-series"]);
+    expect(example.lastOpened).toBe(before.lastOpened);
   });
 });
