@@ -94,7 +94,7 @@ check("an untitled chapter goes by its number on the card", hello.test(untitled)
 await page.click(".home .lang");
 await sleep(600);
 const sl = await greeting();
-check("Slovenian greeting", /^(Dobro jutro|Dober dan|Dober večer|Spet pozno), Eva\. \S.*[.!]$/.test(sl) && !sl.includes("čaka") && (await running()) === "The Lantern House · Pogl. V · str. 1", `${sl} | ${await running()}`);
+check("Slovenian greeting", /^(Dobro jutro|Dober dan|Dober večer|Spet pozno), Eva\. \S.*[.!]$/.test(sl) && !/(^|\s)čaka(\.|\s|$)/u.test(sl) && (await running()) === "The Lantern House · Pogl. V · str. 1", `${sl} | ${await running()}`);
 await page.clickText(".home button", "Nadaljuj s pisanjem");
 await until(`!!document.querySelector(".paper .ProseMirror")`);
 await sleep(400);
