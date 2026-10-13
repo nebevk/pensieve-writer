@@ -209,7 +209,7 @@
     <div class="intro">
       <div class="hero">
         <!-- The large mark (owner's design, 13 October): it moves, except in Gentle mode. -->
-        <span class="glow" aria-hidden="true"><BrandMark {appearance} size={108} animated={!prefs.gentle} /></span>
+        <span class="glow" aria-hidden="true"><BrandMark {appearance} size={136} animated={!prefs.gentle} /></span>
         <div class="hello">
           <p class="date">
             {new Date(now).toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long" })} ·
@@ -220,10 +220,10 @@
             <p>{quote.text}</p>
             <footer>{quote.reference}</footer>
           </blockquote>
+          <!-- Then her greeting, small and in line with the verse, with a few words of encouragement where the chapter waiting was. -->
+          <h1 class="greeting"><strong>{hello(now)}</strong> {cheer[ui.language]}</h1>
         </div>
       </div>
-      <!-- Then her greeting, small, with a few words of encouragement where the chapter waiting was. -->
-      <h1 class="greeting"><strong>{hello(now)}</strong> {cheer[ui.language]}</h1>
       <div class="stats">
         <div>
           <p class="value">{num(wordsToday)}</p>
@@ -361,14 +361,17 @@
     gap: 22px;
   }
 
-  /* A soft light round the mark, in the look's accent; it reaches a little past the column, as light does. */
+  /*
+   * A soft light round the mark, in the look's accent; it reaches past the column, as light does. The mark's
+   * basin starts 13 of its 100 units in: the light moves out so the basin stands on the column's left edge.
+   */
   .glow {
     display: grid;
     place-items: center;
     flex: none;
-    width: 150px;
-    height: 150px;
-    margin: -16px -4px -16px -22px;
+    width: 184px;
+    height: 184px;
+    margin: -24px -6px -24px -42px;
     border-radius: 50%;
     background: radial-gradient(closest-side, color-mix(in srgb, var(--pv-accent) 17%, transparent), color-mix(in srgb, var(--pv-accent) 6%, transparent) 72%, transparent);
   }
@@ -410,9 +413,9 @@
     line-height: 1.25;
   }
 
-  /* Her greeting, small under it, the hello a little stronger than the words of encouragement. */
+  /* Her greeting, small under the verse, the hello a little stronger than the words of encouragement. */
   .greeting {
-    margin: 20px 0 0;
+    margin: 14px 0 0;
     font-family: var(--pv-font-manuscript);
     font-size: 17px;
     font-weight: 400;
