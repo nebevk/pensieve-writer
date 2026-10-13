@@ -48,7 +48,8 @@
   import type { CommentInfo } from "$lib/editor/comments";
   import type { ProjectRequest } from "$lib/views/NewProjectWindow.svelte";
   import type { SearchPlace, SearchSource } from "$lib/views/searchAll";
-  import { addWriting, checkpointDatabase, duplicateWriting, eraseWriting, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readProjectText, moveProjectFile, readSnapshotChapters, rememberPersonalWord, renameWritingFolder, restoreChapter, restoreFromBackup, setShelf, setWritingFields, setWritingOrder, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
+  import { otherCards, type IdeaCard } from "$lib/views/ideas";
+  import { addWriting, checkpointDatabase, duplicateWriting, eraseWriting, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, moveProjectFile, readSnapshotChapters, rememberPersonalWord, renameWritingFolder, restoreChapter, restoreFromBackup, setShelf, setWritingFields, setWritingOrder, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
   import type { Editor as TiptapEditor } from "@tiptap/core";
   import type { NodeSelection } from "@tiptap/pm/state";
   import { lazy } from "$lib/lazy.svelte";
@@ -67,6 +68,7 @@
   const NewProjectPart = lazy(() => import("$lib/views/NewProjectWindow.svelte"));
   const QuickIdeaPart = lazy(() => import("$lib/views/QuickIdea.svelte"));
   const SearchPart = lazy(() => import("$lib/views/SearchWindow.svelte"));
+  const IdeasPart = lazy(() => import("$lib/views/IdeasView.svelte"));
 
   // The writing open in Write: one of the open project's writings, with all its chapters.
   let writing = $state<Writing | null>(null);
@@ -144,7 +146,7 @@
   let writeNotice = $state("");
   let noticeTimer = 0;
   // The app opens on Home, as in the design; "Continue writing" goes back to the last chapter.
-  let view = $state<"write" | "home" | "notes" | "todos" | "outline" | "book" | "settings">("home");
+  let view = $state<"write" | "home" | "notes" | "ideas" | "todos" | "outline" | "book" | "settings">("home");
   let backupMessage = $state("");
   let projectLocation = $state("");
   let dictionary = $state<{ language: WritingLanguage; word: string }[]>([]);
@@ -348,7 +350,7 @@
       }
       requestIdleCallback(
         () => {
-          for (const part of [EditorPart, CommentRailPart, NotesPart, TodosPart, SettingsPart, OutlinePart, BookPart, HistoryPart, NotePanePart, SelectionBarPart, NewProjectPart, QuickIdeaPart, SearchPart]) {
+          for (const part of [EditorPart, CommentRailPart, NotesPart, TodosPart, SettingsPart, OutlinePart, BookPart, HistoryPart, NotePanePart, SelectionBarPart, NewProjectPart, QuickIdeaPart, SearchPart, IdeasPart]) {
             // A part that fails here is tried again, and reported, when it is shown.
             part.load().catch(() => undefined);
           }
@@ -437,7 +439,9 @@
     // A quick idea from anywhere (owner, 12 October); Word's Ctrl+Shift+N, a style, isn't Pensieve's.
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "n") {
       event.preventDefault();
-      if (projectId) quickIdeaOpen = true;
+      // In the Ideas tab, the new idea is made right there, beside the cards.
+      if (view === "ideas") ideasCreate = { at: Date.now() };
+      else if (projectId) quickIdeaOpen = true;
       return;
     }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
@@ -2097,6 +2101,54 @@
     untrack(() => showNote(id));
   });
 
+  /** The Ideas tab's requests: a new idea (Ctrl+Shift+N there), and an idea to open once its project opened. */
+  let ideasCreate = $state<{ at: number } | null>(null);
+  let ideaOpen = $state<{ id: string; at: number } | null>(null);
+
+  /** Every other project's ideas, for the Ideas tab's All projects: only read, and let go at once. */
+  async function readOtherIdeas(progress: (done: number, total: number) => void): Promise<{ cards: IdeaCard[]; unread: string[] }> {
+    const open = (projectLocation || prefs.projectPath).toLowerCase();
+    const paths: string[] = [];
+    const seen = new Set<string>([open]);
+    const add = (path: string) => {
+      const key = path.trim().toLowerCase();
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        paths.push(path);
+      }
+    };
+    for (const path of projectFiles(sortEntries(libraryEntries, locale()))) add(path);
+    for (const known of prefs.knownProjects) add(known.path);
+    const cards: IdeaCard[] = [];
+    const unread: string[] = [];
+    for (const [index, path] of paths.entries()) {
+      progress(index, paths.length);
+      try {
+        // A project that isn't there any more is left out: opening its file would make an empty one.
+        if (!(await invoke<boolean>("project_file_exists", { path }))) continue;
+        cards.push(...otherCards(await readProjectIdeas(path), path, projectName(path)));
+      } catch {
+        unread.push(projectName(path));
+      }
+    }
+    progress(paths.length, paths.length);
+    return { cards, unread };
+  }
+
+  /** Another project's idea, opened in its project to be written there; the Ideas tab stays. */
+  async function openIdeaInItsProject(card: IdeaCard) {
+    try {
+      if (!(await invoke<boolean>("project_file_exists", { path: card.path }))) {
+        throw new Error(t("projectFolderMissing", { path: folderOf(card.path).path }));
+      }
+      await useProjectFile(card.path, {}, false);
+      view = "ideas";
+      ideaOpen = { id: card.id, at: Date.now() };
+    } catch (error) {
+      saveStatus = { state: "error", message: errorMessage(error) };
+    }
+  }
+
   /** The Quick idea window, open from anywhere with Ctrl+Shift+N. */
   let quickIdeaOpen = $state(false);
 
@@ -3535,8 +3587,6 @@
             } else void continueWriting(true);
           }}
           onOpenTodos={() => (view = "todos")}
-          onIdea={addIdea}
-          onOpenIdeas={() => (view = "notes")}
           onAmbience={() => {
             settingsSection = "Ambience";
             settingsReturn = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -3562,6 +3612,25 @@
           onSaveError={reportSaveError}
           onShowTodos={() => (view = "todos")}
         />
+        {/key}
+      {:else if view === "ideas" && IdeasPart.current}
+        {@const IdeasView = IdeasPart.current}
+        {#key projectId}
+          <IdeasView
+            {projectId}
+            projectPath={projectLocation || prefs.projectPath}
+            projectTitle={projectName(projectLocation || prefs.projectPath) || shelf?.title || ""}
+            {writingId}
+            language={writing.language}
+            loadOthers={readOtherIdeas}
+            createRequest={ideasCreate}
+            onCreateHandled={() => (ideasCreate = null)}
+            openRequest={ideaOpen}
+            onOpenHandled={() => (ideaOpen = null)}
+            onOpenElsewhere={(card) => void openIdeaInItsProject(card)}
+            onOpenInNotes={openNoteInView}
+            onSaveError={reportSaveError}
+          />
         {/key}
       {:else if view === "todos" && TodosPart.current}
         {@const Todos = TodosPart.current}

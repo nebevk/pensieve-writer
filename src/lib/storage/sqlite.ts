@@ -739,22 +739,50 @@ async function readText(db: Database): Promise<ProjectText> {
   return { writings, notes };
 }
 
+/** An idea of a project, as the Ideas tab lists another project's: read, never written from there. */
+export type IdeaText = { id: string; title: string; text: string; aliases: string; createdAt: string };
+
+async function readIdeas(db: Database): Promise<IdeaText[]> {
+  try {
+    const rows = await db.select<Record<string, unknown>[]>("SELECT * FROM notes WHERE category = 'ideas'");
+    return rows.map((row) => ({
+      id: String(row.id),
+      title: String(row.title ?? ""),
+      text: String(row.plain_text ?? ""),
+      aliases: String(row.aliases ?? ""),
+      createdAt: String(row.created_at ?? ""),
+    }));
+  } catch {
+    // A file from before notes.
+    return [];
+  }
+}
+
 /**
- * A project's text, for the search across projects. The open one is read through its own connection, as
- * opening its file again would take that over; any other is opened, read and let go at once, as Windows
- * won't move a folder while a file in it is open. Only a file that is there is asked for: one that isn't
- * would be made.
+ * Reads a project by its file. The open one is read through its own connection, as opening its file again
+ * would take that over; any other is opened, read and let go at once, as Windows won't move a folder while a
+ * file in it is open. Only a file that is there is asked for: one that isn't would be made.
  */
-export async function readProjectText(path: string): Promise<ProjectText> {
+async function readProject<T>(path: string, read: (db: Database) => Promise<T>): Promise<T> {
   const key = (value: string) => value.trim().replace(/\//g, "\\").toLowerCase();
-  if (key(path) === key(openPath ?? loadPrefs().projectPath)) return enqueue(async () => readText(await database()));
+  if (key(path) === key(openPath ?? loadPrefs().projectPath)) return enqueue(async () => read(await database()));
   const url = `sqlite:${path}`;
   const db = await Database.load(url);
   try {
-    return await readText(db);
+    return await read(db);
   } finally {
     await db.close(url).catch(() => undefined);
   }
+}
+
+/** A project's text, for the search across projects. */
+export function readProjectText(path: string): Promise<ProjectText> {
+  return readProject(path, readText);
+}
+
+/** A project's ideas, for the Ideas tab's All projects. */
+export function readProjectIdeas(path: string): Promise<IdeaText[]> {
+  return readProject(path, readIdeas);
 }
 
 /** The open project's shelf as saved now, after a writing was added, moved, renamed or deleted. */

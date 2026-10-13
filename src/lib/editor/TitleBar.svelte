@@ -5,7 +5,7 @@
   import WindowControls from "./WindowControls.svelte";
   import UpdatePill, { type UpdateOffer } from "./UpdatePill.svelte";
 
-  type ViewId = "write" | "notes" | "todos" | "outline" | "book" | "home" | "settings";
+  type ViewId = "write" | "notes" | "ideas" | "todos" | "outline" | "book" | "home" | "settings";
 
   let {
     project = "",
@@ -46,6 +46,8 @@
     { id: "outline" as const, label: t("outline") },
     { id: "book" as const, label: t("book") },
     { id: "notes" as const, label: t("notes") },
+    // Ideas (owner, 13 October): every idea as a card, this project's or every project's.
+    { id: "ideas" as const, label: t("groupIdeas") },
   ]);
   const current = $derived(view === "todos" ? "notes" : view);
 </script>

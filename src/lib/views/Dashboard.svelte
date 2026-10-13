@@ -34,8 +34,6 @@
     onStartProject,
     onOpenBook,
     onOpenTodos,
-    onIdea,
-    onOpenIdeas,
     onAmbience,
     onSaveError,
     currentPath = "",
@@ -65,9 +63,6 @@
     onStartProject: () => void;
     onOpenBook: (path: string) => void;
     onOpenTodos: () => void;
-    /** Keeps a quick idea among the open project's Ideas; false when it couldn't be kept. */
-    onIdea: (text: string) => Promise<boolean>;
-    onOpenIdeas: () => void;
     /** Opens Settings at the ambience. */
     onAmbience: () => void;
     onSaveError?: (message: string) => void;
@@ -87,31 +82,8 @@
   const NEXT_STATE: Record<Task["todoState"], Task["todoState"]> = { todo: "doing", doing: "done", done: "todo" };
   // A short list on Home; the rest are a link away.
   const TODOS_SHOWN = 5;
-  // The latest ideas under the box she jots them in.
-  const IDEAS_SHOWN = 3;
 
   let tasks = $state<Task[]>([]);
-  let idea = $state("");
-  let keepingIdea = $state(false);
-  let ideaKept = $state(false);
-  let ideaFocused = $state(false);
-  let ideaKeptTimer = 0;
-  const ideas = $derived(
-    library.notes.filter((note) => note.category === "ideas").sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)),
-  );
-
-  /** Keeps what she jotted down among the project's Ideas, and says so for a moment. */
-  async function keepIdea() {
-    if (!idea.trim() || keepingIdea) return;
-    keepingIdea = true;
-    const kept = await onIdea(idea);
-    keepingIdea = false;
-    if (!kept) return;
-    idea = "";
-    ideaKept = true;
-    window.clearTimeout(ideaKeptTimer);
-    ideaKeptTimer = window.setTimeout(() => (ideaKept = false), 3000);
-  }
   let message = $state("");
 
   const chapters = $derived([...writing.chapters].sort((a, b) => a.position - b.position));
@@ -286,44 +258,6 @@
         {sound ? t("ambienceStarts", { sound: t(sound.key) }) : t("ambienceSilent")} ·
         <button type="button" onclick={onAmbience}>{t("change")}</button>
       </p>
-    </div>
-
-    <!-- Quick ideas (owner, 12 October): jotted down here, kept among the open project's Ideas. -->
-    <div class="ideas">
-      <div class="head">
-        <h2>{t("groupIdeas")}</h2>
-        <span class="count">{ideas.length}</span>
-        <button type="button" class="link" onclick={onOpenIdeas}>{t("allIdeas")}</button>
-      </div>
-      <form
-        class="capture"
-        onsubmit={(event) => {
-          event.preventDefault();
-          void keepIdea();
-        }}
-      >
-        <Icon name="lightbulb" />
-        <input
-          bind:value={idea}
-          placeholder={t("ideaPlaceholder")}
-          aria-label={t("quickIdea")}
-          disabled={keepingIdea}
-          onfocus={() => (ideaFocused = true)}
-          onblur={() => (ideaFocused = false)}
-        />
-      </form>
-      <!-- Where it goes, while she writes one; that it went there, just after. -->
-      <p class="where" class:shown={ideaKept || ideaFocused || idea !== ""} aria-live="polite">
-        {ideaKept ? t("ideaSaved", { project: projectTitle }) : t("ideaGoesTo", { project: projectTitle })}
-      </p>
-      {#each ideas.slice(0, IDEAS_SHOWN) as note (note.id)}
-        <button type="button" class="idea" onclick={() => actions.openNote(note.id)}>
-          <span class="name">{note.title}</span>
-          <span class="when">{ago(note.createdAt)}</span>
-        </button>
-      {:else}
-        <p class="empty">{t("noIdeasYet")}</p>
-      {/each}
     </div>
 
     <div class="todos">
@@ -676,82 +610,6 @@
 
   .link:hover {
     text-decoration: underline;
-  }
-
-  .capture {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    height: 38px;
-    padding: 0 12px;
-    border: 1px solid var(--pv-line-strong);
-    border-radius: var(--pv-radius-sm);
-    background: var(--pv-field);
-  }
-
-  .capture:focus-within {
-    border-color: var(--pv-accent);
-  }
-
-  .capture :global(svg) {
-    flex: none;
-    width: 16px;
-    height: 16px;
-    color: var(--pv-accent);
-  }
-
-  .capture input {
-    flex: 1;
-    min-width: 0;
-    border: 0;
-    padding: 0;
-    background: transparent;
-    color: var(--pv-text);
-    font-size: var(--pv-text-base);
-    outline: none;
-  }
-
-  /* A line kept in place, so the list below doesn't move when it shows. */
-  .where {
-    margin: 6px 0 2px;
-    font-size: 12px;
-    color: var(--pv-text-faint);
-    visibility: hidden;
-  }
-
-  .where.shown {
-    visibility: visible;
-  }
-
-  .idea {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-    width: 100%;
-    padding: 5px 0;
-    border: 0;
-    background: none;
-    color: var(--pv-text);
-    text-align: left;
-    font-size: var(--pv-text-md);
-  }
-
-  .idea .name {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-  .idea .when {
-    flex: none;
-    font-size: 12px;
-    color: var(--pv-text-faint);
-  }
-
-  .idea:hover .name {
-    color: var(--pv-accent);
   }
 
   .empty {

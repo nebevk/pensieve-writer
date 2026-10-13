@@ -99,7 +99,8 @@ said), Not started, Dropped. IDs are fixed; code comments and the backlog refer 
 | NT-6 | `[[Links]]` between notes, and from words on the page to notes, with "Linked from" | S | Done |
 | NT-7 | Notes and to-dos while writing, in one panel beside the page, so the page stays free: Notes, To-dos or Goals, one at a time. Notes lists the chapter's notes first (with how often it mentions them), then every other note, with a search through all of them and a + for a new one. A note opens there to read and change its kind, name, description and text, with back to the list, the previous and next note, and "Open in Notes" for the rest; a note opened anywhere while writing (the library, a linked name on the page, the selection bar) opens there too, never in a window. To-dos lists the chapter's or the whole project's, each with an add field, the board a link away; the library's To-dos opens it on the whole project's | S | Done |
 | NT-8 | A visual map of ideas | C | Not started |
-| NT-9 | Quick ideas (owner, 12 October): jotted down in Home's Ideas box, or in a small window that Ctrl+Shift+N opens from anywhere, and kept as notes among the open project's Ideas, tied to no chapter. Home lists the newest three; one opens beside the page, and All ideas opens Notes | S | Done |
+| NT-9 | Quick ideas (owner, 12 October): a small window that Ctrl+Shift+N opens from anywhere (in the Ideas tab, a new idea right there) keeps what she jots down as a note among the open project's Ideas, tied to no chapter | S | Done |
+| NT-10 | An Ideas tab (owner, 13 October), after Notes: the ideas as cards, newest first, a link's words shown plainly, with one open beside them to write in, its links both ways, Open in Notes, and Delete after asking. New idea, and search by their words. This project, or All projects, which adds every other project's ideas, named by project, only to read; one opens in its own project to be written there | S | Done |
 
 ### 4.4 Views
 
@@ -228,6 +229,10 @@ Coziness is the top product priority, within the performance budget in Section 5
 The owner's decisions that shaped the app, newest first. Each replaced what the original plan or the
 design system said.
 
+- **13 Oct:** Home has no Ideas box: ideas have their own tab, as cards with one open beside, This project or
+  All projects (other projects' ideas only read, written in their own project), and links between them as
+  [[links]], drawn on a map. The Notes group Zamisli is Ideje. The floating bar has the looks as icons, and
+  the sound and the keys' sound with their volumes.
 - **12 Oct:** Chapter statuses dropped, so a writing's progress on Home is its words against its target.
   Eva's laptop runs Windows 10 with 8 GB of memory. A bar above selected text, with formatting, a comment,
   a note and find, and the selected words counted, as in Word. Notes and to-dos open in the panel beside
