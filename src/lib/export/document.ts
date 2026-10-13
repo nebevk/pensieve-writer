@@ -1,4 +1,5 @@
 import type { Chapter, DocumentJson } from "$lib/model";
+import { highlightColour, textColour } from "$lib/editor/colours";
 
 /** The Book view, Markdown, plain-text and HTML exports. Word files are written by word.ts. */
 
@@ -10,6 +11,10 @@ export type Inline = {
   strike?: boolean;
   superscript?: boolean;
   highlight?: boolean;
+  /** A highlight's colour when it isn't the yellow every highlight had before TOOL-5, as CSS. */
+  highlightColor?: string;
+  /** Text in one of the toolbar's colours, as CSS. */
+  color?: string;
   href?: string;
   /** A line break inside the paragraph (Shift+Enter). */
   lineBreak?: boolean;
@@ -34,7 +39,7 @@ type JsonNode = {
   type?: string;
   text?: string;
   attrs?: { level?: number; textAlign?: string; src?: string; alt?: string; text?: string };
-  marks?: { type?: string; attrs?: { href?: string } }[];
+  marks?: { type?: string; attrs?: { href?: string; color?: string } }[];
   content?: JsonNode[];
 };
 
@@ -65,6 +70,8 @@ function inlinesFrom(nodes: JsonNode[] | undefined, notes: Notes): Inline[] {
         strike: marks.has("strike"),
         superscript: marks.has("superscript"),
         highlight: marks.has("highlight"),
+        highlightColor: marks.has("highlight") && highlightColour(marks.get("highlight")?.attrs?.color).name !== "yellow" ? highlightColour(marks.get("highlight")?.attrs?.color).css : undefined,
+        color: marks.has("textColor") ? textColour(marks.get("textColor")?.attrs?.color).css : undefined,
         href: marks.get("link")?.attrs?.href || undefined,
       },
     ];
@@ -143,7 +150,8 @@ function inlineHtml(inlines: Inline[]): string {
       if (inline.underline) text = `<u>${text}</u>`;
       if (inline.strike) text = `<s>${text}</s>`;
       if (inline.superscript) text = `<sup>${text}</sup>`;
-      if (inline.highlight) text = `<mark>${text}</mark>`;
+      if (inline.color) text = `<span style="color: ${inline.color}">${text}</span>`;
+      if (inline.highlight) text = inline.highlightColor ? `<mark style="background: ${inline.highlightColor}">${text}</mark>` : `<mark>${text}</mark>`;
       if (inline.href && SAFE_LINK.test(inline.href)) text = `<a href="${escapeAttribute(inline.href)}">${text}</a>`;
       return text;
     })

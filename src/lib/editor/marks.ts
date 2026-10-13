@@ -1,4 +1,5 @@
 import { Extension, Mark, Node, mergeAttributes } from "@tiptap/core";
+import { highlightColour, textColour } from "./colours";
 
 export const Superscript = Mark.create({
   name: "superscript",
@@ -6,27 +7,36 @@ export const Superscript = Mark.create({
   renderHTML: ({ HTMLAttributes }) => ["sup", mergeAttributes(HTMLAttributes), 0],
 });
 
+/** A highlight in one of the toolbar's colours (TOOL-5); one from before it had a colour is yellow. */
 export const Highlight = Mark.create({
   name: "highlight",
+  addAttributes() {
+    return {
+      color: {
+        default: "yellow",
+        parseHTML: (element) => highlightColour(element.getAttribute("data-color")).name,
+        renderHTML: (attributes) => ({ "data-color": highlightColour(attributes.color).name, style: `background: ${highlightColour(attributes.color).css}; color: inherit` }),
+      },
+    };
+  },
   parseHTML: () => [{ tag: "mark" }],
-  renderHTML: ({ HTMLAttributes }) => [
-    "mark",
-    mergeAttributes(HTMLAttributes, { style: "background: #f2dc8f; color: inherit" }),
-    0,
-  ],
+  renderHTML: ({ HTMLAttributes }) => ["mark", mergeAttributes(HTMLAttributes), 0],
 });
 
+/** Text in one of the toolbar's colours (TOOL-5); text from before it had a choice is in the look's accent. */
 export const TextColor = Mark.create({
   name: "textColor",
+  addAttributes() {
+    return {
+      color: {
+        default: "accent",
+        parseHTML: (element) => textColour(element.getAttribute("data-color")).name,
+        renderHTML: (attributes) => ({ "data-color": textColour(attributes.color).name, style: `color: ${textColour(attributes.color).css}` }),
+      },
+    };
+  },
   parseHTML: () => [{ tag: "span[data-color]" }],
-  renderHTML: ({ HTMLAttributes }) => [
-    "span",
-    mergeAttributes(HTMLAttributes, {
-      "data-color": "accent",
-      style: "color: var(--pv-ink-accent)",
-    }),
-    0,
-  ],
+  renderHTML: ({ HTMLAttributes }) => ["span", mergeAttributes(HTMLAttributes), 0],
 });
 
 export const LinkMark = Mark.create({

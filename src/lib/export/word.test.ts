@@ -38,6 +38,8 @@ function richChapter(): DocumentJson {
         text("2", [{ type: "superscript" }]),
         text(" marked", [{ type: "highlight" }]),
         text(" accent", [{ type: "textColor" }]),
+        text(" red", [{ type: "textColor", attrs: { color: "red" } }]),
+        text(" green", [{ type: "highlight", attrs: { color: "green" } }]),
         text(" link", [{ type: "link", attrs: { href: "https://example.com" } }]),
         text(" slovensko", [{ type: "textLanguage", attrs: { lang: "sl" } }]),
         text(" line one"),
@@ -112,6 +114,9 @@ describe("Word export", () => {
     expect(xml).toContain('w:vertAlign w:val="superscript"');
     expect(xml).toContain('w:rStyle w:val="PensieveHighlight"');
     expect(xml).toContain('w:rStyle w:val="PensieveAccent"');
+    expect(xml).toContain('w:rStyle w:val="PensieveRed"');
+    expect(xml).toContain('w:rStyle w:val="PensieveHighlightGreen"');
+    expect(xml).toContain('w:fill="CFE8C4"');
     expect(xml).toContain("<w:hyperlink");
     expect(xml).toContain('w:lang w:val="sl-SI"');
     expect(xml).toMatch(/line one<\/w:t>[\s\S]*?<w:br\/>[\s\S]*?line two/);
@@ -265,6 +270,12 @@ describe("Word import", () => {
     expect(marked(nodes, "superscript")).toContain("2");
     expect(marked(nodes, "highlight")).toContain(" marked");
     expect(marked(nodes, "textColor")).toContain(" accent");
+    // Each colour comes back as it went (TOOL-5): the accent and yellow of files from before, and the rest.
+    const colourOf = (words: string, mark: string) => all(nodes).find((node) => node.text === words)?.marks?.find((item) => item.type === mark)?.attrs?.color;
+    expect(colourOf(" accent", "textColor")).toBe("accent");
+    expect(colourOf(" red", "textColor")).toBe("red");
+    expect(colourOf(" marked", "highlight")).toBe("yellow");
+    expect(colourOf(" green", "highlight")).toBe("green");
     const link = all(nodes).find((node) => node.text === " link");
     expect(link?.marks?.find((mark) => mark.type === "link")?.attrs?.href).toBe("https://example.com");
     expect(all(nodes).some((node) => node.type === "hardBreak")).toBe(true);

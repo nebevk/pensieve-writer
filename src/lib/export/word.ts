@@ -25,6 +25,7 @@ import {
 import type { Chapter, DocumentJson, WritingLanguage } from "$lib/model";
 import { startsPart } from "$lib/chapters/page";
 import { WORD_STYLES } from "./wordStyles";
+import { HIGHLIGHTS, TEXT_COLOURS, highlightColour, textColour } from "$lib/editor/colours";
 
 /**
  * Writes a book as a Word document that looks like the page in Pensieve: the manuscript font, the
@@ -72,7 +73,6 @@ const INK_2 = "3D3731";
 const ACCENT = "A94F2E";
 const META = "A0968A";
 const RULE = "C98A6C";
-const HIGHLIGHT = "F2DC8F";
 
 const PAGE_WIDTH = 11906; // A4, in twips
 const PAGE_HEIGHT = 16838;
@@ -187,8 +187,10 @@ function runOptions(marks: JsonMark[], ctx: Context): RunOptions {
   const has = (type: string) => marks.some((mark) => mark.type === type);
   const lang = marks.find((mark) => mark.type === "textLanguage")?.attrs?.lang;
   const language = lang === "sl" || lang === "en" ? { value: languageTag(lang) } : ctx.language;
-  // A run takes one character style; it lets the importer bring the mark back.
-  const style = has("highlight") ? WORD_STYLES.highlight : has("textColor") ? WORD_STYLES.accent : undefined;
+  // A run takes one character style, one per colour (TOOL-5); it lets the importer bring the mark back.
+  const lit = has("highlight") ? highlightColour(marks.find((mark) => mark.type === "highlight")?.attrs?.color) : null;
+  const ink = has("textColor") ? textColour(marks.find((mark) => mark.type === "textColor")?.attrs?.color) : null;
+  const style = lit ? lit.style : ink ? ink.style : undefined;
   return {
     style,
     bold: has("bold") || undefined,
@@ -196,8 +198,8 @@ function runOptions(marks: JsonMark[], ctx: Context): RunOptions {
     underline: has("underline") ? {} : undefined,
     strike: has("strike") || undefined,
     superScript: has("superscript") || undefined,
-    color: has("textColor") ? ACCENT : undefined,
-    shading: has("highlight") ? { type: ShadingType.CLEAR, fill: HIGHLIGHT, color: "auto" } : undefined,
+    color: ink ? ink.hex : undefined,
+    shading: lit ? { type: ShadingType.CLEAR, fill: lit.hex, color: "auto" } : undefined,
     font: has("code") ? "Consolas" : undefined,
     language,
   };
@@ -540,14 +542,16 @@ export function buildWordDocument(book: WordBook, look: WordLook, assets: WordAs
           },
         },
       ],
+      // A character style for each highlight and text colour (TOOL-5): yellow's and the accent's are the
+      // Pensieve Highlight and Pensieve Accent of files written before.
       characterStyles: [
-        {
-          id: WORD_STYLES.highlight,
-          name: "Pensieve Highlight",
+        ...HIGHLIGHTS.map((lit) => ({
+          id: lit.style,
+          name: lit.styleName,
           basedOn: "DefaultParagraphFont",
-          run: { shading: { type: ShadingType.CLEAR, fill: HIGHLIGHT, color: "auto" } },
-        },
-        { id: WORD_STYLES.accent, name: "Pensieve Accent", basedOn: "DefaultParagraphFont", run: { color: ACCENT } },
+          run: { shading: { type: ShadingType.CLEAR, fill: lit.hex, color: "auto" } },
+        })),
+        ...TEXT_COLOURS.map((ink) => ({ id: ink.style, name: ink.styleName, basedOn: "DefaultParagraphFont", run: { color: ink.hex } })),
       ],
     },
     numbering: {

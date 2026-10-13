@@ -1,6 +1,7 @@
 import type { MammothDocument, MammothElement } from "mammoth";
 import { createChapter, emptyDocument, type Chapter, type DocumentJson, type Writing } from "$lib/model";
 import { WORD_STYLES } from "./wordStyles";
+import { HIGHLIGHTS, TEXT_COLOURS, highlightFromWord } from "$lib/editor/colours";
 import { t } from "$lib/ui.svelte";
 
 /** A chapter read from a Word file, ready to become part of a book. */
@@ -119,10 +120,12 @@ function runMarks(run: MammothElement, marks: JsonMark[]): JsonMark[] {
   if (run.isUnderline) next = withMark(next, { type: "underline" });
   if (run.isStrikethrough) next = withMark(next, { type: "strike" });
   if (run.verticalAlignment === "superscript") next = withMark(next, { type: "superscript" });
-  if (run.highlight || run.styleId === WORD_STYLES.highlight || run.styleName === "Pensieve Highlight") {
-    next = withMark(next, { type: "highlight" });
-  }
-  if (run.styleId === WORD_STYLES.accent || run.styleName === "Pensieve Accent") next = withMark(next, { type: "textColor" });
+  // Pensieve's colours come back by their character styles (TOOL-5); Word's own highlights as the nearest.
+  const lit = HIGHLIGHTS.find((colour) => run.styleId === colour.style || run.styleName === colour.styleName);
+  if (lit) next = withMark(next, { type: "highlight", attrs: { color: lit.name } });
+  else if (run.highlight) next = withMark(next, { type: "highlight", attrs: { color: highlightFromWord(run.highlight) } });
+  const ink = TEXT_COLOURS.find((colour) => run.styleId === colour.style || run.styleName === colour.styleName);
+  if (ink) next = withMark(next, { type: "textColor", attrs: { color: ink.name } });
   return next;
 }
 

@@ -1,9 +1,11 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import type { Editor } from "@tiptap/core";
+  import { tick } from "svelte";
   import type { ManuscriptFont, PaperMode, PaperSize } from "$lib/prefs";
   import { isLeadLine } from "$lib/chapters/page";
   import { chooseImageFile } from "$lib/storage/backup";
+  import { HIGHLIGHTS, TEXT_COLOURS, highlightColour, textColour, type HighlightColour, type TextColour } from "./colours";
   import { imageType, shrinkImage } from "./imageSize";
   import Icon from "./Icon.svelte";
   import { num, t } from "$lib/ui.svelte";
@@ -96,6 +98,41 @@
   // The quiet row's one Alignment button opens the four alignments (design TOOL-8).
   let alignOpen = $state(false);
   let alignWrap = $state<HTMLElement | undefined>(undefined);
+  // The text colour and highlight the buttons put on, the last ones chosen, as in Word (TOOL-5).
+  let inkChoice = $state<TextColour>("accent");
+  let litChoice = $state<HighlightColour>("yellow");
+  let palette = $state<"ink" | "lit" | null>(null);
+  // Each colour's button, arrow and colours, by which it is.
+  let colourWraps = $state<Record<"ink" | "lit", HTMLElement | undefined>>({ ink: undefined, lit: undefined });
+
+  function putColour(kind: "ink" | "lit", name: string) {
+    palette = null;
+    if (kind === "ink") inkChoice = textColour(name).name;
+    else litChoice = highlightColour(name).name;
+    ready()?.chain().focus().setMark(kind === "ink" ? "textColor" : "highlight", { color: name }).run();
+  }
+
+  // Where the keyboard was when the colours opened: the page after a click, the arrow from the keyboard.
+  let paletteOpener: HTMLElement | null = null;
+
+  async function openPalette(kind: "ink" | "lit", event: MouseEvent) {
+    if (palette === kind) {
+      palette = null;
+      return;
+    }
+    paletteOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    palette = kind;
+    // Opened with Enter or Space, the keyboard goes into the colours, as into a menu.
+    if (event.detail === 0) {
+      await tick();
+      colourWraps[kind]?.querySelector<HTMLButtonElement>(".palette button")?.focus();
+    }
+  }
+
+  function takeColour(kind: "ink" | "lit") {
+    palette = null;
+    ready()?.chain().focus().unsetMark(kind === "ink" ? "textColor" : "highlight").run();
+  }
   let linkOpen = $state(false);
   let notePicker = $state(false);
   let noteChoices = $state<{ id: string; title: string; aliases: string }[]>([]);
@@ -401,10 +438,8 @@
           {@render toolButton(tool)}
         {/each}
         <button type="button" class="tool" title={t("superscript")} aria-label={t("superscript")} onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleMark("superscript").run()}>x²</button>
-        <button type="button" class="tool color" title={t("textColour")} aria-label={t("textColour")} onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleMark("textColor").run()}>A</button>
-        <button type="button" class="tool" title={t("highlight")} aria-label={t("highlight")} onmousedown={(event) => event.preventDefault()} onclick={() => ready()?.chain().focus().toggleMark("highlight").run()}>
-          <span class="swatch"></span>
-        </button>
+        {@render colourTool("ink")}
+        {@render colourTool("lit")}
         <button type="button" class="tool" title={t("clearFormatting")} aria-label={t("clearFormatting")} onmousedown={(event) => event.preventDefault()} onclick={clearFormatting}>
           <Icon name="clearFormat" />
         </button>
@@ -512,11 +547,80 @@
 <svelte:window
   onpointerdown={(event) => {
     if (alignOpen && alignWrap && !alignWrap.contains(event.target as Node)) alignOpen = false;
+    if (palette && !colourWraps[palette]?.contains(event.target as Node)) palette = null;
   }}
   onkeydown={(event) => {
     if (alignOpen && event.key === "Escape") alignOpen = false;
   }}
+  onkeydowncapture={(event) => {
+    // Open colours take Esc before the page does, and give the keyboard back where it was.
+    if (!palette || event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    palette = null;
+    paletteOpener?.focus();
+  }}
 />
+
+<!-- Word's text colour and highlight (TOOL-5): the button puts on the colour last chosen, its arrow opens the rest. -->
+{#snippet colourTool(kind: "ink" | "lit")}
+  {@const ink = kind === "ink"}
+  {@const chosen = ink ? textColour(inkChoice) : highlightColour(litChoice)}
+  {@const colours = ink ? TEXT_COLOURS : HIGHLIGHTS}
+  <span class="colour-wrap" bind:this={colourWraps[kind]}>
+    {@render colourButtons(kind, ink, chosen.css)}
+    {#if palette === kind}
+      <div class="palette" role="menu" aria-label={ink ? t("textColour") : t("highlight")}>
+        <button type="button" class="none" role="menuitem" onmousedown={(event) => event.preventDefault()} onclick={() => takeColour(kind)}>
+          {ink ? t("colourAutomatic") : t("highlightNone")}
+        </button>
+        <div class="chips">
+          {#each colours as colour (colour.name)}
+            <button
+              type="button"
+              class="chip"
+              class:on={colour.name === chosen.name}
+              role="menuitemradio"
+              aria-checked={colour.name === chosen.name}
+              style:background={colour.css}
+              title={t(colour.key)}
+              aria-label={t(colour.key)}
+              onmousedown={(event) => event.preventDefault()}
+              onclick={() => putColour(kind, colour.name)}
+            ></button>
+          {/each}
+        </div>
+      </div>
+    {/if}
+  </span>
+{/snippet}
+
+{#snippet colourButtons(kind: "ink" | "lit", ink: boolean, css: string)}
+  <button
+    type="button"
+    class="tool"
+    class:color={ink}
+    style:--chosen={css}
+    title={ink ? t("textColour") : t("highlight")}
+    aria-label={ink ? t("textColour") : t("highlight")}
+    onmousedown={(event) => event.preventDefault()}
+    onclick={() => putColour(kind, ink ? inkChoice : litChoice)}
+  >
+    {#if ink}A{:else}<span class="swatch"></span>{/if}
+  </button>
+  <button
+    type="button"
+    class="tool arrow"
+    title={ink ? t("textColourMore") : t("highlightMore")}
+    aria-label={ink ? t("textColourMore") : t("highlightMore")}
+    aria-haspopup="menu"
+    aria-expanded={palette === kind}
+    onmousedown={(event) => event.preventDefault()}
+    onclick={(event) => void openPalette(kind, event)}
+  >
+    <Icon name="chevronDown" />
+  </button>
+{/snippet}
 
 {#snippet toolButton(tool: Tool)}
   <button
@@ -769,14 +873,78 @@
 
   .tool.color {
     font-weight: 600;
-    box-shadow: inset 0 -3px var(--pv-accent);
+    box-shadow: inset 0 -3px var(--chosen, var(--pv-accent));
   }
 
   .swatch {
     width: 13px;
     height: 11px;
-    background: var(--pv-highlight, #f2dc8f);
+    background: var(--chosen, var(--pv-highlight, #f2dc8f));
     border: 1px solid var(--pv-highlight-edge, #d9bf63);
+  }
+
+  /* A colour's button and its narrow arrow, as one, and the palette under them (TOOL-5). */
+  .colour-wrap {
+    position: relative;
+    display: flex;
+  }
+
+  .tool.arrow {
+    width: 12px;
+    padding: 0;
+  }
+
+  .tool.arrow :global(svg) {
+    width: 10px;
+    height: 10px;
+  }
+
+  .palette {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: -4px;
+    z-index: 6;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: max-content;
+    padding: 6px;
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-sm);
+    background: var(--pv-chrome);
+    box-shadow: var(--pv-shadow-window);
+  }
+
+  .palette .none {
+    height: 26px;
+    padding: 0 8px;
+    border: 1px solid var(--pv-line);
+    border-radius: var(--pv-radius-xs);
+    background: var(--pv-field);
+    color: var(--pv-text);
+    font-size: var(--pv-text-sm);
+    text-align: left;
+  }
+
+  .palette .none:hover {
+    background: var(--pv-selected);
+  }
+
+  .chips {
+    display: flex;
+    gap: 4px;
+  }
+
+  .chip {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid var(--pv-line-strong);
+    border-radius: 50%;
+  }
+
+  .chip.on {
+    box-shadow: 0 0 0 2px var(--pv-chrome), 0 0 0 3px var(--pv-text);
   }
 
   .tool.text {
@@ -980,7 +1148,7 @@
       padding: 0 3px;
     }
 
-    .expanded .tool:not(.scene, .note-link, .wide) {
+    .expanded .tool:not(.scene, .note-link, .wide, .arrow) {
       width: 26px;
     }
   }
