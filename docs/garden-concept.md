@@ -223,45 +223,10 @@ The toolbar's Goals button becomes Garden (Vrt), with today's words as now.
 
 ## The art brief
 
-### Style
-
-The same as the app's art now: **flat vector, simple geometric shapes, soft gradients at most, no outlines,
-no text, no faces with detail**. Warm, quiet, a little naive, like the Basin mark, the empty-state pictures
-and the Zen scenes (`static/art/`). SVG if the tool can make it (as all the app's art is), else PNG with a
-transparent background at twice the size.
-
-Colours from the mark and the looks:
-
-| What | Colour |
-|---|---|
-| Plant, deep green | #3f7d4e |
-| Plant, light green (the Forest sprout) | #74b350 |
-| Terracotta (Daylight's basin, books, flowers) | #a94f2e |
-| Sun orange (flowers, fruit, lantern light) | #e0975a |
-| Warm flame (fireflies, lantern) | #e9a265, core #f6d2a8 |
-| Lavender (Moonlit, butterflies) | #a99cf5 |
-| Paper cream | #fcf9f2 |
-
-### One canvas for every piece
-
-Every file is **600 × 400** (3:2), drawn so the pieces lie exactly on each other:
-
-- **The basin** sits in the middle at the bottom: centred at x 300, its rim at about y 300, about 160 wide,
-  the same in every file.
-- **The plant** grows up from the basin's middle; at its biggest its crown fits between x 150 and 450 and
-  stays below y 20.
-- **The ground** is a soft band from y 300 down; ground keepsakes stand on it to the left (x 30 to 240) and
-  right (x 360 to 570) of the basin.
-- **The air** above the ground and beside the plant (y 40 to 220) is for birds, butterflies and fireflies.
-- **Each keepsake is its own file on the full canvas**, drawn in its final place, the rest transparent. The
-  app simply lays the files on each other: no positions to work out. Easiest is to draw the whole finished
-  garden once, then save each element as its own layer file.
-
-### The files
-
-Every file, with its exact place, shapes and colours, is in **[garden-art-brief.md](garden-art-brief.md)**,
-written to be pasted into Claude Design: 8 plant stages, 5 backdrops and 5 basins (the basin is its own layer,
-drawn over the plant as the logo does), and the 44 keepsakes, 62 files in all.
+All of it is in **[garden-art-brief.md](garden-art-brief.md)**, written to be pasted into Claude Design: the
+shared rules (the 600 × 400 canvas, the basin from the logo, the flat style, the colours) and ten batches
+covering every file with its place, shapes and colours. That makes 62 files: 8 plant stages, 5 backdrops,
+5 basins (drawn over the plant, as the logo does) and the 44 keepsakes.
 
 ## On Home
 
