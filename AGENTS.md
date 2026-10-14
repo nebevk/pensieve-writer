@@ -24,7 +24,7 @@ Open work, and where the app differs from `design-system/` on purpose: `docs/bac
 - `npm test` : unit tests (Vitest)
 - `npm run test:browser` : the browser checks, the built app driven in headless Edge (see `tests/browser/README.md`); `-- find home` runs only those
 - `npm run build` / `npm run tauri build` : production build / installer
-- `npm run release -- 0.2.0 --notes "…"` : a signed release for GitHub Releases, which installed copies update from (see `docs/releasing.md`; needs the key in `%USERPROFILE%\.tauri`)
+- `npm run release -- 0.2.0 --notes "…" --publish` : a signed release, committed, tagged, pushed and published on GitHub Releases, which installed copies update from (see `docs/releasing.md`; needs the key in `%USERPROFILE%\.tauri` and the GitHub CLI signed in; without `--publish` it only builds)
 
 ## Working style
 - Work in small steps; after each step the app must still run (`npm run tauri dev`).

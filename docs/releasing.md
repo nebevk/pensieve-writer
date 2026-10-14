@@ -7,23 +7,39 @@ opens Pensieve again. Her projects (Documents\Pensieve) and settings stay where 
 
 ## Making a release
 
-1. Make sure the work is committed and the app runs (`npm run check`, `npx vitest run`).
-2. Build it, signed, with a higher version:
+Once, on the computer that builds, install the GitHub CLI and sign in to GitHub with it (it asks a few
+questions: GitHub.com, HTTPS, and to log in with a web browser):
 
-   ```
-   npm run release -- 0.2.0 --notes "Files in the library, a Sunset theme."
-   ```
+```
+winget install --id GitHub.cli
+gh auth login
+```
 
-   This sets the version in `src-tauri/tauri.conf.json`, `package.json`, `package-lock.json` and
-   `src-tauri/Cargo.toml`, builds the installer, signs it, and puts three files in `release/v0.2.0/`:
-   `Pensieve_0.2.0_x64-setup.exe`, its `.sig`, and `latest.json` (what installed copies read).
-3. Commit and push the version change: `git commit -am "chore: release 0.2.0"` and `git push`.
-4. Publish: open the link the script prints (a new release with the tag `v0.2.0`), attach the three files,
-   write what changed, and publish it as a normal release (not a draft or a pre-release: installed copies
-   only see the latest published one).
+Then a release is one command, with a higher version and a line for the update's notes:
 
-   With the GitHub CLI signed in (`gh auth login`), `npm run release -- 0.2.0 --notes "…" --publish` does
-   step 4 itself once everything is committed and pushed.
+```
+npm run release -- 0.5.0 --notes "Word's alignment keys, and Word documents brought in where they act." --publish
+```
+
+It asks first what could stop it halfway, before the long build: the GitHub CLI signed in, everything
+committed, the version new, the type check and the tests (the browser checks take too long, so run them
+before: `npm run test:browser`). Then it:
+
+1. sets the version in `src-tauri/tauri.conf.json`, `package.json`, `package-lock.json` and
+   `src-tauri/Cargo.toml`;
+2. builds the installer, signs it, and puts three files in `release/v0.5.0/`: `Pensieve_0.5.0_x64-setup.exe`,
+   its `.sig`, and `latest.json` (what installed copies read, with the `--notes` line);
+3. commits the version change alone ("chore: release 0.5.0"), tags it `v0.5.0`, and pushes both;
+4. publishes the GitHub release with the three files, as the latest (installed copies only see the latest
+   published one). Its text is `release/v0.5.0/notes.md` when that was written before, else the `--notes`
+   line;
+5. moves `master` up to the release, only ever forward.
+
+A version already built and tagged but not published (one stopped halfway, say) is published as it is with
+`npm run release -- 0.5.0 --publish`.
+
+Without `--publish` the script builds and signs only, and prints how to commit, tag and publish by hand: open
+the link it prints, attach the three files, write what changed, and publish it as a normal release.
 
 A version must be higher than the one installed, or installed copies won't take it.
 
@@ -42,8 +58,9 @@ built with a new key.
 
 ## Notes
 
-- This is the only way releases are made. GitHub builds none: a workflow that built one for each pushed
-  version tag was removed on 12 October, as it would have needed the key on GitHub. GitHub's CI only checks
+- This is the only way releases are made: on the owner's computer, where the key is. GitHub builds none: a
+  workflow that built one for each pushed version tag was removed on 12 October, as it would have needed
+  the key on GitHub. `--publish` only uploads what was built here. GitHub's CI only checks
   each push to `master` (type check, tests, `cargo check`).
 - `npm run tauri build` still builds an installer without the update files (no key needed). Only
   `npm run release` adds `--config src-tauri/tauri.release.conf.json`, which turns them on.
