@@ -44,6 +44,18 @@ export function wordsFor(id: string, text: string): number {
   return words;
 }
 
+/** A number of words as typed: a whole number, where a dot or comma only groups thousands, as in "12.000". */
+export function typedWords(text: string): number {
+  return Number(text.replace(/\D/g, "")) || 0;
+}
+
+/** A goal field's words as typed; the field then shows what was kept, also when that is the goal it had. */
+export function goalFrom(input: HTMLInputElement): number {
+  const goal = typedWords(input.value);
+  input.value = String(goal);
+  return goal;
+}
+
 export function compactWords(words: number): string {
   if (words < 1000) return String(words);
   const thousands = words / 1000;

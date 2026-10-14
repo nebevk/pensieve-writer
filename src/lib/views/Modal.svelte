@@ -51,8 +51,9 @@
       return;
     }
     if (event.key !== "Tab" || !panel) return;
+    // Only what is drawn: a hidden field, such as a file picker's behind its button, takes no keyboard.
     const items = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-      (item) => !item.hasAttribute("disabled") && item.tabIndex !== -1,
+      (item) => !item.hasAttribute("disabled") && item.tabIndex !== -1 && item.getClientRects().length > 0,
     );
     if (items.length === 0) return;
     const first = items[0];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countWords } from "./counts";
+import { countWords, typedWords } from "./counts";
 
 /** How words were counted before: what the counter must still agree with. */
 const bySplitting = (text: string) => (text.trim() ? text.trim().split(/\s+/).length : 0);
@@ -28,5 +28,19 @@ describe("word count", () => {
       const text = Array.from({ length: Math.floor(next() * 30) }, () => pieces[Math.floor(next() * pieces.length)]).join("");
       expect(countWords(text), JSON.stringify(text)).toBe(bySplitting(text));
     }
+  });
+});
+
+describe("words as typed into a goal", () => {
+  it("reads a dot or comma as grouping thousands, as Slovenian and English write them", () => {
+    expect(typedWords("80.000")).toBe(80000);
+    expect(typedWords("80,000")).toBe(80000);
+    expect(typedWords(" 2 500 ")).toBe(2500);
+    expect(typedWords("1500")).toBe(1500);
+  });
+
+  it("is 0 for nothing a number", () => {
+    expect(typedWords("")).toBe(0);
+    expect(typedWords("words")).toBe(0);
   });
 });

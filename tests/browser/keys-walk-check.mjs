@@ -1,5 +1,5 @@
 // A keyboard-only walk through Pensieve (IMP-25), in Slovenian at 1366 × 768: Tab through Home (cards and list),
-// Write (with the notes panel too), Notes, Ideas, Outline, Book, To-dos, Settings, Earlier versions and New
+// Write (with the notes panel too), Notes, Ideas, Outline, Book, To-dos, Settings (each section), Earlier versions and New
 // project. Every stop must have a name, be on screen, and show where the keyboard is (a ring, or its field's
 // frame lit; the page itself shows its caret instead). The windows keep the keyboard inside and Esc gives it
 // back; a library row's menu works from the keyboard alone. Usage: node keys-walk-check.mjs [port]
@@ -116,6 +116,13 @@ await page.key("Enter", "Enter", 13);
 await until(`!!document.querySelector(".window")`);
 await sleep(400);
 await inside("Settings", 20);
+// Every section of Settings, not only the one it opens at.
+const others = await page.run(`[...document.querySelectorAll(".window nav button:not(.active)")].map((button) => button.textContent.trim())`);
+for (const name of others) {
+  await page.clickText(".window nav button", name);
+  await sleep(300);
+  await inside(`Settings → ${name}`, 8);
+}
 await page.key("Escape", "Escape", 27);
 check("Esc closes Settings and gives the keyboard back to its button", (await until(`!document.querySelector(".window")`, 20)) && (await page.run(`document.activeElement?.classList.contains("gear")`)));
 await page.clickText(".titlebar [role=tab]", "Pisanje");

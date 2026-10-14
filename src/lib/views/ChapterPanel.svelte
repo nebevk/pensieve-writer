@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "$lib/editor/Icon.svelte";
+  import { goalFrom } from "$lib/editor/counts";
   import EmptyState from "./EmptyState.svelte";
   import type { Chapter } from "$lib/model";
   import type { Note, Task, TodoState } from "$lib/storage/organize";
@@ -92,14 +93,6 @@
     const index = ordered.findIndex((chapter) => chapter.id === task.chapterId);
     const place = !task.chapterId ? t("wholeProject") : index >= 0 ? `${index + 1} · ${ordered[index].title}` : t("chapter");
     return note ? `${place} · ${note}` : place;
-  }
-
-  /** A goal as typed: a whole number of words, where a dot only groups thousands, as in "12.000". */
-  function goalFrom(input: HTMLInputElement): number {
-    const goal = Number(input.value.replace(/\D/g, "")) || 0;
-    // The field shows what was kept, also when that is the goal it had.
-    input.value = String(goal);
-    return goal;
   }
 
   function add(event: SubmitEvent) {

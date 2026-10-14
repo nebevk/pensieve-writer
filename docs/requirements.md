@@ -163,7 +163,7 @@ Coziness is the top product priority, within the performance budget in Section 5
 | ST-1 | The manuscript's font and size in points (12 to start with), lines 1.5 apart, paragraphs flush left with a little space between them, and the page's width | S | Done |
 | ST-2 | The interface in Slovenian (to start with) or English | S | Done |
 | ST-3 | A daily word goal and the chapter's goal in the Goals list beside the page; the words written today on Home and in the floating bar. No streak | C | Done |
-| ST-4 | A list of the shortcuts (Settings → Shortcuts, Ctrl+/) | C | Done |
+| ST-4 | A list of the shortcuts (Settings → Shortcuts, Ctrl+/), every one there is and tried in the app, in four groups: on the page, finding, anywhere, and the library, chapters and lists. Each key is drawn as it is printed. The numbered list's Ctrl+Shift+7 is left out: on a Slovenian keyboard that is Ctrl+/, which opens the list and leaves the page as it was (14 October) | C | Done |
 | ST-5 | Tutorial tips the first time she reaches Home, Write, Notes and Book, each pointing at what it is about, with "Ne prikazuj več namigov" to stop them; Settings → General turns them on and off and shows them again | S | Done |
 | ST-6 | What opens over the page is a window like Settings: its name and ✕ at the top, its buttons at the foot; Escape or a click beside it closes it, and the keyboard goes back to what opened it. Settings and Earlier versions do; notes and to-dos open in the panel beside the page instead (NT-7) | S | Done |
 | ST-7 | Updates: Pensieve looks for a newer signed version on GitHub Releases, offers it quietly in the window bar, and installs it with one click, keeping her projects and settings | S | Done |

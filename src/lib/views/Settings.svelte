@@ -5,6 +5,7 @@
   import type { KeySoundStyle } from "$lib/keySounds";
   import { ago, num, plural, t } from "$lib/ui.svelte";
   import { LONG_PAGE_WORDS } from "$lib/chapters/page";
+  import { goalFrom } from "$lib/editor/counts";
   import Modal from "./Modal.svelte";
 
   let {
@@ -165,6 +166,62 @@
     { id: "soft", key: "keySoundsSoft" },
   ];
 
+  /**
+   * Every shortcut, as the keys are printed, each one tried in the app (ED-7). " / " parts keys that do
+   * the same or go the other way. Ctrl+Shift+7 for a numbered list isn't here: on a Slovenian keyboard
+   * that is Ctrl+/, this list.
+   */
+  const shortcutGroups: { key: UiKey; rows: [UiKey, string][] }[] = [
+    {
+      key: "shortcutsPage",
+      rows: [
+        ["bold", "Ctrl+B"],
+        ["italic", "Ctrl+I"],
+        ["underline", "Ctrl+U"],
+        ["strikethrough", "Ctrl+Shift+S"],
+        ["undo", "Ctrl+Z"],
+        ["redo", "Ctrl+Y"],
+        ["shortcutSave", "Ctrl+S"],
+        ["shortcutPastePlain", "Ctrl+Shift+V"],
+        ["shortcutLineBreak", "Shift+Enter"],
+        ["bulletedList", "Ctrl+Shift+8"],
+        ["shortcutListLevel", "Tab / Shift+Tab"],
+        ["blockQuote", "Ctrl+Shift+B"],
+        ["shortcutAlign", "Ctrl+Shift+L / E / R / J"],
+        ["comment", "Ctrl+Alt+M"],
+      ],
+    },
+    {
+      key: "shortcutsFind",
+      rows: [
+        ["find", "Ctrl+F"],
+        ["replace", "Ctrl+H"],
+        ["shortcutFindStep", "Enter / Shift+Enter"],
+        ["searchEverything", "Ctrl+Shift+F"],
+      ],
+    },
+    {
+      key: "shortcutsAnywhere",
+      rows: [
+        ["quickIdea", "Ctrl+Shift+N"],
+        ["shortcutThisList", "Ctrl+/"],
+        ["shortcutEscape", "Esc"],
+      ],
+    },
+    {
+      key: "shortcutsLists",
+      rows: [
+        ["shortcutUpDown", "↑ / ↓"],
+        ["shortcutFold", "→ / ←"],
+        ["shortcutOpen", "Enter"],
+        ["rename", "F2"],
+        ["shortcutDelete", "Del"],
+        ["shortcutMenu", "Shift+F10"],
+        ["shortcutMoveChapter", "↑ / ↓"],
+      ],
+    },
+  ];
+
   function widthLabel(width: PageWidth): string {
     if (width === "narrow") return t("widthNarrow");
     if (width === "wide") return t("widthWide");
@@ -172,6 +229,7 @@
   }
 
   let section = $state<Section>("Appearance");
+  let importInput = $state<HTMLInputElement>();
   let dictionaryDraft = $state("");
   let dictionaryLanguage = $state<WritingLanguage>("en");
 
@@ -338,13 +396,22 @@
           </div>
         {:else if section === "General"}
           <h2>{t("general")}</h2>
-          <p class="lab">{t("libraryFolder")}</p>
-          <p class="hint">{t("libraryFolderHint")}</p>
-          <p class="path">{libraryFolder}</p>
-          <div class="actions">
-            <button type="button" onclick={onChooseLibraryFolder}>{t("chooseFolderEllipsis")}</button>
-          </div>
           <div class="rows">
+            <div class="row">
+              <span class="what">
+                <span>{t("libraryFolder")}</span>
+                <span class="path">{libraryFolder}</span>
+                <span class="note">{t("libraryFolderHint")}</span>
+              </span>
+              <button type="button" class="action" onclick={onChooseLibraryFolder}>{t("chooseFolderEllipsis")}</button>
+            </div>
+            <div class="row">
+              <span>{t("interfaceLanguage")}</span>
+              <div class="segment" role="radiogroup" aria-label={t("interfaceLanguage")}>
+                <button type="button" role="radio" aria-checked={prefs.uiLanguage === "en"} class:on={prefs.uiLanguage === "en"} onclick={() => onChange({ uiLanguage: "en" })}>English</button>
+                <button type="button" role="radio" aria-checked={prefs.uiLanguage === "sl"} class:on={prefs.uiLanguage === "sl"} onclick={() => onChange({ uiLanguage: "sl" })}>Slovenščina</button>
+              </div>
+            </div>
             <div class="row">
               <span>{t("gentleMode")} <em>· {t("gentleModeNote")}</em></span>
               <button type="button" class="toggle" class:on={prefs.gentle} role="switch" aria-checked={prefs.gentle} aria-label={t("gentleMode")} onclick={() => onChange({ gentle: !prefs.gentle })}>
@@ -352,58 +419,61 @@
               </button>
             </div>
             <!-- The tutorial tips: on or off, and all of them again. -->
-            <div class="row last">
-              <span>{t("tipsRow")} <em>· {t("tipsRowNote")}</em></span>
+            <div class="row">
+              <span class="what">
+                <span>{t("tipsRow")} <em>· {t("tipsRowNote")}</em></span>
+                <button type="button" class="link" onclick={() => onChange({ tips: true, tipsSeen: [] })}>{t("tipsAgain")}</button>
+              </span>
               <button type="button" class="toggle" class:on={prefs.tips} role="switch" aria-checked={prefs.tips} aria-label={t("tipsRow")} onclick={() => onChange({ tips: !prefs.tips })}>
                 <span></span>
               </button>
             </div>
-          </div>
-          <div class="actions">
-            <button type="button" onclick={() => onChange({ tips: true, tipsSeen: [] })}>{t("tipsAgain")}</button>
-          </div>
-          <p class="lab">{t("interfaceLanguage")}</p>
-          <div class="segment" role="radiogroup" aria-label={t("interfaceLanguage")}>
-            <button type="button" class:on={prefs.uiLanguage === "en"} onclick={() => onChange({ uiLanguage: "en" })}>English</button>
-            <button type="button" class:on={prefs.uiLanguage === "sl"} onclick={() => onChange({ uiLanguage: "sl" })}>Slovenščina</button>
-          </div>
-          <p class="lab">{t("exampleBooks")}</p>
-          <p class="hint">{t("exampleBooksHint")}</p>
-          <div class="actions">
-            <button type="button" onclick={onAddExamples}>{examplesAdded ? t("resetExampleBooks") : t("addExampleBooks")}</button>
-          </div>
-          <p class="lab">{t("longBook")}</p>
-          <p class="hint">{t("longBookHint")}</p>
-          <div class="actions">
-            <button type="button" onclick={onAddLongBook}>{longBookAdded ? t("resetLongBook") : t("addLongBook")}</button>
+            <div class="row">
+              <span class="what">
+                <span>{t("exampleBooks")}</span>
+                <span class="note">{t("exampleBooksHint")}</span>
+              </span>
+              <button type="button" class="action" onclick={onAddExamples}>{examplesAdded ? t("resetExampleBooks") : t("addExampleBooks")}</button>
+            </div>
+            <div class="row">
+              <span class="what">
+                <span>{t("longBook")}</span>
+                <span class="note">{t("longBookHint")}</span>
+              </span>
+              <button type="button" class="action" onclick={onAddLongBook}>{longBookAdded ? t("resetLongBook") : t("addLongBook")}</button>
+            </div>
+            <!-- Which Pensieve this is; a newer one also shows in the window bar by itself. -->
+            <div class="row last">
+              <span class="what">
+                <span>{t("appVersion", { version: appVersion || "…" })}</span>
+                {#if updateVersion}
+                  <span class="note">{t("updateAvailable", { version: updateVersion })}</span>
+                {:else if updateCheck === "checking"}
+                  <span class="note">{t("updateChecking")}</span>
+                {:else if updateCheck === "none"}
+                  <span class="note">{t("updateNone")}</span>
+                {:else if updateCheck === "failed"}
+                  <span class="note">{t("updateCheckFailed", { message: updateCheckMessage })}</span>
+                {/if}
+              </span>
+              {#if updateVersion}
+                <button type="button" class="action" onclick={onInstallUpdate}>{t("updateNow")}</button>
+              {:else}
+                <button type="button" class="action" disabled={updateCheck === "checking"} onclick={onCheckUpdate}>{t("checkForUpdates")}</button>
+              {/if}
+            </div>
           </div>
           {#if backupMessage}
             <p class="hint">{backupMessage}</p>
           {/if}
-          <!-- Which Pensieve this is; a newer one also shows in the window bar by itself. -->
-          <p class="lab">{t("appVersion", { version: appVersion || "…" })}</p>
-          {#if updateVersion}
-            <p class="hint">{t("updateAvailable", { version: updateVersion })}</p>
-            <div class="actions">
-              <button type="button" onclick={onInstallUpdate}>{t("updateNow")}</button>
-            </div>
-          {:else}
-            <div class="actions">
-              <button type="button" disabled={updateCheck === "checking"} onclick={onCheckUpdate}>{t("checkForUpdates")}</button>
-            </div>
-            {#if updateCheck === "checking"}
-              <p class="hint">{t("updateChecking")}</p>
-            {:else if updateCheck === "none"}
-              <p class="hint">{t("updateNone")}</p>
-            {:else if updateCheck === "failed"}
-              <p class="hint">{t("updateCheckFailed", { message: updateCheckMessage })}</p>
-            {/if}
-          {/if}
         {:else if section === "Writing & goals"}
           <h2>{t("goals")}</h2>
           <div class="rows">
-            <div class="row last">
-              <span>{t("splitChapters")} <em>· {bookTitle}</em></span>
+            <div class="row">
+              <span class="what">
+                <span>{t("splitChapters")} <em>· {bookTitle}</em></span>
+                <span class="note">{t("splitChaptersHint")}</span>
+              </span>
               <button
                 type="button"
                 class="toggle"
@@ -419,34 +489,30 @@
                 <span></span>
               </button>
             </div>
-          </div>
-          <p class="hint">{t("splitChaptersHint")}</p>
-          {#if joinAsked}
-            <div class="offer" role="alert">
-              <p>{t("joinQuestion")}{#if writingWords > LONG_PAGE_WORDS}{" "}{t("joinLong", { words: plural("hasWords", writingWords) })}{/if}</p>
-              <div class="actions">
-                <button
-                  type="button"
-                  onclick={() => {
-                    joinAsked = false;
-                    onSplit(false);
-                  }}>{t("join")}</button
-                >
-                <button type="button" onclick={() => (joinAsked = false)}>{t("cancel")}</button>
+            {#if joinAsked}
+              <div class="offer" role="alert">
+                <p>{t("joinQuestion")}{#if writingWords > LONG_PAGE_WORDS}{" "}{t("joinLong", { words: plural("hasWords", writingWords) })}{/if}</p>
+                <div class="actions">
+                  <button
+                    type="button"
+                    onclick={() => {
+                      joinAsked = false;
+                      onSplit(false);
+                    }}>{t("join")}</button
+                  >
+                  <button type="button" onclick={() => (joinAsked = false)}>{t("cancel")}</button>
+                </div>
               </div>
+            {/if}
+            <div class="row last">
+              <span class="what">
+                <label for="settings-book-goal">{t("bookGoal")}</label>
+                <span class="note">{t("bookGoalHint")}</span>
+              </span>
+              <!-- Typed the Slovenian way too: "80.000" is eighty thousand words. -->
+              <input id="settings-book-goal" class="number" type="text" inputmode="numeric" autocomplete="off" value={bookGoal} onchange={(event) => onBookGoal(goalFrom(event.currentTarget))} />
             </div>
-          {/if}
-          <label class="field">
-            {t("bookGoal")}
-            <input
-              type="number"
-              min="0"
-              step="1000"
-              value={bookGoal}
-              oninput={(event) => onBookGoal(Math.max(0, Math.round(Number((event.currentTarget as HTMLInputElement).value) || 0)))}
-            />
-          </label>
-          <p class="hint">{t("bookGoalHint")}</p>
+          </div>
           <!-- The pomodoro in the floating bar: how long she writes, and how long the break is. -->
           <p class="lab">{t("pomodoro")}</p>
           <div class="split">
@@ -478,198 +544,248 @@
           <p class="hint">{t("pomodoroLengthHint")}</p>
         {:else if section === "Ambience"}
           <h2>{t("ambience")}</h2>
-          <label class="field">
-            {t("sound")}
-            <select
-              value={prefs.ambience}
-              onchange={(event) =>
-                onChange({ ambience: (event.currentTarget as HTMLSelectElement).value as Prefs["ambience"] })}
-            >
-              <option value="off">{t("soundOff")}</option>
-              <option value="rain">{t("soundRain")}</option>
-              <option value="fire">{t("soundFireplace")}</option>
-              <option value="cafe">{t("soundCafe")}</option>
-              <option value="piano">{t("soundPiano")}</option>
-            </select>
-          </label>
-          <label class="slider">
-            <span>{t("volume")} <b>{Math.round(prefs.ambienceVolume * 100)}</b></span>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={prefs.ambienceVolume}
-              style:--pv-fill="{prefs.ambienceVolume * 100}%"
-              oninput={(event) =>
-                onChange({ ambienceVolume: Number((event.currentTarget as HTMLInputElement).value) })}
-            />
-          </label>
-          <!-- Keys that sound as she types on the page. -->
-          <p class="lab">{t("keySounds")}</p>
-          <div class="segment" role="radiogroup" aria-label={t("keySounds")}>
-            {#each keyStyles as style (style.id)}
-              <button type="button" role="radio" aria-checked={prefs.keySounds === style.id} class:on={prefs.keySounds === style.id} onclick={() => onChange({ keySounds: style.id })}>
-                {t(style.key)}
-              </button>
-            {/each}
-          </div>
-          {#if prefs.keySounds !== "off"}
+          <div class="split">
+            <label class="field">
+              {t("sound")}
+              <select
+                value={prefs.ambience}
+                onchange={(event) =>
+                  onChange({ ambience: (event.currentTarget as HTMLSelectElement).value as Prefs["ambience"] })}
+              >
+                <option value="off">{t("soundOff")}</option>
+                <option value="rain">{t("soundRain")}</option>
+                <option value="fire">{t("soundFireplace")}</option>
+                <option value="cafe">{t("soundCafe")}</option>
+                <option value="piano">{t("soundPiano")}</option>
+              </select>
+            </label>
             <label class="slider">
-              <span>{t("keySoundsVolume")} <b>{Math.round(prefs.keySoundVolume * 100)}</b></span>
+              <span>{t("volume")} <b>{Math.round(prefs.ambienceVolume * 100)}</b></span>
               <input
                 type="range"
                 min="0"
                 max="1"
                 step="0.05"
-                value={prefs.keySoundVolume}
-                style:--pv-fill="{prefs.keySoundVolume * 100}%"
-                oninput={(event) => onChange({ keySoundVolume: Number((event.currentTarget as HTMLInputElement).value) })}
+                value={prefs.ambienceVolume}
+                style:--pv-fill="{prefs.ambienceVolume * 100}%"
+                oninput={(event) =>
+                  onChange({ ambienceVolume: Number((event.currentTarget as HTMLInputElement).value) })}
               />
             </label>
+          </div>
+          <!-- Keys that sound as she types on the page. -->
+          <div class="group">
+            <p class="lab">{t("keySounds")}</p>
+            <div class="segment" role="radiogroup" aria-label={t("keySounds")}>
+              {#each keyStyles as style (style.id)}
+                <button type="button" role="radio" aria-checked={prefs.keySounds === style.id} class:on={prefs.keySounds === style.id} onclick={() => onChange({ keySounds: style.id })}>
+                  {t(style.key)}
+                </button>
+              {/each}
+            </div>
+          </div>
+          {#if prefs.keySounds !== "off"}
+            <div class="split">
+              <label class="slider">
+                <span>{t("keySoundsVolume")} <b>{Math.round(prefs.keySoundVolume * 100)}</b></span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={prefs.keySoundVolume}
+                  style:--pv-fill="{prefs.keySoundVolume * 100}%"
+                  oninput={(event) => onChange({ keySoundVolume: Number((event.currentTarget as HTMLInputElement).value) })}
+                />
+              </label>
+            </div>
           {/if}
         {:else if section === "Backup & export"}
           <h2>{t("backup")}</h2>
           <p class="hint">{t("backupHint")}</p>
-          <p class="path">{projectTitle ? `${projectTitle} · ` : ""}{projectLocation || t("appFolder")}</p>
-          <div class="actions">
-            {#if !insideLibrary}
-              <button type="button" onclick={onMoveProject}>{t("moveIntoLibrary")}</button>
-            {/if}
-            <button type="button" onclick={onExport}>{t("exportWord")}</button>
-            <button type="button" onclick={() => onExportText("markdown")}>{t("exportMarkdown")}</button>
-            <button type="button" onclick={() => onExportText("plain")}>{t("exportPlain")}</button>
-            <button type="button" onclick={onCopyHtml}>{t("copyHtml")}</button>
-            <button type="button" onclick={onPrint}>{t("printPdf")}</button>
-            <label class="file">
-              {t("importWord")}
-              <input
-                type="file"
-                accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                onchange={(event) => {
-                  const file = (event.currentTarget as HTMLInputElement).files?.[0];
-                  if (file) onImport(file);
-                  (event.currentTarget as HTMLInputElement).value = "";
-                }}
-              />
-            </label>
-          </div>
-          {#if importPreview}
-            {@const words = importPreview.chapters.reduce((sum, chapter) => sum + chapter.words, 0)}
-            <div class="offer" role="alertdialog" aria-label={t("importWordLabel")}>
-              <p>
-                {t("importSummary", {
-                  file: importPreview.fileName,
-                  chapters: plural("chapters", importPreview.chapters.length),
-                  words: plural("words", words),
-                })}
-              </p>
-              <ol class="found">
-                {#each importPreview.chapters.slice(0, 12) as chapter, index (index)}
-                  <li>{chapter.title} <span>· {plural("words", chapter.words)}</span></li>
-                {/each}
-              </ol>
-              {#if importPreview.chapters.length > 12}
-                <p class="hint">{t("andMore", { n: importPreview.chapters.length - 12 })}</p>
+          <div class="rows">
+            <div class="row">
+              <span class="what">
+                {#if projectTitle}<span>{projectTitle}</span>{/if}
+                <span class="path">{projectLocation || t("appFolder")}</span>
+              </span>
+              {#if !insideLibrary}
+                <button type="button" class="action" onclick={onMoveProject}>{t("moveIntoLibrary")}</button>
               {/if}
-              <p class="hint">{t("importHint")}</p>
-              <div class="actions">
-                <button type="button" onclick={() => onConfirmImport("replace")}>{t("replaceChapters")}</button>
-                <button type="button" onclick={() => onConfirmImport("append")}>{t("addAsNewChapters")}</button>
-                <button type="button" onclick={onCancelImport}>{t("cancel")}</button>
-              </div>
             </div>
-          {/if}
-          <p class="lab">{t("wordCopy")}</p>
-          <p class="hint">{t("wordCopyHint", { file: wordCopyName || bookTitle || t("untitled") })}</p>
-          <p class="path">{prefs.wordCopyFolder || t("noWordCopyFolder")}</p>
-          <div class="actions">
-            <button type="button" onclick={onChooseWordFolder}>{t("chooseFolderEllipsis")}</button>
-            <button type="button" onclick={onUpdateWordCopy} disabled={!prefs.wordCopyFolder}>{t("updateNow")}</button>
-            {#if prefs.wordCopyFolder}
-              <button type="button" onclick={onStopWordCopy}>{t("stop")}</button>
-            {/if}
-          </div>
-          {#if prefs.wordCopyFolder && prefs.wordCopyError}
-            <p class="hint problem" role="alert">{prefs.wordCopyError}</p>
-          {:else if prefs.wordCopyFolder && prefs.wordCopyAt}
-            <p class="hint">{t("updatedAgo", { ago: ago(prefs.wordCopyAt) })}</p>
-          {/if}
-          <p class="lab">{t("backups")}</p>
-          <p class="path">{prefs.backupFolder || t("noBackupFolder")}</p>
-          <div class="actions">
-            <button type="button" onclick={onChooseFolder}>{t("chooseFolder")}</button>
-            <button type="button" onclick={onBackup} disabled={!prefs.backupFolder}>{t("backUpNow")}</button>
-            <button type="button" onclick={onPickBackup}>{t("restoreFromBackup")}</button>
-          </div>
-          {#if backupOffer}
-            <div class="offer" role="alertdialog" aria-label={t("restoreFromBackupLabel")}>
-              <p>
-                {t("restoreQuestion", { title: backupOffer.title, date: backupOffer.savedAt })}
-                {#if backupOffer.otherBook}
-                  {t("otherBookBackup")}
+            <div class="row stack">
+              <span class="what">
+                <span>{t("backups")}</span>
+                <span class="path" class:none={!prefs.backupFolder}>{prefs.backupFolder || t("noBackupFolder")}</span>
+              </span>
+              <div class="actions">
+                <button type="button" onclick={onChooseFolder}>{t("chooseFolder")}</button>
+                <button type="button" onclick={onBackup} disabled={!prefs.backupFolder}>{t("backUpNow")}</button>
+                <button type="button" onclick={onPickBackup}>{t("restoreFromBackup")}</button>
+              </div>
+              {#if backupOffer}
+                <div class="offer" role="alertdialog" aria-label={t("restoreFromBackupLabel")}>
+                  <p>
+                    {t("restoreQuestion", { title: backupOffer.title, date: backupOffer.savedAt })}
+                    {#if backupOffer.otherBook}
+                      {t("otherBookBackup")}
+                    {/if}
+                  </p>
+                  <p class="hint">{t("restoreHint")}</p>
+                  <div class="actions">
+                    <button type="button" onclick={onRestoreBackup}>{t("restore")}</button>
+                    <button type="button" onclick={onCancelBackup}>{t("cancel")}</button>
+                  </div>
+                </div>
+              {/if}
+            </div>
+            <div class="row stack">
+              <span class="what">
+                <span>{t("wordCopy")}</span>
+                <span class="note">{t("wordCopyHint", { file: wordCopyName || bookTitle || t("untitled") })}</span>
+                <span class="path" class:none={!prefs.wordCopyFolder}>{prefs.wordCopyFolder || t("noWordCopyFolder")}</span>
+              </span>
+              <div class="actions">
+                <button type="button" onclick={onChooseWordFolder}>{t("chooseFolderEllipsis")}</button>
+                <button type="button" onclick={onUpdateWordCopy} disabled={!prefs.wordCopyFolder}>{t("updateNow")}</button>
+                {#if prefs.wordCopyFolder}
+                  <button type="button" onclick={onStopWordCopy}>{t("stop")}</button>
                 {/if}
-              </p>
-              <p class="hint">{t("restoreHint")}</p>
+              </div>
+              {#if prefs.wordCopyFolder && prefs.wordCopyError}
+                <p class="hint problem" role="alert">{prefs.wordCopyError}</p>
+              {:else if prefs.wordCopyFolder && prefs.wordCopyAt}
+                <p class="hint">{t("updatedAgo", { ago: ago(prefs.wordCopyAt) })}</p>
+              {/if}
+            </div>
+            <div class="row stack">
+              <span>{t("exportRow")}</span>
               <div class="actions">
-                <button type="button" onclick={onRestoreBackup}>{t("restore")}</button>
-                <button type="button" onclick={onCancelBackup}>{t("cancel")}</button>
+                <button type="button" onclick={onExport}>{t("exportWord")}</button>
+                <button type="button" onclick={() => onExportText("markdown")}>{t("exportMarkdown")}</button>
+                <button type="button" onclick={() => onExportText("plain")}>{t("exportPlain")}</button>
+                <button type="button" onclick={onCopyHtml}>{t("copyHtml")}</button>
+                <button type="button" onclick={onPrint}>{t("printPdf")}</button>
               </div>
             </div>
-          {/if}
+            <div class="row stack last">
+              <span>{t("importRow")}</span>
+              <div class="actions">
+                <!-- A button like the others; the browser's own file control stays out of sight, and out of Tab's way. -->
+                <button type="button" onclick={() => importInput?.click()}>{t("importWord")}</button>
+                <input
+                  bind:this={importInput}
+                  type="file"
+                  hidden
+                  accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onchange={(event) => {
+                    const file = (event.currentTarget as HTMLInputElement).files?.[0];
+                    if (file) onImport(file);
+                    (event.currentTarget as HTMLInputElement).value = "";
+                  }}
+                />
+              </div>
+              {#if importPreview}
+                {@const words = importPreview.chapters.reduce((sum, chapter) => sum + chapter.words, 0)}
+                <div class="offer" role="alertdialog" aria-label={t("importWordLabel")}>
+                  <p>
+                    {t("importSummary", {
+                      file: importPreview.fileName,
+                      chapters: plural("chapters", importPreview.chapters.length),
+                      words: plural("words", words),
+                    })}
+                  </p>
+                  <ol class="found">
+                    {#each importPreview.chapters.slice(0, 12) as chapter, index (index)}
+                      <li>{chapter.title} <span>· {plural("words", chapter.words)}</span></li>
+                    {/each}
+                  </ol>
+                  {#if importPreview.chapters.length > 12}
+                    <p class="hint">{t("andMore", { n: importPreview.chapters.length - 12 })}</p>
+                  {/if}
+                  <p class="hint">{t("importHint")}</p>
+                  <div class="actions">
+                    <button type="button" onclick={() => onConfirmImport("replace")}>{t("replaceChapters")}</button>
+                    <button type="button" onclick={() => onConfirmImport("append")}>{t("addAsNewChapters")}</button>
+                    <button type="button" onclick={onCancelImport}>{t("cancel")}</button>
+                  </div>
+                </div>
+              {/if}
+            </div>
+          </div>
           {#if backupMessage}
-            <p class="hint">{backupMessage}</p>
+            <p class="hint" role="status">{backupMessage}</p>
           {/if}
         {:else if section === "Language"}
           <h2>{t("language")}</h2>
-          <p class="lab">{t("projectLanguage")}</p>
-          <div class="segment" role="radiogroup" aria-label={t("projectLanguage")}>
-            <button type="button" class:on={projectLanguage === "en"} onclick={() => onProjectLanguage("en")}>{t("english")}</button>
-            <button type="button" class:on={projectLanguage === "sl"} onclick={() => onProjectLanguage("sl")}>{t("slovenian")}</button>
+          <div class="rows">
+            <div class="row">
+              <span class="what">
+                <span>{t("projectLanguage")}</span>
+                <span class="note">{t("projectLanguageHint")}</span>
+              </span>
+              <div class="segment" role="radiogroup" aria-label={t("projectLanguage")}>
+                <button type="button" role="radio" aria-checked={projectLanguage === "en"} class:on={projectLanguage === "en"} onclick={() => onProjectLanguage("en")}>{t("english")}</button>
+                <button type="button" role="radio" aria-checked={projectLanguage === "sl"} class:on={projectLanguage === "sl"} onclick={() => onProjectLanguage("sl")}>{t("slovenian")}</button>
+              </div>
+            </div>
+            <div class="row stack last">
+              <span class="what">
+                <span>{t("personalDictionary")}</span>
+                <span class="note">{t("dictionaryHint")}</span>
+              </span>
+              <form
+                class="actions"
+                onsubmit={(event) => {
+                  event.preventDefault();
+                  onAddWord(dictionaryLanguage, dictionaryDraft);
+                  dictionaryDraft = "";
+                }}
+              >
+                <select bind:value={dictionaryLanguage} aria-label={t("dictionaryLanguage")}>
+                  <option value="en">{t("english")}</option>
+                  <option value="sl">{t("slovenian")}</option>
+                </select>
+                <input bind:value={dictionaryDraft} aria-label={t("wordToKeep")} placeholder={t("addAWord")} />
+                <button type="submit">{t("add")}</button>
+              </form>
+              {#if dictionary.length > 0}
+                <ul class="words">
+                  {#each dictionary as entry (`${entry.language}:${entry.word}`)}
+                    <li>
+                      {entry.word}
+                      <span class="tongue">{entry.language === "sl" ? "SL" : "EN"}</span>
+                      <button type="button" aria-label="{t('remove')}: {entry.word}" title={t("remove")} onclick={() => onRemoveWord(entry.language, entry.word)}>×</button>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </div>
           </div>
-          <p class="hint">{t("projectLanguageHint")}</p>
-          <p class="lab">{t("personalDictionary")}</p>
-          <form
-            class="actions"
-            onsubmit={(event) => {
-              event.preventDefault();
-              onAddWord(dictionaryLanguage, dictionaryDraft);
-              dictionaryDraft = "";
-            }}
-          >
-            <select bind:value={dictionaryLanguage} aria-label={t("dictionaryLanguage")}>
-              <option value="en">{t("english")}</option>
-              <option value="sl">{t("slovenian")}</option>
-            </select>
-            <input bind:value={dictionaryDraft} aria-label={t("wordToKeep")} placeholder={t("addAWord")} />
-            <button type="submit">{t("add")}</button>
-          </form>
-          <ul>
-            {#each dictionary as entry (`${entry.language}:${entry.word}`)}
-              <li>
-                {entry.language === "sl" ? t("slovenian") : t("english")} · {entry.word}
-                <button type="button" onclick={() => onRemoveWord(entry.language, entry.word)}>{t("remove")}</button>
-              </li>
-            {/each}
-          </ul>
-          <p class="hint">{t("dictionaryHint")}</p>
         {:else if section === "Shortcuts"}
           <h2>{t("shortcuts")}</h2>
-          <ul class="keys">
-            <li><kbd>Ctrl</kbd> + <kbd>B</kbd> {t("bold")}</li>
-            <li><kbd>Ctrl</kbd> + <kbd>I</kbd> {t("italic")}</li>
-            <li><kbd>Ctrl</kbd> + <kbd>U</kbd> {t("underline")}</li>
-            <li><kbd>Ctrl</kbd> + <kbd>Z</kbd> {t("undo")}</li>
-            <li><kbd>Ctrl</kbd> + <kbd>Y</kbd> {t("redo")}</li>
-            <li><kbd>Ctrl</kbd> + <kbd>S</kbd> {t("save")}</li>
-            <li><kbd>Ctrl</kbd> + <kbd>F</kbd> {t("find")}</li>
-            <li><kbd>Ctrl</kbd> + <kbd>H</kbd> {t("replace")}</li>
-            <li><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>F</kbd> {t("searchEverything")}</li>
-            <li><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>M</kbd> {t("comment")}</li>
-            <li><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd> {t("quickIdea")}</li>
-            <li><kbd>Ctrl</kbd> + <kbd>/</kbd> {t("shortcutThisList")}</li>
-            <li><kbd>Esc</kbd> {t("shortcutEscape")}</li>
-          </ul>
+          <div class="keys">
+            {#each shortcutGroups as group (group.key)}
+              <div class="group">
+                <p class="lab">{t(group.key)}</p>
+                <div class="rows">
+                  {#each group.rows as [what, keys], index (what)}
+                    <div class="row" class:last={index === group.rows.length - 1}>
+                      <span>{t(what)}</span>
+                      <span class="combo">
+                        {#each keys.split(" / ") as choice, at (at)}
+                          {#if at > 0}<span class="or">/</span>{/if}
+                          {#each choice.split("+") as key, step (step)}
+                            {#if step > 0}<span class="plus">+</span>{/if}<kbd>{key}</kbd>
+                          {/each}
+                        {/each}
+                      </span>
+                    </div>
+                  {/each}
+                </div>
+              </div>
+            {/each}
+          </div>
         {/if}
       </div>
     </div>
@@ -677,13 +793,14 @@
 
 <style>
   nav button:hover,
-  .actions button:hover:not(:disabled) {
+  .actions button:hover:not(:disabled),
+  .action:hover:not(:disabled) {
     background: var(--pv-selected);
   }
 
   nav button:active,
   .actions button:active:not(:disabled),
-  .file:active {
+  .action:active:not(:disabled) {
     background: var(--pv-pressed);
   }
 
@@ -755,6 +872,22 @@
     gap: 18px;
   }
 
+  /* A long section scrolls; nothing in it is squeezed to fit instead. */
+  .pane > * {
+    flex-shrink: 0;
+  }
+
+  .group,
+  .keys {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .keys {
+    gap: 22px;
+  }
+
   h2 {
     margin: 0;
     font-family: var(--pv-font-heading);
@@ -777,6 +910,10 @@
     gap: 14px;
     flex-wrap: wrap;
     align-items: flex-end;
+  }
+
+  .actions {
+    gap: 8px;
   }
 
   .swatch {
@@ -976,11 +1113,19 @@
     border: 2px solid var(--pv-accent);
   }
 
+  /* As wide as its choices, as the design's Segmented is. */
   .segment {
     display: flex;
+    align-self: flex-start;
+    width: fit-content;
+    flex-shrink: 0;
     border: 1px solid var(--pv-line-strong);
     border-radius: var(--pv-radius-sm);
     overflow: hidden;
+  }
+
+  .row .segment {
+    align-self: center;
   }
 
   .segment button {
@@ -1021,6 +1166,130 @@
 
   .row.last {
     border-bottom: 0;
+  }
+
+  /* A row's name, with what it is for, or its folder, under it. */
+  .what {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .note {
+    max-width: 62ch;
+    color: var(--pv-text-subtle);
+    font-size: var(--pv-text-sm);
+    line-height: 1.45;
+  }
+
+  /* A row with several buttons has them under its words. */
+  .row.stack {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .rows > .offer {
+    margin: 2px 0 12px;
+  }
+
+  .number {
+    width: 110px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+  }
+
+  .link {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    color: var(--pv-accent);
+    font-size: var(--pv-text-sm);
+  }
+
+  .link:hover {
+    text-decoration: underline;
+  }
+
+  /* Shortcuts: what it does, and its keys as they are printed. */
+  .keys .row {
+    padding: 7px 0;
+    font-size: var(--pv-text-md);
+  }
+
+  .combo {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    flex-shrink: 0;
+    color: var(--pv-text-faint);
+    font-size: 12px;
+  }
+
+  .or {
+    margin: 0 4px;
+  }
+
+  kbd {
+    min-width: 22px;
+    box-sizing: border-box;
+    padding: 1px 6px;
+    border: 1px solid var(--pv-line-strong);
+    border-bottom-width: 2px;
+    border-radius: var(--pv-radius-xs);
+    background: var(--pv-field);
+    color: var(--pv-text);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 17px;
+    text-align: center;
+  }
+
+  /* The personal dictionary's words. */
+  .words {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .words li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 3px 2px 10px;
+    border: 1px solid var(--pv-line-strong);
+    border-radius: var(--pv-radius-pill);
+    background: var(--pv-field);
+    color: var(--pv-text);
+    font-size: var(--pv-text-md);
+  }
+
+  .tongue {
+    color: var(--pv-text-faint);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .words button {
+    width: 20px;
+    height: 20px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    padding: 0;
+    color: var(--pv-text-subtle);
+    line-height: 1;
+  }
+
+  .words button:hover {
+    background: var(--pv-selected);
+    color: var(--pv-text);
   }
 
   em {
@@ -1069,10 +1338,10 @@
     color: var(--pv-text-muted);
   }
 
-  .field input,
   .field select,
   .actions input,
-  .actions select {
+  .actions select,
+  .number {
     height: 32px;
     border: 1px solid var(--pv-line-strong);
     border-radius: var(--pv-radius-xs);
@@ -1113,15 +1382,35 @@
     color: var(--pv-danger);
   }
 
-  .hint,
-  .path {
+  .hint {
     margin: 0;
     color: var(--pv-text-subtle);
     font-size: var(--pv-text-md);
   }
 
+  /* A folder or file, as it is on the disk. */
+  .path {
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 2px 8px;
+    border: 1px solid var(--pv-line);
+    border-radius: var(--pv-radius-xs);
+    background: var(--pv-field);
+    color: var(--pv-text-muted);
+    font-size: var(--pv-text-sm);
+    overflow-wrap: anywhere;
+  }
+
+  .path.none {
+    border-color: transparent;
+    background: transparent;
+    padding: 0;
+    color: var(--pv-text-faint);
+  }
+
   .actions button,
-  .file {
+  .action {
+    flex-shrink: 0;
     height: 32px;
     border: 1px solid var(--pv-line-strong);
     border-radius: var(--pv-radius-sm);
@@ -1130,35 +1419,4 @@
     padding: 0 12px;
   }
 
-  .file {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    cursor: pointer;
-    transition: background-color var(--pv-dur-fast) ease;
-  }
-
-  .file:hover {
-    background: var(--pv-selected);
-  }
-
-  .file:focus-within {
-    outline: 2px solid var(--pv-accent);
-    outline-offset: 2px;
-  }
-
-  /* The label is the button; the browser's own file control stays reachable but out of sight. */
-  .file input {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    opacity: 0;
-    overflow: hidden;
-  }
-
-  ul {
-    margin: 0;
-    padding-left: 1.1rem;
-    color: var(--pv-text-muted);
-  }
 </style>
