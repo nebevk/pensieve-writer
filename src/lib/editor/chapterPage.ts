@@ -375,8 +375,7 @@ export const ChapterPage = Extension.create<{ titleHint: string; partHint: strin
       "Shift-Backspace": run(backspaceInLeadLines),
       Delete: run(deleteInLeadLines),
       "Mod-Delete": run(deleteInLeadLines),
-      // No line breaks in a title, and no lists or quotes in the first lines, as the toolbar says
-      // (on a Slovenian keyboard Ctrl+/ for the shortcut list is Ctrl+Shift+7 too).
+      // No line breaks in a title, and no lists or quotes in the first lines, as the toolbar says.
       "Shift-Enter": () => lineAt(this.editor.state) !== 0,
       "Mod-Shift-7": () => lineAt(this.editor.state) !== 0,
       "Mod-Shift-8": () => lineAt(this.editor.state) !== 0,

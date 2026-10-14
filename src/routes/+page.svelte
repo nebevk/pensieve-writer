@@ -454,6 +454,16 @@
     };
   });
 
+  /**
+   * F5 and Ctrl+R would reload the window, and lose what was typed in the moment before (in Word, Ctrl+R
+   * aligns right). Heard before anything else, windows too. Only while Pensieve is being made do they reload it.
+   */
+  function noReload(event: KeyboardEvent) {
+    if (!import.meta.env.DEV && (event.key === "F5" || ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "r"))) {
+      event.preventDefault();
+    }
+  }
+
   function onKeydown(event: KeyboardEvent) {
     // A quick idea from anywhere (owner, 12 October); Word's Ctrl+Shift+N, a style, isn't Pensieve's.
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "n") {
@@ -2576,6 +2586,7 @@
 </script>
 
 <svelte:window
+  onkeydowncapture={noReload}
   onkeydown={onKeydown}
   ondragover={(event) => {
     // A file dragged in from Explorer, where nothing takes it, is refused, so it can't open in Pensieve's place.

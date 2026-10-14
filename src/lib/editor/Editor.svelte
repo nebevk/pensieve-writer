@@ -193,6 +193,9 @@
         },
         // Pasted from Word: its lists, footnotes and empty lines as the page holds them (IMP-18).
         transformPastedHTML: cleanWordHtml,
+        // Ctrl+/ opens the list of shortcuts. On a Slovenian keyboard that is Ctrl+Shift+7, which the
+        // editor would also take by the key's place as a numbered list: the page leaves it to the window.
+        handleKeyDown: (_view, event) => (event.ctrlKey || event.metaKey) && event.key === "/",
       },
       onUpdate: ({ editor: current }) => {
         // An edit that leaves the cursor where it was, such as a comment turned into a to-do, changes
