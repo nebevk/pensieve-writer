@@ -166,15 +166,15 @@ pub async fn show_in_explorer(path: String) -> Result<(), String> {
     tauri_plugin_opener::reveal_item_in_dir(item).map_err(|error| error.to_string())
 }
 
-/// The kinds of file that can come in as a writing: Word, text and Markdown.
-const DOCUMENTS: &[&str] = &["docx", "txt", "md", "markdown"];
+/// The kinds of file that can come in as a writing: Word, OpenDocument (LibreOffice), text and Markdown.
+const DOCUMENTS: &[&str] = &["docx", "odt", "txt", "md", "markdown"];
 
 fn is_document(file: &Path) -> bool {
     let kind = file.extension().map(|kind| kind.to_string_lossy().to_lowercase()).unwrap_or_default();
     DOCUMENTS.contains(&kind.as_str())
 }
 
-/// A Word, text or Markdown file's bytes, to bring it into a project as a writing.
+/// A Word, OpenDocument, text or Markdown file's bytes, to bring it into a project as a writing.
 #[tauri::command]
 pub async fn read_document_file(path: String) -> Result<tauri::ipc::Response, String> {
     read_document(Path::new(&path)).map(tauri::ipc::Response::new)
@@ -182,11 +182,12 @@ pub async fn read_document_file(path: String) -> Result<tauri::ipc::Response, St
 
 fn read_document(file: &Path) -> Result<Vec<u8>, String> {
     if !is_document(file) {
-        return Err("Only a Word, text or Markdown file can come in as a writing".into());
+        return Err("Only a Word, OpenDocument, text or Markdown file can come in as a writing".into());
     }
     let size = fs::metadata(file).map_err(|_| "That file isn't there any more".to_string())?.len();
-    // Pictures make a Word file big; text that size would be shelves of books.
-    let most = if file.extension().is_some_and(|kind| kind.eq_ignore_ascii_case("docx")) { 200 } else { 20 };
+    // Pictures make a Word or OpenDocument file big; text that size would be shelves of books.
+    let packed = file.extension().is_some_and(|kind| kind.eq_ignore_ascii_case("docx") || kind.eq_ignore_ascii_case("odt"));
+    let most = if packed { 200 } else { 20 };
     if size > most * 1024 * 1024 {
         return Err("That file is too big to bring in".into());
     }
@@ -505,12 +506,13 @@ mod tests {
         let root = std::env::temp_dir().join(format!("pensieve-documents-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
-        for file in ["zapiski.md", "2 Drugo.TXT", "slika.png"] {
+        for file in ["zapiski.md", "2 Drugo.TXT", "Zgodba.odt", "slika.png"] {
             fs::write(root.join(file), "Čaša, šola, žaba".as_bytes()).unwrap();
         }
-        // Word, text and Markdown files come in, whatever the case of their kind; nothing else does.
+        // Word, OpenDocument, text and Markdown files come in, whatever the case of their kind; nothing else does.
         assert_eq!(read_document(&root.join("zapiski.md")).unwrap(), "Čaša, šola, žaba".as_bytes());
         assert_eq!(read_document(&root.join("2 Drugo.TXT")).unwrap(), "Čaša, šola, žaba".as_bytes());
+        assert_eq!(read_document(&root.join("Zgodba.odt")).unwrap(), "Čaša, šola, žaba".as_bytes());
         assert!(read_document(&root.join("slika.png")).is_err());
         assert_eq!(read_document(&root.join("ni.txt")), Err("That file isn't there any more".to_string()));
         let _ = fs::remove_dir_all(&root);

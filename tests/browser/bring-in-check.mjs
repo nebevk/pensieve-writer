@@ -6,6 +6,7 @@
 // a window. Usage: node bring-in-check.mjs [port]
 import { readFileSync } from "node:fs";
 import { connect, sleep } from "./cdp.mjs";
+import { contentXml, makeOdt } from "./fixtures/odt.mjs";
 
 const port = Number(process.argv[2] ?? 4176);
 const shots = new URL("./shots/", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
@@ -29,7 +30,16 @@ const FIRST = `${LIBRARY}\\My first project\\pensieve.db`;
 const DESK = "C:\\Users\\Eva\\Desktop";
 const base64 = (text) => Buffer.from(text, "utf8").toString("base64");
 const WORD = readFileSync(new URL("./fixtures/example-novel-word.docx", import.meta.url)).toString("base64");
+// An OpenDocument file, as LibreOffice saves one: a title and two chapters.
+const GOZD = Buffer.from(
+  makeOdt({
+    content: contentXml(
+      `<text:p text:style-name="Title">Gozd</text:p><text:h text:outline-level="1">Jutro</text:h><text:p>Ptice pojejo.</text:p><text:h text:outline-level="1">Večer</text:h><text:p>Sove se zbudijo.</text:p>`,
+    ),
+  }),
+).toString("base64");
 const seeded = {
+  [`${DESK}\\Gozd.odt`]: GOZD,
   [`${DESK}\\Reka.md`]: base64("# Reka\n\n## Izvir\n\nVoda je mrzla. Čaša, šola, žaba.\n\n## Ustje\n\nMorje.\n"),
   [`${DESK}\\Pismo.txt`]: base64("Draga Eva,\n\npišem ti s potovanja."),
   [`${DESK}\\Welcome back.md`]: base64("## Welcome\n\nThe page as Word has it now.\n\n## A chapter from Word\n\nWritten in Word.\n"),
@@ -193,8 +203,28 @@ check("but a file dropped over a window doesn't come in", (await windowTitle()) 
 await page.key("Escape", "Escape", 27);
 await until(`!document.querySelector(".window")`);
 await drop(".paper", [["slika.png", base64("x")]]);
-await until(`document.body.innerText.includes("Pensieve brings in Word, text and Markdown files.")`, 30);
-check("a picture is refused, and Pensieve says what it takes", (await page.run(`document.body.innerText`)).includes("Pensieve brings in Word, text and Markdown files.") && !(await windowShown()));
+await until(`document.body.innerText.includes("Pensieve brings in Word, OpenDocument (LibreOffice), text and Markdown files.")`, 30);
+check("a picture is refused, and Pensieve says what it takes", (await page.run(`document.body.innerText`)).includes("Pensieve brings in Word, OpenDocument (LibreOffice), text and Markdown files.") && !(await windowShown()));
+
+// An OpenDocument file from LibreOffice comes in as a Word file does: picked, and dropped.
+await answer([`${DESK}\\Gozd.odt`]);
+await page.click(".sidebar-head .add");
+await chooseInMenu("New writing from Word…");
+await until(`(document.querySelector(".window .found .sum")?.textContent ?? "").includes("chapters")`, 80);
+check("an .odt picked says what it holds", (await found()) === "2 chapters · 5 words" && JSON.stringify(await foundTitles()) === JSON.stringify(["Jutro", "Večer"]), `${await found()} ${JSON.stringify(await foundTitles())}`);
+await press("Add to “My first project”");
+await until(`(document.querySelector(".titlebar .project")?.textContent ?? "").trim() === "Gozd"`, 80);
+await sleep(400);
+check(
+  "and comes in as a writing named by its title, with its chapters",
+  (await writings()).includes("Gozd") && JSON.stringify((await chaptersOf("Gozd")).map((row) => row[1])) === JSON.stringify(["Jutro", "Večer"]),
+  JSON.stringify((await chaptersOf("Gozd")).map((row) => row[1])),
+);
+await drop(".paper", [["Gozd.odt", GOZD]]);
+await until(`(document.querySelector(".window .found .sum")?.textContent ?? "").includes("chapters")`, 80);
+check("an .odt dropped in Write is read too", (await windowTitle()) === "New writing from Word" && (await found()) === "2 chapters · 5 words", `${await windowTitle()} | ${await found()}`);
+await press("Cancel");
+await until(`!document.querySelector(".window")`);
 
 // Dropped on Home: a new project from a Word file, its chapters said before anything is made.
 await page.click(".titlebar .home-link, .titlebar .mark");

@@ -81,6 +81,8 @@ itself. Most worth doing once on Eva's laptop, with the installed release:
     file comes in as a new writing.
 14. **Dropped from Explorer:** drag her manuscript's Word file onto Home (New project from it) and into Write
     (a new writing); a picture dropped there is refused with a word, and nothing ever opens in Pensieve's place.
+15. **OpenDocument:** a manuscript saved by LibreOffice (.odt), with a footnote, a comment and a picture,
+    brought in as a new writing: the checks use files made the way LibreOffice writes them, not one from it.
 14. **New project** from one of her real Word files, and from a folder of her Word and text files as one
     book: the chapters come in order, with their headings, italics and pictures, and č, š, ž.
     Then paste a chapter of her manuscript from Word: its headings, italics, lists and footnotes come in, and

@@ -334,7 +334,7 @@
         return [...bytesOf(file.base64)];
       }
       case "read_document_file": {
-        if (!/\.(docx|txt|md|markdown)$/i.test(args.path)) throw "Only a Word, text or Markdown file can come in as a writing";
+        if (!/\.(docx|odt|txt|md|markdown)$/i.test(args.path)) throw "Only a Word, OpenDocument, text or Markdown file can come in as a writing";
         const file = files.get(lower(args.path));
         if (!file) throw "That file isn't there any more";
         return bytesOf(file.base64).buffer;

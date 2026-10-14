@@ -1939,7 +1939,7 @@
     void refreshLibrary();
   }
 
-  /** Word, text or Markdown files she picks, one or several, in the order Explorer shows them. */
+  /** Word, OpenDocument, text or Markdown files she picks, one or several, in the order Explorer shows them. */
   async function chooseDocuments(several: boolean, near = ""): Promise<DocumentSource[]> {
     return byFileName(await chooseDocumentFiles(several, near), locale()).map(documentAt);
   }
@@ -1954,12 +1954,17 @@
     return readDocumentData(await invoke<ArrayBuffer>("read_document_file", { path }), path);
   }
 
-  /** A document's bytes (`file` names it: Word, text or Markdown) read into chapters, its pictures made small. */
+  /** A document's bytes (`file` names it: Word, OpenDocument, text or Markdown) read into chapters, its pictures made small. */
   async function readDocumentData(data: ArrayBuffer, file: string): Promise<WordImport> {
     const name = documentName(file);
     const kind = documentKind(file);
-    // Text and Markdown are read by code loaded when it is needed, as Word's reader is.
-    const result = kind === "word" ? await readWordFile(data, name) : (await import("$lib/export/textImport")).readTextFile(data, name, kind === "markdown");
+    // OpenDocument, text and Markdown are read by code loaded when it is needed, as Word's reader is.
+    const result =
+      kind === "word"
+        ? await readWordFile(data, name)
+        : kind === "opendocument"
+          ? await (await import("$lib/export/odtImport")).readOdtFile(data, name)
+          : (await import("$lib/export/textImport")).readTextFile(data, name, kind === "markdown");
     for (const chapter of result.chapters) await shrinkPictures(chapter.contentJson);
     return result;
   }
@@ -2040,7 +2045,7 @@
     return view === "home" || !writing ? "project" : "writing";
   }
 
-  /** Documents dropped on Pensieve: Word, text and Markdown files come in; others are refused, and she is told. */
+  /** Documents dropped on Pensieve: Word, OpenDocument, text and Markdown files come in; others are refused, and she is told. */
   function takeDropped(files: File[]) {
     const target = dropTarget();
     if (!target) return;

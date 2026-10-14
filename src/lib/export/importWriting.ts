@@ -6,11 +6,11 @@ import { looksLikeChapterTitle, type ImportedChapter, type WordImport } from "./
 
 /** Files brought in as writings: what kind each is, and how it becomes a writing or a book's chapters. */
 
-export type DocumentKind = "word" | "text" | "markdown";
+export type DocumentKind = "word" | "opendocument" | "text" | "markdown";
 
 export function documentKind(path: string): DocumentKind | null {
   const kind = /\.([^.\\/]+)$/.exec(path)?.[1].toLowerCase();
-  return kind === "docx" ? "word" : kind === "txt" ? "text" : kind === "md" || kind === "markdown" ? "markdown" : null;
+  return kind === "docx" ? "word" : kind === "odt" ? "opendocument" : kind === "txt" ? "text" : kind === "md" || kind === "markdown" ? "markdown" : null;
 }
 
 /** A file's name without its folder or its kind: "Pod lipo" for C:\…\Pod lipo.docx. */

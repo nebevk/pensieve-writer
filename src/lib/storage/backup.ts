@@ -38,7 +38,7 @@ export async function chooseDocumentFiles(several: boolean, near = ""): Promise<
     directory: false,
     multiple: several,
     title: t(several ? "dialogChooseDocuments" : "dialogChooseDocument"),
-    filters: [{ name: t("dialogDocumentFilter"), extensions: ["docx", "txt", "md", "markdown"] }],
+    filters: [{ name: t("dialogDocumentFilter"), extensions: ["docx", "odt", "txt", "md", "markdown"] }],
     ...(near ? { defaultPath: near } : {}),
   });
   return Array.isArray(selected) ? selected : typeof selected === "string" ? [selected] : [];

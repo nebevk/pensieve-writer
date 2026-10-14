@@ -164,7 +164,7 @@ export function fileIcon(name: string): string {
 
 /** A Word, text or Markdown file, which can come into a project as a writing. */
 export function isDocumentFile(name: string): boolean {
-  return /\.(docx|txt|md|markdown)$/i.test(name);
+  return /\.(docx|odt|txt|md|markdown)$/i.test(name);
 }
 
 /** The file a project folder keeps its project in. */
