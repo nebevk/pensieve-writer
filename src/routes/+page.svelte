@@ -8,11 +8,11 @@
   import Icon from "$lib/editor/Icon.svelte";
   import TitleBar from "$lib/editor/TitleBar.svelte";
   import ZenBar from "$lib/editor/ZenBar.svelte";
-  import { countWords, wordsFor } from "$lib/editor/counts";
+  import { wordsFor } from "$lib/editor/counts";
   import { shrinkImage } from "$lib/editor/imageSize";
   import { PageFind } from "$lib/editor/pageFind.svelte";
   import { Updates } from "$lib/updates.svelte";
-  import { DriveBackup, WordCopy, safeName } from "$lib/save/copies.svelte";
+  import { DriveBackup, WordCopy, copyPathFor, safeName } from "$lib/save/copies.svelte";
   import { WritingActions } from "$lib/chapters/writingActions.svelte";
   import { EarlierVersions } from "$lib/views/earlierVersions.svelte";
   import { createChapter, createWriting, effectiveLanguage, type Chapter, type DocumentJson, type Shelf, type Writing, type WritingLanguage } from "$lib/model";
@@ -20,11 +20,11 @@
   import { chaptersToHtml, chaptersToMarkdown, chaptersToPlain } from "$lib/export/document";
   import { chooseSavePath, writeFileTo, type ExportKind } from "$lib/export/files";
   import { wordFileFor } from "$lib/export/wordAssets";
-  import { appendBookChapters, readWordFile, replaceBookChapters, type WordImport } from "$lib/export/wordImport";
-  import { bookFromDocuments, byFileName, documentKind, documentName, draftChapters, writingFromDocument, type WritingDraft } from "$lib/export/importWriting";
+  import { readWordFile, type WordImport } from "$lib/export/wordImport";
+  import { byFileName, documentKind, documentName, draftChapters, type DocumentSource } from "$lib/export/importWriting";
   import { createAmbience } from "$lib/ambience";
   import { onPomodoroTurn, pomodoro } from "$lib/pomodoro.svelte";
-  import { chooseBackupFile, chooseBackupFolder, chooseDocumentFile, chooseProjectFile, readBackupFile } from "$lib/storage/backup";
+  import { chooseBackupFile, chooseBackupFolder, chooseDocumentFiles, chooseProjectFile, readBackupFile } from "$lib/storage/backup";
   import type { BackupContent } from "$lib/storage/backupFile";
   import Particles from "$lib/views/Particles.svelte";
   import Tour from "$lib/views/Tour.svelte";
@@ -68,6 +68,7 @@
   const NotePanePart = lazy(() => import("$lib/views/NotePane.svelte"));
   const SelectionBarPart = lazy(() => import("$lib/editor/SelectionBar.svelte"));
   const NewProjectPart = lazy(() => import("$lib/views/NewProjectWindow.svelte"));
+  const BringInPart = lazy(() => import("$lib/views/BringInWindow.svelte"));
   const QuickIdeaPart = lazy(() => import("$lib/views/QuickIdea.svelte"));
   const SearchPart = lazy(() => import("$lib/views/SearchWindow.svelte"));
   const IdeasPart = lazy(() => import("$lib/views/IdeasView.svelte"));
@@ -206,7 +207,6 @@
   // How many closings of the editor are under way; it opens again when the last one is done.
   let closings = 0;
   let pendingBackup = $state<BackupContent | null>(null);
-  let importOffer = $state<{ fileName: string; result: WordImport } | null>(null);
   // Her copies outside Pensieve: the backup in a folder she chose, and the Word copy (see copies.svelte.ts).
   const copiesHost = {
     writing: () => writing,
@@ -1310,49 +1310,9 @@
     });
   }
 
-  /** Reads a Word file and shows its chapters before anything changes. */
-  async function offerWordImport(file: File) {
-    try {
-      const result = await readWordFile(await file.arrayBuffer(), file.name.replace(/\.docx$/i, ""));
-      for (const chapter of result.chapters) await shrinkPictures(chapter.contentJson);
-      importOffer = { fileName: file.name, result };
-    } catch (error) {
-      backupMessage = errorMessage(error);
-    }
-  }
-
   async function shrinkPictures(node: { type?: string; attrs?: Record<string, unknown>; content?: unknown[] }) {
     if (node.type === "image" && typeof node.attrs?.src === "string") node.attrs.src = await shrinkImage(node.attrs.src);
     for (const child of node.content ?? []) await shrinkPictures(child as typeof node);
-  }
-
-  async function confirmWordImport(mode: "replace" | "append") {
-    const offer = importOffer;
-    if (!offer || !writing) return;
-    importOffer = null;
-    try {
-      await withEditorClosed(async () => {
-        if (!writing) return;
-        const before = writingWords;
-        if (mode === "replace") {
-          await keepSnapshot(writing);
-          const next = replaceBookChapters(writing, offer.result.chapters);
-          writing = offer.result.title && isUntitled(writing.title) ? { ...next, title: offer.result.title } : next;
-          activeId = writing.chapters[0]?.id ?? null;
-        } else {
-          const known = new Set(writing.chapters.map((chapter) => chapter.id));
-          writing = appendBookChapters(writing, offer.result.chapters);
-          activeId = writing.chapters.find((chapter) => !known.has(chapter.id))?.id ?? activeId;
-        }
-        keepToday(before);
-        autosave.schedule();
-        await autosave.flush();
-      });
-      settingsOpen = false;
-      view = "write";
-    } catch (error) {
-      backupMessage = errorMessage(error);
-    }
   }
 
   async function copyHtml() {
@@ -1961,8 +1921,8 @@
     return true;
   }
 
-  /** The New project window, while it is open: the folder it was asked for in. */
-  let newProjectAsk = $state<{ parent: string } | null>(null);
+  /** The New project window, while it is open: the folder it was asked for in, and documents dropped on Home. */
+  let newProjectAsk = $state<{ parent: string; dropped?: DocumentSource[] } | null>(null);
 
   /** Opens the New project window, for a project in `parent` (the library's top when empty). */
   function startProject(parent = "") {
@@ -1971,22 +1931,25 @@
     void refreshLibrary();
   }
 
-  /** A folder of her files, with its Word, text and Markdown files in the order Explorer shows them. */
-  async function chooseFolderOfFiles(): Promise<{ path: string; files: string[] } | null> {
-    const path = await chooseBackupFolder(t("dialogChooseFolderOfFiles"));
-    if (!path) return null;
-    try {
-      return { path, files: byFileName(await invoke<string[]>("list_document_files", { folder: path }), locale()) };
-    } catch (error) {
-      throw new Error(errorMessage(error));
-    }
+  /** Word, text or Markdown files she picks, one or several, in the order Explorer shows them. */
+  async function chooseDocuments(several: boolean, near = ""): Promise<DocumentSource[]> {
+    return byFileName(await chooseDocumentFiles(several, near), locale()).map(documentAt);
+  }
+
+  /** A document on the disk, to bring in. */
+  function documentAt(path: string): DocumentSource {
+    return { name: lastName(path), folder: lastName(parentFolder(path)), read: () => readDocument(path) };
   }
 
   /** A Word, text or Markdown file, read into chapters, its pictures made small. */
   async function readDocument(path: string): Promise<WordImport> {
-    const name = documentName(path);
-    const data = await invoke<ArrayBuffer>("read_document_file", { path });
-    const kind = documentKind(path);
+    return readDocumentData(await invoke<ArrayBuffer>("read_document_file", { path }), path);
+  }
+
+  /** A document's bytes (`file` names it: Word, text or Markdown) read into chapters, its pictures made small. */
+  async function readDocumentData(data: ArrayBuffer, file: string): Promise<WordImport> {
+    const name = documentName(file);
+    const kind = documentKind(file);
     // Text and Markdown are read by code loaded when it is needed, as Word's reader is.
     const result = kind === "word" ? await readWordFile(data, name) : (await import("$lib/export/textImport")).readTextFile(data, name, kind === "markdown");
     for (const chapter of result.chapters) await shrinkPictures(chapter.contentJson);
@@ -1994,36 +1957,16 @@
   }
 
   /**
-   * The New project window's project: empty, or from a file, or from a folder of files. The files are
-   * read before anything is made, so one that can't be read leaves no half-made project; of a folder's,
-   * those that can't be read stay out, and she is told which. Opens the project in Write.
+   * The New project window's project: a blank page, or the writings its documents make. The window read
+   * them before anything is made, so one that can't be read leaves no half-made project; those that
+   * couldn't be read stay out, and she is told which. Opens the project in Write.
    */
-  async function createProject(request: ProjectRequest, progress: (done: number, total: number) => void): Promise<string | null> {
+  async function createProject(request: ProjectRequest): Promise<string | null> {
     const name = request.name.trim();
     const problem = folderNameProblem(name);
     if (problem) return t(problem);
     try {
-      let drafts: WritingDraft[] = [];
-      const left: string[] = [];
-      const start = request.start;
-      if (start.kind === "file") {
-        drafts = [writingFromDocument(await readDocument(start.path), documentName(start.path), t("untitled"))];
-      } else if (start.kind === "folder") {
-        const read: { name: string; result: WordImport }[] = [];
-        for (const [index, path] of start.files.entries()) {
-          progress(index + 1, start.files.length);
-          try {
-            read.push({ name: documentName(path), result: await readDocument(path) });
-          } catch {
-            left.push(lastName(path));
-          }
-        }
-        if (read.length === 0) return t("noFileRead");
-        drafts =
-          start.each === "chapter"
-            ? [bookFromDocuments(name, read)]
-            : read.map((item) => writingFromDocument(item.result, item.name, t("untitled")));
-      }
+      const drafts = request.drafts;
       const path = await makeProjectFolder(request.parent || libraryRoot, name);
       const [first, ...rest] = drafts;
       await useProjectFile(path, {}, true, {
@@ -2043,11 +1986,68 @@
         await refreshShelf();
       }
       await refreshLibrary();
-      if (left.length > 0) notice(t("filesLeftOut", { names: left.join(", ") }));
+      if (request.failed.length > 0) notice(t("filesLeftOut", { names: request.failed.join(", ") }));
       return null;
     } catch (error) {
       return errorMessage(error);
     }
+  }
+
+  /** New writing from Word and Bring back from Word, while its window is open: what it does, with which documents. */
+  let bringInAsk = $state<{ mode: "add" | "replace"; sources: DocumentSource[] } | null>(null);
+
+  function bringIn(mode: "add" | "replace", sources: DocumentSource[]) {
+    if (sources.length === 0 || !writing) return;
+    void BringInPart.load();
+    bringInAsk = { mode, sources };
+  }
+
+  /** New writing from Word: the documents she picks become writings of this project, once she sees what they hold. */
+  async function newWritingFromWord() {
+    try {
+      bringIn("add", await chooseDocuments(true));
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+    }
+  }
+
+  /**
+   * Bring back from Word: the writing (`id`) opened, and the document she picks (from its Word copy's folder,
+   * where there is one) takes its place, once she sees what it holds and says so.
+   */
+  async function bringBackFromWord(id: string) {
+    try {
+      if (id !== writingId) await openWriting(id);
+      if (!writing || writing.id !== id) return;
+      const near = prefs.wordCopyFolder ? copyPathFor(prefs.wordCopyFolder, wordCopy.fileName(writing), writing.id, prefs.wordCopies) : "";
+      bringIn("replace", await chooseDocuments(false, near));
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+    }
+  }
+
+  /** Where documents dropped on Pensieve go: a new project on Home, new writings elsewhere; nowhere over a window. */
+  function dropTarget(): "project" | "writing" | null {
+    if (document.querySelector(".window")) return null;
+    return view === "home" || !writing ? "project" : "writing";
+  }
+
+  /** Documents dropped on Pensieve: Word, text and Markdown files come in; others are refused, and she is told. */
+  function takeDropped(files: File[]) {
+    const target = dropTarget();
+    if (!target) return;
+    const kept = byFileName(
+      files.filter((file) => documentKind(file.name)).map((file) => file.name),
+      locale(),
+    ).map((name): DocumentSource => {
+      const file = files.find((item) => item.name === name) as File;
+      return { name, read: async () => readDocumentData(await file.arrayBuffer(), name) };
+    });
+    if (kept.length < files.length) libraryNotice(t("dropOnlyDocuments"));
+    if (kept.length === 0) return;
+    if (target === "writing") return bringIn("add", kept);
+    newProjectAsk = { parent: libraryRoot, dropped: kept };
+    void refreshLibrary();
   }
 
   /** A new folder in the library, on disk, to keep projects in. */
@@ -2087,7 +2087,6 @@
     loadOrganizer,
     notice,
     fail: reportSaveError,
-    readDocument,
   });
 
   /** A new note in a group of the project's notes (or tied to a chapter), opened over the page to write it. */
@@ -2302,7 +2301,9 @@
     placeWriting: (id, beforeId) => void writingOps.place(id, beforeId),
     openFile: (path) => void openLibraryFile(path),
     showInExplorer: (path) => void showInExplorer(path),
-    importAsWriting: (path) => void writingOps.importFile(path),
+    importAsWriting: (path) => bringIn("add", [documentAt(path)]),
+    newWritingFromWord: () => void newWritingFromWord(),
+    bringBackFromWord: (id) => void bringBackFromWord(id),
     newWriting: (folder, name) => writingOps.make(folder, name),
     newWritingFolder: (name) => writingOps.makeFolder(name),
     renameWritingFolder: (from, to) => writingOps.renameFolder(from, to),
@@ -2589,15 +2590,19 @@
   onkeydowncapture={noReload}
   onkeydown={onKeydown}
   ondragover={(event) => {
-    // A file dragged in from Explorer, where nothing takes it, is refused, so it can't open in Pensieve's place.
+    // A file dragged in from Explorer comes in (owner, 14 October), or is refused over a window, so it can
+    // never open in Pensieve's place.
     const data = event.dataTransfer;
     if (!event.defaultPrevented && data?.types.includes("Files")) {
       event.preventDefault();
-      data.dropEffect = "none";
+      data.dropEffect = dropTarget() ? "copy" : "none";
     }
   }}
   ondrop={(event) => {
-    if (!event.defaultPrevented && event.dataTransfer?.types.includes("Files")) event.preventDefault();
+    if (!event.defaultPrevented && event.dataTransfer?.types.includes("Files")) {
+      event.preventDefault();
+      takeDropped([...event.dataTransfer.files]);
+    }
   }}
 />
 
@@ -3147,13 +3152,6 @@
       onPickBackup={() => void pickBackup()}
       onRestoreBackup={() => void restoreBackup()}
       onCancelBackup={() => (pendingBackup = null)}
-      onImport={(file) => void offerWordImport(file)}
-      importPreview={importOffer && {
-        fileName: importOffer.fileName,
-        chapters: importOffer.result.chapters.map((chapter) => ({ title: chapter.title, words: countWords(chapter.plainText) })),
-      }}
-      onConfirmImport={(mode) => void confirmWordImport(mode)}
-      onCancelImport={() => (importOffer = null)}
       bookTitle={writing.title}
       onAddExamples={() => void addExampleBooks()}
       examplesAdded={sampleNames.some((name) => name !== "long-test-book")}
@@ -3192,14 +3190,33 @@
     <NewProjectWindow
       places={[{ path: libraryRoot, label: t("library") }, ...projectFolders(libraryEntries, locale())]}
       parent={newProjectAsk.parent}
-      onChooseFile={chooseDocumentFile}
-      onChooseFolder={chooseFolderOfFiles}
-      onCreate={async (request, progress) => {
-        const problem = await createProject(request, progress);
+      dropped={newProjectAsk.dropped}
+      onChooseDocuments={() => chooseDocuments(true)}
+      onCreate={async (request) => {
+        const problem = await createProject(request);
         if (!problem) newProjectAsk = null;
         return problem;
       }}
       onClose={() => (newProjectAsk = null)}
+    />
+  {/if}
+  {#if bringInAsk && writing && BringInPart.current}
+    {@const BringInWindow = BringInPart.current}
+    <BringInWindow
+      mode={bringInAsk.mode}
+      sources={bringInAsk.sources}
+      project={shelf?.title ?? ""}
+      writing={writing.title}
+      onePage={!writing.split}
+      onAdd={async (drafts) => {
+        bringInAsk = null;
+        await writingOps.addDrafts(drafts);
+      }}
+      onReplace={async (read, name) => {
+        bringInAsk = null;
+        await writingOps.bringBack(read, name);
+      }}
+      onClose={() => (bringInAsk = null)}
     />
   {/if}
   {#if searchAsk && SearchPart.current}

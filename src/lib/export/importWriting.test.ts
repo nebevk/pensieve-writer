@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptyDocument } from "$lib/model";
 import type { ImportedChapter, WordImport } from "./wordImport";
-import { bookFromDocuments, byFileName, documentKind, documentName, draftChapters, writingFromDocument } from "./importWriting";
+import { bookFromDocuments, byFileName, documentKind, documentName, draftChapters, draftsFound, draftsFrom, writingFromDocument } from "./importWriting";
 
 const chapter = (title: string, words = "Besedilo."): ImportedChapter => ({
   title,
@@ -54,5 +54,29 @@ describe("Files brought in as writings", () => {
     const book = draftChapters(bookFromDocuments("Zgodbe", [{ name: "a", result: read("", chapter("Ena"), chapter("Dve")) }]))?.("w") ?? [];
     expect(book.map((item) => item.title)).toEqual(["Ena", "Dve"]);
     expect(draftChapters(writingFromDocument(read(""), "prazno", "Brez naslova"))).toBeUndefined();
+  });
+});
+
+describe("What documents make, said before anything is made", () => {
+  const story = (name: string, ...chapters: ImportedChapter[]) => ({ name, result: read("", ...chapters) });
+
+  it("makes a writing of each document, or one book with a chapter for each", () => {
+    const two = [story("Prva", chapter("Prva", "Ena dve.")), story("Druga", chapter("Druga", "Tri."))];
+    expect(draftsFrom(two, false, "Zgodbe", "Brez naslova").map((draft) => draft.title)).toEqual(["Prva", "Druga"]);
+    const book = draftsFrom(two, true, "Zgodbe", "Brez naslova");
+    expect(book).toHaveLength(1);
+    expect(book[0]).toMatchObject({ title: "Zgodbe", split: true });
+    expect(book[0].chapters.map((item) => item.title)).toEqual(["Prva", "Druga"]);
+    // One document is one writing, book or not.
+    expect(draftsFrom(two.slice(0, 1), true, "Zgodbe", "Brez naslova")[0].title).toBe("Prva");
+  });
+
+  it("counts a writing's chapters and words, a page of one page, and names several writings", () => {
+    const novel = draftsFrom([story("Roman", chapter("1. poglavje", "Čaša in šola."), chapter("2. poglavje", "Žaba."))], false, "", "Brez naslova");
+    expect(draftsFound(novel)).toEqual({ chapters: 2, words: 4, titles: ["1. poglavje", "2. poglavje"] });
+    const page = draftsFrom([story("Članek", chapter("Članek", "Ena dve tri."))], false, "", "Brez naslova");
+    expect(draftsFound(page)).toEqual({ chapters: 1, words: 3, titles: [] });
+    const two = draftsFrom([story("Prva", chapter("Prva", "Ena.")), story("Druga", chapter("Druga", "Dve tri."))], false, "", "Brez naslova");
+    expect(draftsFound(two)).toEqual({ chapters: 2, words: 3, titles: ["Prva", "Druga"] });
   });
 });

@@ -16,7 +16,7 @@ import {
 } from "docx";
 import { createChapter, createWriting, type DocumentJson } from "$lib/model";
 import { wordFile, type WordBook, type WordLook } from "./word";
-import { appendBookChapters, looksLikeChapterTitle, readWordFile, replaceBookChapters } from "./wordImport";
+import { looksLikeChapterTitle, readWordFile, replaceBookChapters } from "./wordImport";
 import { WORD_STYLES } from "./wordStyles";
 
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
@@ -613,13 +613,5 @@ describe("bringing Word edits back", () => {
     expect(kept.chapters[0].part).toBe("Part One");
     const set = replaceBookChapters(project, [{ title: "The Letter", contentJson: empty, plainText: "", part: "Beginnings" }]);
     expect(set.chapters[0].part).toBe("Beginnings");
-    const added = appendBookChapters(project, [{ title: "Coda", contentJson: empty, plainText: "", part: "Part Two" }]);
-    expect(added.chapters.at(-1)?.part).toBe("Part Two");
-  });
-
-  it("adds imported chapters after the last one", () => {
-    const project = createWriting();
-    const next = appendBookChapters(project, [{ title: "Imported", contentJson: { type: "doc", content: [] }, plainText: "" }]);
-    expect(next.chapters.map((chapter) => chapter.position)).toEqual([0, 1]);
   });
 });

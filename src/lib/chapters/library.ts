@@ -254,8 +254,12 @@ export type LibraryActions = {
   /** Opens one of her files in its own program, as Explorer does. */
   openFile(path: string): void;
   showInExplorer(path: string): void;
-  /** Brings a Word, text or Markdown file into the open project as a new writing. */
+  /** Brings a Word, text or Markdown file into the open project as a new writing, once she sees what it holds. */
   importAsWriting(path: string): void;
+  /** New writing from Word: documents she picks become writings of the open project, once she sees what they hold. */
+  newWritingFromWord(): void;
+  /** Bring back from Word: a document she picks becomes the writing (`id`, opened first), an earlier version kept. */
+  bringBackFromWord(id: string): void;
   newWriting(folder: string, name: string): Promise<string | null>;
   newWritingFolder(name: string): Promise<string | null>;
   renameWritingFolder(from: string, to: string): Promise<string | null>;

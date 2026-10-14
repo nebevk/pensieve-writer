@@ -73,7 +73,7 @@ await sleep(700);
 
 // The library's "+" says in words what it makes.
 await page.click(".sidebar-head .add");
-check("the library's + says in words what it makes", JSON.stringify(await menuItems()) === JSON.stringify(["New writing", "New project", "New folder", "Open another project…"]), JSON.stringify(await menuItems()));
+check("the library's + says in words what it makes", JSON.stringify(await menuItems()) === JSON.stringify(["New writing", "New writing from Word…", "New project", "New folder", "Open another project…"]), JSON.stringify(await menuItems()));
 await choose("New folder");
 await typeName("Osnutki");
 await until(`!!(${rowSel("folder", "Osnutki")})`);
@@ -120,6 +120,11 @@ check("Show in Explorer shows it there", JSON.stringify(await page.run(`window._
 await menuOn("file", "Stari rokopis.docx");
 check("a Word file's menu can bring it in as a writing", (await menuItems()).includes("Import as a new writing"), JSON.stringify(await menuItems()));
 await choose("Import as a new writing");
+// It says what the file holds first, then comes in when she says so.
+await until(`(document.querySelector(".window .found .sum")?.textContent ?? "").includes("chapters")`, 120);
+const holds = await page.run(`document.querySelector(".window .found .sum")?.textContent.replace(/\\s+/g, " ").trim() ?? ""`);
+check("it says what the Word file holds first: its five chapters", holds.startsWith("5 chapters · "), holds);
+await page.run(`[...document.querySelectorAll(".window footer button")].find((button) => button.textContent.trim().startsWith("Add to"))?.click(), true`);
 await until(`(document.querySelector(".titlebar .project")?.textContent ?? "") === "The Lantern House"`, 120);
 await sleep(600);
 const writings = await page.run(`(() => { const d = window.__PV_HARNESS__.books.get(${JSON.stringify(`sqlite:${FIRST}\\pensieve.db`)}); const r = d.exec("SELECT p.title, COUNT(c.id) FROM projects p JOIN chapters c ON c.project_id = p.id GROUP BY p.id ORDER BY p.position"); return r[0] ? r[0].values : []; })()`);

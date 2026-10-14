@@ -67,7 +67,7 @@ itself. Most worth doing once on Eva's laptop, with the installed release:
 7. **Backups:** pick a folder inside Google Drive, Back up now, then Settings → Backup & export → Restore
    from a backup.
 8. **Word:** Export Word for a book with parts and open it in Word (the navigation pane shows parts,
-   chapters and subheadings at 12 pt); import it back with Replace this book's chapters.
+   chapters and subheadings at 12 pt); bring it back with the writing's Bring back from Word.
 9. **Word copy:** choose a folder, type, switch windows (the copy updates); change it in Word and save
    (Pensieve stops updating it and says why).
 10. **Print / PDF** prints every chapter.
@@ -77,7 +77,9 @@ itself. Most worth doing once on Eva's laptop, with the installed release:
 12. **Sound:** ambience starts with the first click and keeps playing in Gentle mode; keystroke sounds
     follow the keys.
 13. **The library:** rename and drag the open project's folder; her files open with a double click; a Word
-    file comes in as a new writing; a file dragged in from Explorer is refused.
+    file comes in as a new writing.
+14. **Dropped from Explorer:** drag her manuscript's Word file onto Home (New project from it) and into Write
+    (a new writing); a picture dropped there is refused with a word, and nothing ever opens in Pensieve's place.
 14. **New project** from one of her real Word files, and from a folder of her Word and text files as one
     book: the chapters come in order, with their headings, italics and pictures, and č, š, ž.
     Then paste a chapter of her manuscript from Word: its headings, italics, lists and footnotes come in, and

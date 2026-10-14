@@ -123,16 +123,14 @@ await settings("General");
 check("nor either inside a window, which keeps the page's other keys", (await prevented({ key: "F5", code: "F5" }, ".window nav button")) && (await prevented({ key: "r", code: "KeyR", ctrlKey: true }, ".window nav button")));
 await close();
 
-// Import Word is a button like the others, which opens the file picker; the file field itself is out of sight.
+// Backup & export is for export only: Word comes in where it acts (owner, 14 October).
 await settings("Backup & export");
-const picker = await page.run(`(() => {
-  const input = document.querySelector(".window input[type=file]");
-  let asked = false;
-  input.click = () => { asked = true; };
-  [...document.querySelectorAll(".window button")].find((button) => button.textContent.trim() === "Import Word")?.click();
-  return { asked, hidden: input.hidden };
-})()`);
-check("Import Word is a button that opens the file picker", picker.asked && picker.hidden, JSON.stringify(picker));
+const backup = await page.run(`({ fields: document.querySelectorAll(".window input[type=file]").length, text: document.querySelector(".window .pane").innerText })`);
+check(
+  "Backup & export has no import, and the Word copy says how its changes come back",
+  backup.fields === 0 && !/Import/.test(backup.text) && backup.text.includes("Bring back from Word"),
+  JSON.stringify({ fields: backup.fields }),
+);
 await close();
 
 // A book target typed the Slovenian way, then Enter; another, then Esc at once: both kept.

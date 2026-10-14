@@ -75,6 +75,7 @@
       back: button,
       items: [
         { label: t("newWritingTitle"), run: ask("writing") },
+        { label: t("newWritingFromWord"), run: () => actions.newWritingFromWord() },
         { label: t("newProjectTitle"), run: () => actions.startProject("") },
         { label: t("newFolderTitle"), run: ask("folder") },
         "rule",

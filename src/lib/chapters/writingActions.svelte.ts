@@ -1,8 +1,9 @@
 import { folderNameProblem } from "$lib/chapters/library";
 import { joinWriting, splitWriting } from "$lib/chapters/page";
-import { documentName, draftChapters, writingFromDocument } from "$lib/export/importWriting";
-import type { WordImport } from "$lib/export/wordImport";
-import type { Shelf, Writing } from "$lib/model";
+import { draftChapters, writingFromDocument, type WritingDraft } from "$lib/export/importWriting";
+import { replaceBookChapters, type ImportedChapter, type WordImport } from "$lib/export/wordImport";
+import { isUntitled } from "$lib/i18n";
+import { createChapter, emptyDocument, type Shelf, type Writing } from "$lib/model";
 import { errorMessage } from "$lib/save/autosave";
 import { flushNoteSave, listNotes, listTasks, saveNote, saveTask } from "$lib/storage/organize";
 import {
@@ -48,9 +49,34 @@ export type WritingsHost = {
   loadOrganizer: () => Promise<void>;
   notice: (message: string) => void;
   fail: (message: string) => void;
-  /** A Word, text or Markdown file, read into chapters, its pictures made small. */
-  readDocument: (path: string) => Promise<WordImport>;
 };
+
+/**
+ * A document as the one page of a writing that isn't split, under the writing's title. A document of one
+ * page is that page; one of chapters has each title as a heading in it, as joining a writing makes them,
+ * except a first one named like the writing, which is the page's title line.
+ */
+function onePage(writing: Writing, draft: WritingDraft, now: string): ImportedChapter {
+  if (!draft.split) {
+    const only = draft.chapters[0];
+    return { title: writing.title, contentJson: only?.contentJson ?? emptyDocument(), plainText: only?.plainText ?? "" };
+  }
+  const same = (title: string) => title.trim().toLowerCase() === writing.title.trim().toLowerCase();
+  const joined = joinWriting(
+    {
+      ...writing,
+      split: true,
+      chapters: draft.chapters.map((item, index) => ({
+        ...createChapter(writing.id, index === 0 && same(item.title) ? "" : item.title, index, now),
+        contentJson: item.contentJson,
+        plainText: item.plainText,
+        ...(item.part !== undefined ? { part: item.part } : {}),
+      })),
+    },
+    now,
+  ).writing.chapters[0];
+  return { title: joined.title, contentJson: joined.contentJson, plainText: joined.plainText };
+}
 
 /** A folder name for writings: one Windows takes, and not one the project has already. */
 export function nameCheck(name: string, taken: string[]): string | null {
@@ -66,7 +92,7 @@ export function nameCheck(name: string, taken: string[]): string | null {
  */
 export class WritingActions {
   #host: WritingsHost;
-  // A file being brought in: another waits until it is.
+  // Documents being brought in: others wait until they are.
   #importing = false;
 
   constructor(host: WritingsHost) {
@@ -324,36 +350,64 @@ export class WritingActions {
   }
 
   /**
-   * A Word, text or Markdown file brought into the open project as a new writing, and opened: its chapters
-   * begin at its top headings (or chapter lines), and a file without any is one page.
+   * Writings made from documents (New writing from Word, documents dropped in Write, a file in the library):
+   * added to the open project, the first one opened. Only into the project they were read for: another may
+   * open while they are read.
    */
-  async importFile(path: string) {
+  async addDrafts(drafts: WritingDraft[]) {
     const host = this.#host;
     const writing = host.writing();
-    if (!writing || !host.shelf() || this.#importing) return;
+    if (!writing || !host.shelf() || drafts.length === 0 || this.#importing) return;
     this.#importing = true;
-    // The project it was asked for, and its language: another project may open while the file is read.
     const project = host.projectId();
     const language = writing.language;
     try {
-      const name = documentName(path);
-      host.notice(t("importingWord", { name }));
-      const draft = writingFromDocument(await host.readDocument(path), name, t("untitled"));
       // After any switch under way, and only into the project it was asked for.
-      const made = await host.oneAtATime(async () =>
-        host.projectId() === project ? addWriting({ title: draft.title, folder: "", split: draft.split, language, chapters: draftChapters(draft) }) : null,
-      );
-      if (!made) {
-        host.notice(t("importOtherProject", { title: draft.title }));
+      const made = await host.oneAtATime(async () => {
+        if (host.projectId() !== project) return [];
+        const ids: string[] = [];
+        for (const draft of drafts) ids.push((await addWriting({ title: draft.title, folder: "", split: draft.split, language, chapters: draftChapters(draft) })).id);
+        return ids;
+      });
+      if (made.length === 0) {
+        host.notice(t("importOtherProject", { title: drafts[0].title }));
         return;
       }
       // Outside the queued change: openWriting queues its own.
-      await host.openWriting(made.id);
-      if (host.projectId() === project) host.notice(t("importedAsWriting", { title: draft.title }));
+      await host.openWriting(made[0]);
+      if (host.projectId() !== project) return;
+      host.notice(drafts.length === 1 ? t("importedAsWriting", { title: drafts[0].title }) : t("writingsAdded", { titles: drafts.map((draft) => draft.title).join(", ") }));
     } catch (error) {
-      host.notice(errorMessage(error));
+      host.fail(errorMessage(error));
     } finally {
       this.#importing = false;
+    }
+  }
+
+  /**
+   * Bring back from Word: the open writing becomes the document's (its Word copy changed in Word, say), after
+   * an earlier version of it is kept. A chapter with the same title, or in the same place, keeps its notes
+   * and to-dos. A writing of one page stays one page, the document's chapters joined in it. The document's
+   * own Title names a writing still untitled; `name` is its file's.
+   */
+  async bringBack(read: WordImport, name: string) {
+    const host = this.#host;
+    const project = host.projectId();
+    try {
+      await host.withEditorClosed(async () => {
+        const writing = host.writing();
+        if (!writing || host.projectId() !== project) return;
+        await keepSnapshot(writing);
+        const now = new Date().toISOString();
+        const chapters = writing.split ? read.chapters : [onePage(writing, writingFromDocument(read, name, t("untitled")), now)];
+        let next = replaceBookChapters(writing, chapters, now);
+        if (read.title && isUntitled(writing.title)) next = { ...next, title: read.title };
+        await sqliteStorage.save(next);
+        host.putOpen(next);
+        host.notice(t("broughtBack", { title: next.title }));
+      });
+    } catch (error) {
+      host.fail(errorMessage(error));
     }
   }
 

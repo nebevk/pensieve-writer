@@ -1,9 +1,10 @@
-// Checks the New project window (owner, 12 October): Home's "+ New", Home's new-project card, the library's
-// + and a library folder's menu open it, instead of Write with a name to type in the tree. A project starts
-// empty, from a Word, text or Markdown file, or from a folder of files (each its own writing, or one book
-// with a chapter for each). A taken name is refused in the window; Escape closes it with nothing made.
-// The library's "Import as a new writing" takes text files too. In English, then Slovenian.
-// Usage: node --experimental-websocket new-project-check.mjs [port]
+// Checks the New project window (owner, 12 October; two starts, 14 October): Home's "+ New", Home's new-project
+// card, the library's + and a library folder's menu open it. A project starts from a blank page, or from Word:
+// one or several Word, text or Markdown documents, read as they are chosen, the window saying what they hold
+// (chapters, words, titles) before anything is made; several are each their own writing or one book with a
+// chapter for each. A document that can't be read, or a taken name, is said in the window; Escape closes it
+// with nothing made. The library's "Import as a new writing" says what a text file holds, then adds it. In
+// English, then Slovenian. Usage: node --experimental-websocket new-project-check.mjs [port]
 import { connect, sleep } from "./cdp.mjs";
 import { clickFound } from "./tree-unfold.mjs";
 
@@ -53,6 +54,10 @@ const press = (label) =>
   page.run(`(() => { const el = [...document.querySelectorAll(".window button")].find((item) => item.textContent.trim() === ${JSON.stringify(label)}); el?.click(); return !!el; })()`);
 const nameField = () => page.run(`document.querySelector(".window .field input")?.value ?? null`);
 const chosen = () => page.run(`document.querySelector(".window .chosen")?.textContent.trim() ?? ""`);
+const start = (label) =>
+  page.run(`(() => { const el = [...document.querySelectorAll(".window .start")].find((item) => item.querySelector("b")?.textContent.trim() === ${JSON.stringify(label)}); el?.click(); return !!el; })()`);
+const found = () => page.run(`document.querySelector(".window .found .sum")?.textContent.replace(/\\s+/g, " ").trim() ?? ""`);
+const foundTitles = () => page.run(`[...document.querySelectorAll(".window .found li")].map((el) => el.textContent.trim())`);
 const rowSel = (kind, name) =>
   `[...document.querySelectorAll(".library button.tree-row.${kind}")].find((el) => el.querySelector(".name")?.textContent.trim() === ${JSON.stringify(name)})`;
 const menuOn = (kind, name) =>
@@ -87,7 +92,14 @@ check(
 check("its name field has the keyboard", await until(`!!document.activeElement?.matches(".window .field input")`));
 const places = await page.run(`[...document.querySelectorAll(".window select option")].map((option) => option.textContent.trim())`);
 check("Where lists the library and its folders", JSON.stringify(places) === JSON.stringify(["Library", "Romani"]), JSON.stringify(places));
-check("it starts with an empty page", await page.run(`document.querySelector(".window input[type=radio][value=empty]")?.checked === true`));
+const starts = await page.run(`[...document.querySelectorAll(".window .start .what")].map((el) => { const name = el.querySelector("b").textContent; return name + " | " + el.textContent.slice(name.length).trim(); })`);
+check(
+  "two starts, each saying what it makes, under a line saying what a project is",
+  JSON.stringify(starts) === JSON.stringify(["A blank page | Start writing; add chapters as you go.", "From Word | Bring in what you have: its headings become chapters."]) &&
+    (await page.run(`document.querySelector(".window .intro")?.textContent.trim()`)) === "A project keeps a book, or several stories, with their notes and ideas.",
+  JSON.stringify(starts),
+);
+check("it starts with a blank page", await page.run(`document.querySelector(".window input[type=radio][value=empty]")?.checked === true`));
 await page.shoot(`${shots}new-project-1366.png`);
 await page.type("Zgodbe ob reki");
 await page.key("Enter", "Enter", 13);
@@ -101,28 +113,41 @@ check(
 );
 check("in its own folder in the library, with one writing named after it", JSON.stringify(await writings(EMPTY)) === JSON.stringify(["Zgodbe ob reki"]), JSON.stringify(await writings(EMPTY)));
 
-// The library's "Import as a new writing" takes a text file too.
+// The library's "Import as a new writing" takes a text file too, once she sees what it holds.
 await clickFound(page, rowSel("folder", "Romani"));
 await until(`!!(${rowSel("file", "beležke.txt")})`);
 await menuOn("file", "beležke.txt");
 await until(`!!document.querySelector(".tree-menu")`);
 check("a text file in the library offers Import as a new writing", (await menuItems()).includes("Import as a new writing"), JSON.stringify(await menuItems()));
 await chooseInMenu("Import as a new writing");
+await until(`(document.querySelector(".window .found .sum")?.textContent ?? "").includes("word")`);
+check(
+  "it says what the file holds first, in a window like New project",
+  (await windowTitle()) === "New writing from Word" && (await found()) === "One page · 3 words",
+  `${await windowTitle()} | ${await found()}`,
+);
+await press("Add to “Zgodbe ob reki”");
 await until(`(${JSON.stringify(EMPTY)}, (() => { const d = window.__PV_HARNESS__.books.get(${JSON.stringify(`sqlite:${EMPTY}`)}); return d && d.exec("SELECT count(*) FROM projects")[0].values[0][0] === 2; })())`, 80);
 await sleep(600);
 check("and becomes a writing of the open project, opened", JSON.stringify(await writings(EMPTY)) === JSON.stringify(["Zgodbe ob reki", "beležke"]) && (await page.run(`document.querySelector(".paper .ProseMirror")?.textContent.includes("Zapiski za roman.")`)), JSON.stringify(await writings(EMPTY)));
 
-// Home's new-project card, from a Markdown file: the file names the project, its headings make chapters.
+// Home's new-project card, From Word with a Markdown file: the file names the project, its headings make
+// chapters, and the window says so before anything is made.
 await goHome();
 await page.click(".home .grid .card.new");
 await until(`!!document.querySelector(".window")`);
-await pick("A file");
+await start("From Word");
 await until(`!!document.querySelector(".window .pick button")`);
-check("Create waits for a file", await page.run(`document.querySelector(".window footer .primary")?.disabled === true`));
+check("Create waits for documents", await page.run(`document.querySelector(".window footer .primary")?.disabled === true`));
 await answer(`${WRITING}\\Pod lipo.md`);
-await press("Choose a file…");
-await until(`!!document.querySelector(".window .chosen")`);
-check("a chosen file names the project", (await nameField()) === "Pod lipo" && (await chosen()) === "Pod lipo.md", `${await nameField()} | ${await chosen()}`);
+await press("Choose documents…");
+await until(`(document.querySelector(".window .found .sum")?.textContent ?? "").includes("chapters")`);
+check("a chosen document names the project", (await nameField()) === "Pod lipo" && (await chosen()) === "Pod lipo.md", `${await nameField()} | ${await chosen()}`);
+check(
+  "and the window says what it holds: its chapters and words, and their titles",
+  (await found()) === "2 chapters · 9 words" && JSON.stringify(await foundTitles()) === JSON.stringify(["1. poglavje", "2. poglavje"]),
+  `${await found()} ${JSON.stringify(await foundTitles())}`,
+);
 await page.shoot(`${shots}new-project-file.png`);
 await press("Create");
 await opened("Pod lipo");
@@ -139,62 +164,71 @@ check(
     JSON.stringify(await query(FROM_FILE, "SELECT content_json FROM chapters WHERE title = '2. poglavje'")).includes("bold"),
 );
 
-// The library's +, from a folder, as one book: a chapter for each file, in the order Explorer shows them.
+// The library's +, several documents as one book: a chapter for each, in the order Explorer shows them,
+// whatever order they were picked in.
+const STORIES = [`${WRITING}\\Zgodbe\\10 Deseta.txt`, `${WRITING}\\Zgodbe\\1 Prva.txt`, `${WRITING}\\Zgodbe\\2 Druga.md`];
 await until(`!!document.querySelector(".sidebar-head .add")`);
 await page.click(".sidebar-head .add");
 await chooseInMenu("New project");
 check("the library's + › New project opens the window", (await until(`!!document.querySelector(".window")`)) && (await windowTitle()) === "New project");
-await pick("A folder of files");
-await answer(`${WRITING}\\Zgodbe`);
-await press("Choose a folder…");
-await until(`!!document.querySelector(".window .chosen")`);
-check("a chosen folder says how many of its files come in, and names the project", (await chosen()) === "Zgodbe · 3 files" && (await nameField()) === "Zgodbe", `${await chosen()} | ${await nameField()}`);
-await pick("One book, a chapter for each file");
+await start("From Word");
+await answer(STORIES);
+await press("Choose documents…");
+await until(`(document.querySelector(".window .found .sum")?.textContent ?? "").includes("writings")`);
+check("several chosen documents say how many, and name the project after their folder", (await chosen()) === "Zgodbe · 3 files" && (await nameField()) === "Zgodbe", `${await chosen()} | ${await nameField()}`);
+check("each document its own writing is the first choice", await page.run(`document.querySelector(".window input[type=radio][name=each]")?.checked === true`));
+await pick("One book, a chapter for each document");
+await until(`(document.querySelector(".window .found .sum")?.textContent ?? "").includes("chapters")`);
+check(
+  "as one book, the window says its chapters, in Explorer's order",
+  (await found()) === "3 chapters · 11 words" && JSON.stringify(await foundTitles()) === JSON.stringify(["1 Prva", "Druga", "10 Deseta"]),
+  `${await found()} ${JSON.stringify(await foundTitles())}`,
+);
 await page.shoot(`${shots}new-project-folder.png`);
 await press("Create");
 await opened("Zgodbe");
 await sleep(500);
 const BOOK = `${LIBRARY}\\Zgodbe\\pensieve.db`;
 check(
-  "one book, a chapter for each file, 10 after 2, Word's lock file, pictures and inner folders left out",
+  "one book, a chapter for each document, 10 after 2",
   JSON.stringify(await writings(BOOK)) === JSON.stringify(["Zgodbe"]) && JSON.stringify(await chapters(BOOK, "Zgodbe")) === JSON.stringify(["1 Prva", "Druga", "10 Deseta"]),
   `${JSON.stringify(await writings(BOOK))} ${JSON.stringify(await chapters(BOOK, "Zgodbe"))}`,
 );
 
-// A library folder's New project goes in that folder; each file its own writing, under a name she gave.
+// A library folder's New project goes in that folder; each document its own writing, under a name she gave.
 await menuOn("folder", "Romani");
 await chooseInMenu("New project");
 await until(`!!document.querySelector(".window")`);
 check("a folder's New project goes in that folder", (await page.run(`document.querySelector(".window select")?.value ?? ""`)) === `${LIBRARY}\\Romani`, await page.run(`document.querySelector(".window select")?.value ?? ""`));
 await page.type("Kratke zgodbe");
-await pick("A folder of files");
-await answer(`${WRITING}\\Zgodbe`);
-await press("Choose a folder…");
-await until(`!!document.querySelector(".window .chosen")`);
-check("a name she typed stays when she chooses a folder", (await nameField()) === "Kratke zgodbe", await nameField());
-check("each file its own writing is the first choice", await page.run(`document.querySelector(".window input[type=radio][value=writing]")?.checked === true`));
+await start("From Word");
+await answer(STORIES);
+await press("Choose documents…");
+await until(`(document.querySelector(".window .found .sum")?.textContent ?? "").includes("writings")`);
+check("a name she typed stays when she chooses documents", (await nameField()) === "Kratke zgodbe", await nameField());
 await press("Create");
 // The title bar names the open writing: a project of several opens on the first.
 check("it opens on its first writing", await opened("1 Prva"), await projectTitle());
 await sleep(500);
 const EACH = `${LIBRARY}\\Romani\\Kratke zgodbe\\pensieve.db`;
-check("each file its own writing, in order, in the folder asked for", JSON.stringify(await writings(EACH)) === JSON.stringify(["1 Prva", "Druga", "10 Deseta"]), JSON.stringify(await writings(EACH)));
+check("each document its own writing, in order, in the folder asked for", JSON.stringify(await writings(EACH)) === JSON.stringify(["1 Prva", "Druga", "10 Deseta"]), JSON.stringify(await writings(EACH)));
 
-// A folder with none of her files, and a taken name: said in the window, which stays; Escape closes it.
+// A document that can't be read, and a taken name: said in the window, which stays; Escape closes it.
 const projectsBefore = await page.run(`window.__PV_HARNESS__.books.size`);
 await page.click(".sidebar-head .add");
 await chooseInMenu("New project");
 await until(`!!document.querySelector(".window")`);
-await pick("A folder of files");
-await answer("C:\\Users\\Eva");
-await press("Choose a folder…");
-await until(`!!document.querySelector(".window .more .problem")`);
+await start("From Word");
+await answer(`${WRITING}\\Ni ga.docx`);
+await press("Choose documents…");
+await until(`!!document.querySelector(".window .found .problem")`);
 check(
-  "a folder without Word, text or Markdown files says so, and Create waits",
-  (await page.run(`document.querySelector(".window .more .problem")?.textContent.trim()`)) === "This folder has no Word, text or Markdown files." &&
+  "a document that can't be read says why, and Create waits",
+  (await page.run(`document.querySelector(".window .found .problem")?.textContent.trim()`)) === "“Ni ga.docx” couldn't be read: That file isn't there any more" &&
     (await page.run(`document.querySelector(".window footer .primary").disabled`)),
+  await page.run(`document.querySelector(".window .found .problem")?.textContent.trim()`),
 );
-await pick("An empty page");
+await start("A blank page");
 await page.run(`(() => { const input = document.querySelector(".window .field input"); input.focus(); input.value = "Zgodbe ob reki"; input.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`);
 await press("Create");
 await until(`!!document.querySelector(".window [role=alert]")`);
@@ -220,23 +254,29 @@ await until(`!!document.querySelector(".home .grid .card.new")`);
 await sleep(400);
 await page.click(".home .grid .card.new");
 await until(`!!document.querySelector(".window")`);
-await pick("Mapa z datotekami");
-await answer(`${WRITING}\\Zgodbe`);
-await press("Izberi mapo …");
-await until(`!!document.querySelector(".window .chosen")`);
+await start("Iz Worda");
+await answer(STORIES);
+await press("Izberi dokumente …");
+await until(`(document.querySelector(".window .found .sum")?.textContent ?? "").includes("besed")`);
 const words = await page.run(`({
   title: document.querySelector(".window header span")?.textContent.trim(),
+  intro: document.querySelector(".window .intro")?.textContent.trim(),
   labels: [...document.querySelectorAll(".window .field, .window legend")].map((el) => el.firstChild?.textContent.trim()),
+  starts: [...document.querySelectorAll(".window .start b")].map((el) => el.textContent.trim()),
   choices: [...document.querySelectorAll(".window .choice")].map((el) => el.textContent.trim()),
   chosen: document.querySelector(".window .chosen")?.textContent.trim(),
+  found: document.querySelector(".window .found .sum")?.textContent.replace(/\\s+/g, " ").trim(),
   buttons: [...document.querySelectorAll(".window footer button")].map((el) => el.textContent.trim()),
 })`);
 check(
-  "in Slovenian: Nov projekt, Ime, Kam, Začetek, its choices and buttons",
+  "in Slovenian: Nov projekt, what a project is, Ime, Kam, the two starts, the choices, what was found and the buttons",
   words.title === "Nov projekt" &&
-    JSON.stringify(words.labels) === JSON.stringify(["Ime", "Kam", "Začetek"]) &&
-    JSON.stringify(words.choices) === JSON.stringify(["Prazna stran", "Datoteka", "Mapa z datotekami", "Vsaka datoteka svoje besedilo", "Ena knjiga, vsaka datoteka svoje poglavje"]) &&
+    words.intro === "Projekt hrani knjigo ali več zgodb, skupaj z zapiski in idejami." &&
+    JSON.stringify(words.labels) === JSON.stringify(["Ime", "Kam", "Kako želite začeti?"]) &&
+    JSON.stringify(words.starts) === JSON.stringify(["Prazna stran", "Iz Worda"]) &&
+    JSON.stringify(words.choices) === JSON.stringify(["Vsak dokument svoje besedilo", "Ena knjiga, vsak dokument svoje poglavje"]) &&
     words.chosen === "Zgodbe · 3 datoteke" &&
+    words.found === "3 besedila · 11 besed" &&
     JSON.stringify(words.buttons) === JSON.stringify(["Prekliči", "Ustvari"]),
   JSON.stringify(words),
 );

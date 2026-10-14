@@ -1,6 +1,7 @@
 import { createChapter, emptyDocument, type Chapter } from "$lib/model";
 import { isUntitled } from "$lib/i18n";
 import { collator } from "$lib/chapters/library";
+import { countWords } from "$lib/editor/counts";
 import { looksLikeChapterTitle, type ImportedChapter, type WordImport } from "./wordImport";
 
 /** Files brought in as writings: what kind each is, and how it becomes a writing or a book's chapters. */
@@ -69,4 +70,21 @@ export function draftChapters(draft: WritingDraft, now = new Date().toISOString(
       plainText: item.plainText,
       ...(item.part !== undefined ? { part: item.part } : {}),
     }));
+}
+
+/** A document to bring in: its file's name, the folder it is in when that is known, and how to read it. */
+export type DocumentSource = { name: string; folder?: string; read: () => Promise<WordImport> };
+
+/** The writings documents read in make: one each, or with `asBook` one book named `title`, a chapter for each. */
+export function draftsFrom(read: { name: string; result: WordImport }[], asBook: boolean, title: string, untitled: string): WritingDraft[] {
+  if (read.length > 1 && asBook) return [bookFromDocuments(title, read)];
+  return read.map((item) => writingFromDocument(item.result, item.name, untitled));
+}
+
+/** What writings made from documents hold, as a window says before anything is made: their chapters and words. */
+export function draftsFound(drafts: WritingDraft[]): { chapters: number; words: number; titles: string[] } {
+  const words = drafts.reduce((sum, draft) => sum + draft.chapters.reduce((total, item) => total + countWords(item.plainText), 0), 0);
+  // One writing names its chapters; several name themselves.
+  const titles = drafts.length === 1 ? (drafts[0].split ? drafts[0].chapters.map((item) => item.title) : []) : drafts.map((draft) => draft.title);
+  return { chapters: drafts.reduce((sum, draft) => sum + (draft.split ? draft.chapters.length : 1), 0), words, titles };
 }

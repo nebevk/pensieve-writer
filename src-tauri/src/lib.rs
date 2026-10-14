@@ -53,7 +53,6 @@ pub fn run() {
             library::open_library_file,
             library::show_in_explorer,
             library::read_document_file,
-            library::list_document_files,
             project::default_project_path,
             project::project_file_exists,
             project::example_book_path,

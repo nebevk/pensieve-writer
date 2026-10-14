@@ -339,14 +339,6 @@
         if (!file) throw "That file isn't there any more";
         return bytesOf(file.base64).buffer;
       }
-      case "list_document_files": {
-        const folder = String(args.folder).replace(/[\\/]+$/, "");
-        if (!folders.has(lower(folder))) throw "That folder isn't there any more";
-        return [...files.values()]
-          .filter((file) => lower(parentOf(file.path)) === lower(folder))
-          .map((file) => file.path)
-          .filter((path) => /\.(docx|txt|md|markdown)$/i.test(path) && !/^(\.|~\$)/.test(path.split(/[\\/]/).pop()));
-      }
       // The file and folder pickers: the answers a check queued, in turn; none left is a Cancel.
       case "plugin:dialog|open":
         return window.__PV_HARNESS__.dialogAnswers?.shift() ?? null;

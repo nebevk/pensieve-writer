@@ -446,13 +446,3 @@ export function replaceBookChapters(project: Writing, imported: ImportedChapter[
   return { ...project, chapters, updatedAt: now };
 }
 
-/** Adds the imported chapters after the book's last chapter. */
-export function appendBookChapters(project: Writing, imported: ImportedChapter[], now = new Date().toISOString()): Writing {
-  let position = project.chapters.reduce((max, chapter) => Math.max(max, chapter.position), -1);
-  const added = imported.map((item) => {
-    position += 1;
-    const part = item.part !== undefined ? { part: item.part } : {};
-    return { ...createChapter(project.id, item.title, position, now), contentJson: item.contentJson, plainText: item.plainText, ...part };
-  });
-  return { ...project, chapters: [...project.chapters, ...added], updatedAt: now };
-}

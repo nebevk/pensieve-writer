@@ -567,6 +567,7 @@
       if (!row.current || !shelf) return [{ label: t("openItem"), run: () => row.path && actions.openProject(row.path) }, ...rename, ...drop];
       const items: MenuItem[] = [
         { label: t("newWritingTitle"), run: () => startNew("writing", row.key, "") },
+        { label: t("newWritingFromWord"), run: () => actions.newWritingFromWord() },
         { label: t("newFolderTitle"), run: () => startNew("writingFolder", row.key, "") },
         { label: t("newNoteTitle"), run: () => startNew("note", "group:ideas", "", "ideas") },
         ...rename,
@@ -601,6 +602,7 @@
         { label: t("openItem"), run: () => actions.openWriting(currentFile, id) },
         { label: t("rename"), keys: "F2", run: () => startRename(row) },
         { label: t("duplicate"), run: () => actions.duplicateWriting(id) },
+        { label: t("bringBackFromWord"), run: () => actions.bringBackFromWord(id) },
         {
           label: t("splitChapters"),
           checked: !!row.split,

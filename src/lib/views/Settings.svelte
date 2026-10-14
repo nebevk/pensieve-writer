@@ -28,14 +28,10 @@
     onExportText,
     onCopyHtml,
     onPrint,
-    onImport,
     backupOffer = null,
     onPickBackup,
     onRestoreBackup,
     onCancelBackup,
-    importPreview = null,
-    onConfirmImport,
-    onCancelImport,
     bookTitle = "",
     onChooseWordFolder,
     onUpdateWordCopy,
@@ -80,16 +76,11 @@
     onExportText: (kind: "markdown" | "plain") => void;
     onCopyHtml: () => void;
     onPrint: () => void;
-    onImport: (file: File) => void;
     /** A backup file the writer picked, waiting for them to confirm the restore. */
     backupOffer?: { title: string; savedAt: string; otherBook: boolean } | null;
     onPickBackup: () => void;
     onRestoreBackup: () => void;
     onCancelBackup: () => void;
-    /** A Word file read and waiting: its chapters, before anything in the book changes. */
-    importPreview?: { fileName: string; chapters: { title: string; words: number }[] } | null;
-    onConfirmImport: (mode: "replace" | "append") => void;
-    onCancelImport: () => void;
     bookTitle?: string;
     onChooseWordFolder: () => void;
     onUpdateWordCopy: () => void;
@@ -229,7 +220,6 @@
   }
 
   let section = $state<Section>("Appearance");
-  let importInput = $state<HTMLInputElement>();
   let dictionaryDraft = $state("");
   let dictionaryLanguage = $state<WritingLanguage>("en");
 
@@ -658,7 +648,7 @@
                 <p class="hint">{t("updatedAgo", { ago: ago(prefs.wordCopyAt) })}</p>
               {/if}
             </div>
-            <div class="row stack">
+            <div class="row stack last">
               <span>{t("exportRow")}</span>
               <div class="actions">
                 <button type="button" onclick={onExport}>{t("exportWord")}</button>
@@ -667,50 +657,6 @@
                 <button type="button" onclick={onCopyHtml}>{t("copyHtml")}</button>
                 <button type="button" onclick={onPrint}>{t("printPdf")}</button>
               </div>
-            </div>
-            <div class="row stack last">
-              <span>{t("importRow")}</span>
-              <div class="actions">
-                <!-- A button like the others; the browser's own file control stays out of sight, and out of Tab's way. -->
-                <button type="button" onclick={() => importInput?.click()}>{t("importWord")}</button>
-                <input
-                  bind:this={importInput}
-                  type="file"
-                  hidden
-                  accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  onchange={(event) => {
-                    const file = (event.currentTarget as HTMLInputElement).files?.[0];
-                    if (file) onImport(file);
-                    (event.currentTarget as HTMLInputElement).value = "";
-                  }}
-                />
-              </div>
-              {#if importPreview}
-                {@const words = importPreview.chapters.reduce((sum, chapter) => sum + chapter.words, 0)}
-                <div class="offer" role="alertdialog" aria-label={t("importWordLabel")}>
-                  <p>
-                    {t("importSummary", {
-                      file: importPreview.fileName,
-                      chapters: plural("chapters", importPreview.chapters.length),
-                      words: plural("words", words),
-                    })}
-                  </p>
-                  <ol class="found">
-                    {#each importPreview.chapters.slice(0, 12) as chapter, index (index)}
-                      <li>{chapter.title} <span>· {plural("words", chapter.words)}</span></li>
-                    {/each}
-                  </ol>
-                  {#if importPreview.chapters.length > 12}
-                    <p class="hint">{t("andMore", { n: importPreview.chapters.length - 12 })}</p>
-                  {/if}
-                  <p class="hint">{t("importHint")}</p>
-                  <div class="actions">
-                    <button type="button" onclick={() => onConfirmImport("replace")}>{t("replaceChapters")}</button>
-                    <button type="button" onclick={() => onConfirmImport("append")}>{t("addAsNewChapters")}</button>
-                    <button type="button" onclick={onCancelImport}>{t("cancel")}</button>
-                  </div>
-                </div>
-              {/if}
             </div>
           </div>
           {#if backupMessage}
@@ -1364,18 +1310,6 @@
 
   .offer p {
     margin: 0;
-  }
-
-  .found {
-    margin: 0;
-    padding-left: 1.4rem;
-    max-height: 12rem;
-    overflow: auto;
-    color: var(--pv-text);
-  }
-
-  .found span {
-    color: var(--pv-text-faint);
   }
 
   .problem {

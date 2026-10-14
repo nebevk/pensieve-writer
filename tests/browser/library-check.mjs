@@ -67,7 +67,7 @@ check("the library's head has one + and the hide button", JSON.stringify(await h
 await page.click(".sidebar-head .add");
 await until(`!!document.querySelector(".tree-menu")`);
 const plusMenu = await page.run(`[...document.querySelectorAll(".tree-menu button .label")].map((el) => el.textContent.trim())`);
-check("its + says in words what it makes", JSON.stringify(plusMenu) === JSON.stringify(["New writing", "New project", "New folder", "Open another project…"]), JSON.stringify(plusMenu));
+check("its + says in words what it makes", JSON.stringify(plusMenu) === JSON.stringify(["New writing", "New writing from Word…", "New project", "New folder", "Open another project…"]), JSON.stringify(plusMenu));
 await page.key("Escape", "Escape", 27);
 await sleep(200);
 const hideLabel = () => page.run(`document.querySelector(".sidebar .hide")?.getAttribute("title") ?? ""`);

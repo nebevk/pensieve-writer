@@ -169,9 +169,6 @@ pub async fn show_in_explorer(path: String) -> Result<(), String> {
 /// The kinds of file that can come in as a writing: Word, text and Markdown.
 const DOCUMENTS: &[&str] = &["docx", "txt", "md", "markdown"];
 
-/// How many files of one folder can come in as a project.
-const MOST_DOCUMENTS: usize = 500;
-
 fn is_document(file: &Path) -> bool {
     let kind = file.extension().map(|kind| kind.to_string_lossy().to_lowercase()).unwrap_or_default();
     DOCUMENTS.contains(&kind.as_str())
@@ -194,32 +191,6 @@ fn read_document(file: &Path) -> Result<Vec<u8>, String> {
         return Err("That file is too big to bring in".into());
     }
     fs::read(file).map_err(|error| error.to_string())
-}
-
-/// The Word, text and Markdown files in a folder (not in its folders), to make a project of them.
-#[tauri::command]
-pub async fn list_document_files(folder: String) -> Result<Vec<String>, String> {
-    list_documents(Path::new(&folder))
-}
-
-fn list_documents(dir: &Path) -> Result<Vec<String>, String> {
-    let entries = fs::read_dir(dir).map_err(|_| "That folder isn't there any more".to_string())?;
-    let mut found = Vec::new();
-    for entry in entries.filter_map(Result::ok) {
-        let name = entry.file_name().to_string_lossy().to_string();
-        // Word's lock files ("~$...") and hidden files are not hers to bring in.
-        if name.starts_with('.') || name.starts_with("~$") || hidden(&entry) {
-            continue;
-        }
-        let path = entry.path();
-        if entry.file_type().is_ok_and(|kind| kind.is_file()) && is_document(&path) {
-            found.push(path.display().to_string());
-            if found.len() == MOST_DOCUMENTS {
-                break;
-            }
-        }
-    }
-    Ok(found)
 }
 
 /// Whether Windows marks a folder hidden or as the system's ("System Volume Information", say).
@@ -530,25 +501,18 @@ mod tests {
     }
 
     #[test]
-    fn documents_of_a_folder() {
+    fn reading_a_document() {
         let root = std::env::temp_dir().join(format!("pensieve-documents-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(root.join("Stari")).unwrap();
-        for file in ["1 Prvo.docx", "2 Drugo.TXT", "zapiski.md", "slika.png", "~$1 Prvo.docx", ".skrito.md", "Stari/3 Tretje.docx"] {
+        fs::create_dir_all(&root).unwrap();
+        for file in ["zapiski.md", "2 Drugo.TXT", "slika.png"] {
             fs::write(root.join(file), "Čaša, šola, žaba".as_bytes()).unwrap();
         }
-        // Word, text and Markdown files of the folder itself; not its folders, Word's lock files or hidden ones.
-        let mut names: Vec<String> = list_documents(&root)
-            .unwrap()
-            .iter()
-            .map(|path| Path::new(path).file_name().unwrap().to_string_lossy().to_string())
-            .collect();
-        names.sort();
-        assert_eq!(names, ["1 Prvo.docx", "2 Drugo.TXT", "zapiski.md"]);
+        // Word, text and Markdown files come in, whatever the case of their kind; nothing else does.
         assert_eq!(read_document(&root.join("zapiski.md")).unwrap(), "Čaša, šola, žaba".as_bytes());
+        assert_eq!(read_document(&root.join("2 Drugo.TXT")).unwrap(), "Čaša, šola, žaba".as_bytes());
         assert!(read_document(&root.join("slika.png")).is_err());
         assert_eq!(read_document(&root.join("ni.txt")), Err("That file isn't there any more".to_string()));
-        assert!(list_documents(&root.join("ni")).is_err());
         let _ = fs::remove_dir_all(&root);
     }
 

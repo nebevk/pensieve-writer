@@ -32,14 +32,16 @@ export async function chooseImageFile(): Promise<string | null> {
 }
 
 /** A Word, text or Markdown file to start a project from. */
-export async function chooseDocumentFile(): Promise<string | null> {
+/** Word, text or Markdown files she picks: one, or several when `several`; `near` is where the picker opens. */
+export async function chooseDocumentFiles(several: boolean, near = ""): Promise<string[]> {
   const selected = await open({
     directory: false,
-    multiple: false,
-    title: t("dialogChooseDocument"),
+    multiple: several,
+    title: t(several ? "dialogChooseDocuments" : "dialogChooseDocument"),
     filters: [{ name: t("dialogDocumentFilter"), extensions: ["docx", "txt", "md", "markdown"] }],
+    ...(near ? { defaultPath: near } : {}),
   });
-  return typeof selected === "string" ? selected : null;
+  return Array.isArray(selected) ? selected : typeof selected === "string" ? [selected] : [];
 }
 
 /** A folder picker; the title says what the folder is for. */
