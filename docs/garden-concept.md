@@ -1,7 +1,7 @@
 # The garden: a concept
 
 A cozy reward for writing (owner, 14 October). Nothing here is built yet: it is the concept to decide on, and
-the brief for the art. When it is decided, it becomes requirements (AT-10 and on) in `requirements.md`.
+the brief for the art. It is requirement AT-11 in `requirements.md`, waiting for the art.
 
 ## Decided so far (owner, 14 October)
 
@@ -10,9 +10,8 @@ the brief for the art. When it is decided, it becomes requirements (AT-10 and on
 - **A little chime** when a keepsake comes.
 - **Words brought in from Word don't count.** Only words written in Pensieve grow the garden, so it starts
   as a seed; bringing a manuscript in earns its own keepsake, "Rokopis je doma", and nothing more.
-- **The name** is to be along the lines of "garden of stories" or "garden of words": proposed **Vrt zgodb /
-  Garden of stories**, which the last stage, Drevo zgodb, answers.
-- **Home**: worth exploring; three ways are under "On Home" below.
+- **The name: Vrt zgodb / Garden of stories**, which the last stage, Drevo zgodb, answers.
+- **On Home, way A:** Home's large Basin mark shows the basin with her plant at its stage (see "On Home").
 
 ## The idea
 
@@ -297,7 +296,7 @@ right of the basin, everything else transparent".
 Home has no free room at 1366 × 768: the left column (the mark, the verse, the counts, the Continue card,
 the to-dos) fills the height, and the projects fill the right. So the garden takes a place Home already has.
 
-**A. The mark becomes her tree (proposed).** Home's large Basin mark, top left, shows the basin with her
+**A. The mark becomes her tree (decided).** Home's large Basin mark, top left, shows the basin with her
 plant at its stage, the look's sun, flame or moon behind it as now. It is where the garden's story starts
 (the basin), it costs no room, and every time she opens Pensieve she sees it has grown. A click opens Write
 with the garden beside the page. The small mark in the window bar stays the plain logo. In Gentle mode it
@@ -326,8 +325,10 @@ to it. Needs a wide (3:1) version of the art.
 
 A and B can go together: the mark shows the tree, the count says its stage.
 
-## Still to decide
+## Next
 
-1. **The name:** Vrt zgodb / Garden of stories, as proposed? (Or Vrt besed / Garden of words.)
-2. **Home:** A, B, both, or C?
-3. **The chime:** on to start with, as proposed, with a switch in Settings → Ambience?
+1. **The art**, in this order: the eight plant stages first (the garden and Home both use them), then the
+   five backdrops, then the keepsakes.
+2. Then the garden is built: the panel, the counting, the keepsakes' moments, the All keepsakes window, and
+   the mark on Home.
+3. The chime is on to start with, with a switch in Settings → Ambience, unless the owner says otherwise.

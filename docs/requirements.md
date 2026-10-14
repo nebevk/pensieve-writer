@@ -155,6 +155,7 @@ Coziness is the top product priority, within the performance budget in Section 5
 | AT-8 | A pomodoro in the floating bar: a click starts the writing time with a clock's tick-tock, then a chime, a word on the page and a break, and a chime when the break ends; icons pause, restart and stop it; Zen shows its time; the lengths (25 and 5 minutes to start with) are in Settings → Writing & goals | S | Done |
 | AT-9 | Keystroke sounds, off to start with: a typewriter (with its carriage return and bell), a mechanical keyboard or a soft one, each recorded, with a sound for each key and a volume of up to half. Shortcuts and arrows stay quiet. The floating bar has a keyboard, lit while the keys sound, opening their kinds and volume (owner, 13 October) | C | Done |
 | AT-10 | Smooth typing (on to start with): the caret glides to where the next letter goes and blinks only once she pauses, and each letter inks in under a fading veil, as in Word; drawn over the page, never in the text | S | Done |
+| AT-11 | Vrt zgodb / Garden of stories (owner, 14 October; [garden-concept.md](garden-concept.md)): one tree grows out of the Pensieve basin as she writes, through eight stages, and each thing she does well leaves a keepsake around it (flowers for words, fireflies for writing days, books for chapters, birds for notes, butterflies for ideas, stones for to-dos, teacups for pomodoros). The Goals panel becomes the garden, her goals under it; Home's large mark shows her tree. Never a streak, nothing ever lost, nothing while she types; a little chime. Only words written in Pensieve count, never those brought in from Word | S | Not started: the art first |
 
 ### 4.8 Settings and polish
 
@@ -239,7 +240,9 @@ Coziness is the top product priority, within the performance budget in Section 5
 The owner's decisions that shaped the app, newest first. Each replaced what the original plan or the
 design system said.
 
-- **14 Oct:** New project starts from a blank page or From Word, each saying what it makes, and the window
+- **14 Oct:** A garden of stories (Vrt zgodb) for cozy rewards: one tree for every look growing out of the
+  basin, keepsakes for what she does, a little chime, shown on Home in the large mark; words brought in from
+  Word don't count. New project starts from a blank page or From Word, each saying what it makes, and the window
   says what the documents hold before anything is made; the folder of files goes, as picking several
   documents does it. Word comes in where it acts: New writing from Word adds documents to the open
   project, Bring back from Word replaces a writing's chapters after keeping an earlier version, and
