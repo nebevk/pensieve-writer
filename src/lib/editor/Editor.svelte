@@ -8,6 +8,7 @@
   import type { DocumentJson, WritingLanguage } from "$lib/model";
   import { FontMark, Highlight, ImageBlock, Indent, LinkMark, SizeMark, Superscript, TextColor } from "./marks";
   import { cleanWordHtml } from "./wordPaste";
+  import { WordKeys } from "./wordKeys";
   import { TextLanguage } from "./textLanguage";
   import { NoteLinkMark, NoteLinks, type NoteTarget } from "./noteLinks";
   import { Footnote } from "./footnote";
@@ -152,6 +153,7 @@
         TextAlign.configure({
           types: ["heading", "paragraph"],
         }),
+        WordKeys.configure({ page }),
         TextLanguage,
         Superscript,
         Highlight,

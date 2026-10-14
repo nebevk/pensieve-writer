@@ -178,7 +178,7 @@
         ["bulletedList", "Ctrl+Shift+8"],
         ["shortcutListLevel", "Tab / Shift+Tab"],
         ["blockQuote", "Ctrl+Shift+B"],
-        ["shortcutAlign", "Ctrl+Shift+L / E / R / J"],
+        ["shortcutAlign", "Ctrl+L / E / R / J"],
         ["comment", "Ctrl+Alt+M"],
       ],
     },
@@ -195,6 +195,7 @@
       key: "shortcutsAnywhere",
       rows: [
         ["quickIdea", "Ctrl+Shift+N"],
+        ["printPdf", "Ctrl+P"],
         ["shortcutThisList", "Ctrl+/"],
         ["shortcutEscape", "Esc"],
       ],

@@ -73,7 +73,7 @@ await settings("Shortcuts");
 const groups = await page.run(`[...document.querySelectorAll(".window .keys .lab")].map((el) => el.textContent.trim())`);
 check("Shortcuts come in four groups", JSON.stringify(groups) === JSON.stringify(["On the page", "Finding", "Anywhere", "The library, chapters and lists"]), JSON.stringify(groups));
 const listed = await page.run(`[...document.querySelectorAll(".window .keys .row")].map((row) => row.querySelector("span").textContent.trim() + " = " + [...row.querySelectorAll("kbd")].map((key) => key.textContent).join("+"))`);
-for (const row of ["Bold = Ctrl+B", "Search everything = Ctrl+Shift+F", "Comment = Ctrl+Alt+M", "Quick idea = Ctrl+Shift+N", "This list = Ctrl+/", "Rename = F2", "Its menu, as with a right-click = Shift+F10", "Paste as plain text = Ctrl+Shift+V"]) {
+for (const row of ["Bold = Ctrl+B", "Search everything = Ctrl+Shift+F", "Comment = Ctrl+Alt+M", "Quick idea = Ctrl+Shift+N", "This list = Ctrl+/", "Rename = F2", "Its menu, as with a right-click = Shift+F10", "Paste as plain text = Ctrl+Shift+V", "Align left, center, right or justify = Ctrl+L+E+R+J", "Print / PDF = Ctrl+P"]) {
   check(`Shortcuts list ${row}`, listed.includes(row));
 }
 check("…and not Ctrl+Shift+7, which on a Slovenian keyboard is Ctrl+/", !listed.some((row) => row.includes("Shift+7")), listed.join(" | "));
@@ -113,7 +113,44 @@ check("Ctrl+Shift+7 on an English keyboard is still a numbered list", (await lis
 await page.key("z", "KeyZ", 90, 2);
 await sleep(300);
 
-// F5 and Ctrl+R would reload the window; in the built app they do nothing.
+// Word's alignment keys (owner, 14 October): on the text as the toolbar aligns it, never "code"; the title
+// line keeps its style.
+const alignOf = (selector) => page.run(`(document.querySelector(".paper .ProseMirror ${selector}")?.style.textAlign || "left")`);
+const firstText = `> p:nth-child(${await page.run(`[...document.querySelector(".paper .ProseMirror").children].findIndex((el) => el.tagName === "P" && el.textContent.trim().length > 8) + 1`)})`;
+await caretInText();
+await sleep(200);
+for (const [key, side] of [["e", "center"], ["r", "right"], ["j", "justify"], ["l", "left"]]) {
+  await page.key(key, `Key${key.toUpperCase()}`, key.toUpperCase().charCodeAt(0), 2);
+  await sleep(200);
+  check(`Ctrl+${key.toUpperCase()} aligns the paragraph ${side}, as in Word`, (await alignOf(firstText)) === side, await alignOf(firstText));
+}
+check("and Ctrl+E makes no code of it", await page.run(`!document.querySelector(".paper .ProseMirror code")`));
+await page.run(`(() => {
+  const editor = document.querySelector(".paper .ProseMirror");
+  const text = document.createTreeWalker(editor.querySelector("h2"), NodeFilter.SHOW_TEXT).nextNode();
+  editor.focus();
+  const range = document.createRange();
+  range.setStart(text, 1);
+  range.collapse(true);
+  getSelection().removeAllRanges();
+  getSelection().addRange(range);
+  return true;
+})()`);
+await sleep(200);
+await page.key("e", "KeyE", 69, 2);
+await sleep(200);
+check("on the title line Ctrl+E leaves it as it is, as the toolbar does", (await alignOf("> h2:first-child")) === "left" && (await page.run(`!document.querySelector(".paper .ProseMirror code")`)));
+
+// Ctrl+P prints the writing, every chapter, from the Book view, as Print / PDF does.
+await page.run(`(window.__printed = 0, window.print = () => { window.__printed += 1; }, true)`);
+await caretInText();
+await page.key("p", "KeyP", 80, 2);
+check("Ctrl+P prints the writing from the Book view", (await until(`window.__printed === 1`, 100)) && (await page.run(`!!document.querySelector(".book")`)));
+await page.clickText(".titlebar [role=tab]", "Write");
+await until(`!!document.querySelector(".paper .ProseMirror")`);
+await sleep(600);
+
+// F5 and Ctrl+R would reload the window; in the built app they do nothing (on the page Ctrl+R aligns right).
 const prevented = (init, inside = ".paper .ProseMirror") =>
   page.run(`(() => { const event = new KeyboardEvent("keydown", { ...${JSON.stringify(init)}, bubbles: true, cancelable: true }); document.querySelector(${JSON.stringify(inside)}).dispatchEvent(event); return event.defaultPrevented; })()`);
 check("F5 doesn't reload Pensieve", await prevented({ key: "F5", code: "F5" }));

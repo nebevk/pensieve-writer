@@ -455,12 +455,20 @@
   });
 
   /**
-   * F5 and Ctrl+R would reload the window, and lose what was typed in the moment before (in Word, Ctrl+R
-   * aligns right). Heard before anything else, windows too. Only while Pensieve is being made do they reload it.
+   * The browser's own keys, heard before anything else, windows too. F5 and Ctrl+R would reload the window
+   * and lose what was typed in the moment before; only while Pensieve is being made do they reload it. On
+   * the page Ctrl+R is Word's align right, which the editor takes, so it is left to it (an editor leaves a
+   * key already taken). Ctrl+P prints the writing, every chapter, as Word does (owner, 14 October), never
+   * the window as it looks; over a window other than Settings it does nothing.
    */
-  function noReload(event: KeyboardEvent) {
-    if (!import.meta.env.DEV && (event.key === "F5" || ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "r"))) {
+  function browserKeys(event: KeyboardEvent) {
+    const ctrl = (event.ctrlKey || event.metaKey) && !event.altKey;
+    // Plain Ctrl+R in text she can type in; anything else that would reload is stopped here.
+    const alignsRight = !event.shiftKey && event.target instanceof Element && !!event.target.closest(".ProseMirror[contenteditable=true]");
+    if (!import.meta.env.DEV && (event.key === "F5" || (ctrl && !alignsRight && event.key.toLowerCase() === "r"))) event.preventDefault();
+    if (ctrl && !event.shiftKey && event.key.toLowerCase() === "p") {
       event.preventDefault();
+      if (writing && (settingsOpen || !document.querySelector(".window"))) void printBook();
     }
   }
 
@@ -2587,7 +2595,7 @@
 </script>
 
 <svelte:window
-  onkeydowncapture={noReload}
+  onkeydowncapture={browserKeys}
   onkeydown={onKeydown}
   ondragover={(event) => {
     // A file dragged in from Explorer comes in (owner, 14 October), or is refused over a window, so it can
