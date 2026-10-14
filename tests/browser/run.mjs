@@ -73,9 +73,11 @@ const served = join(profile, "app");
 cpSync(join(root, "build"), served, { recursive: true });
 mkdirSync(join(here, "shots"), { recursive: true });
 const server = spawn(process.execPath, [join(here, "serve.mjs"), served, String(appPort)], { stdio: "ignore" });
+// Muted: headless Edge still plays to the speakers, and the checks start the rain and the keys' sounds. The
+// sound is still made, so the checks that listen for it still hear it.
 const edge = spawn(
   edgePath,
-  ["--headless=new", `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${profile}`, "--no-first-run", "--disable-gpu", "--restore-last-session=false", "--noerrdialogs", "about:blank"],
+  ["--headless=new", "--mute-audio", `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${profile}`, "--no-first-run", "--disable-gpu", "--restore-last-session=false", "--noerrdialogs", "about:blank"],
   { stdio: "ignore" },
 );
 const stop = () => {
