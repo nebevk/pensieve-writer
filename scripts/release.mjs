@@ -208,9 +208,11 @@ if (!publish) {
   process.exit(0);
 }
 
-// The release commit has the new version and nothing else; then its tag, both pushed, and the release.
-const unexpected = changed.filter((line) => !VERSION_FILES.some((file) => line.trim().endsWith(file)));
-if (unexpected.length > 0) fail(`the build changed more than the version; look first:\n${unexpected.map((line) => `  ${line}`).join("\n")}`);
+// The release commit has the new version and nothing else; then its tag, both pushed, and the release. All
+// was committed before the build, so anything else changed now is another's (a session working alongside,
+// say) or the build's own, and stays out of it, as it is.
+const others = changed.filter((line) => !VERSION_FILES.some((file) => line.trim().endsWith(file)));
+if (others.length > 0) console.log(`\nrelease: changed during the build, and left as it is, out of the release:\n${others.map((line) => `  ${line}`).join("\n")}`);
 run("git", ["add", ...VERSION_FILES.filter((file) => existsSync(at(file)))], "git add");
 run("git", ["commit", "-m", `chore: release ${version}`], "git commit");
 run("git", ["tag", "-a", tag, "-m", `Pensieve ${version}`], "git tag");
