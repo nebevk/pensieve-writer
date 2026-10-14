@@ -3,6 +3,17 @@
 A cozy reward for writing (owner, 14 October). Nothing here is built yet: it is the concept to decide on, and
 the brief for the art. When it is decided, it becomes requirements (AT-10 and on) in `requirements.md`.
 
+## Decided so far (owner, 14 October)
+
+- **One tree for every look**, growing out of the basin.
+- **The keepsakes** as listed below.
+- **A little chime** when a keepsake comes.
+- **Words brought in from Word don't count.** Only words written in Pensieve grow the garden, so it starts
+  as a seed; bringing a manuscript in earns its own keepsake, "Rokopis je doma", and nothing more.
+- **The name** is to be along the lines of "garden of stories" or "garden of words": proposed **Vrt zgodb /
+  Garden of stories**, which the last stage, Drevo zgodb, answers.
+- **Home**: worth exploring; three ways are under "On Home" below.
+
 ## The idea
 
 **Something grows out of the Pensieve basin as Eva writes.** The basin is already the app's mark, and in the
@@ -12,7 +23,8 @@ flowers for her words, little books for her chapters, birds for her notes, butte
 for each run of pomodoros.
 
 The Goals panel beside the page becomes the garden. It keeps her goals (today, this chapter) under the
-picture, and gets a cuter name: **Vrtiček** in Slovenian, **Garden** in English.
+picture, and gets a cuter name: **Vrt zgodb** in Slovenian, **Garden of stories** in English (the toolbar's
+button, with less room, says **Vrt / Garden**).
 
 ## What keeps it cozy
 
@@ -153,7 +165,7 @@ laptop.
 The Goals panel is 300 px wide beside the page. The garden sits on top, her goals stay below:
 
 ```
-┌ Vrtiček ──────────────────────────┐
+┌ Vrt zgodb ────────────────────────┐
 │ ┌───────────────────────────────┐ │
 │ │      the garden: the basin,   │ │
 │ │      the plant, keepsakes     │ │
@@ -180,18 +192,19 @@ The Goals panel is 300 px wide beside the page. The garden sits on top, her goal
 - **All keepsakes** opens a window: every keepsake as a small picture with its name and the day it came;
   those not yet earned are soft outlines with a line on how they come ("10 notes"). Rituals stay "?".
 
-The toolbar's Goals button becomes Garden (Vrtiček), with today's words as now.
+The toolbar's Goals button becomes Garden (Vrt), with today's words as now.
 
 ## When a keepsake comes
 
-- A small card above the floating bar, for a few seconds: the keepsake's picture and "Nov spominek v vrtičku:
+- A small card above the floating bar, for a few seconds: the keepsake's picture and "Nov spominek v vrtu zgodb:
   Tisoč besed". It comes when she pauses (a few seconds without typing) or leaves the page, never mid-sentence.
   In Zen it waits until she leaves Zen.
 - The Garden button shows a soft dot until she opens the panel, where the new keepsake fades in.
-- A new stage is a slightly bigger moment: the picture changes, with a line ("Vaš vrtiček je zdaj
+- A new stage is a slightly bigger moment: the picture changes, with a line ("Vaš vrt zgodb je zdaj
   Drevesce").
-- A soft chime, only when the ambience or the keys' sounds are on.
-- Gentle mode: the card and the dot, no fading and no sound.
+- A little chime, soft and short, like the pomodoro's. It is on to start with; Settings → Ambience can turn
+  it off. In Zen it rings when the card does, after Zen.
+- Gentle mode: the card, the dot and the chime, with no fading.
 
 ## Counting
 
@@ -200,14 +213,14 @@ The toolbar's Goals button becomes Garden (Vrtiček), with today's words as now.
   projects.
 - **Words written** = the words of each day before, added up as each day ends, plus today's. Pensieve keeps
   only today's count now, so the garden adds a running total.
-- **The starting garden.** When the garden first opens, the words already in her own projects count once
-  (not the example books or the long test book), and the keepsakes they earn come quietly, with one line: "Vaš
-  vrtiček je zrasel iz tega, kar ste že napisali." Pomodoros, Zen and the rituals start from nothing; there is
-  no record of them before.
+- **It starts as a seed.** Words already in her projects aren't counted: most came in from Word, and those
+  don't count (decided). From the day the garden comes, every word written in Pensieve does. Pomodoros, Zen
+  and the rituals start from nothing too.
 - **Counts never go down.** For chapters, notes, ideas and to-dos the garden keeps the highest number it has
   seen, so deleting a note never takes a bird away.
-- **Not counted:** words in documents brought in from Word (that is the "Rokopis je doma" keepsake instead),
-  duplicated or restored text, the example books.
+- **Not counted:** words in documents brought in from Word, by New project, New writing from Word or Bring
+  back from Word (bringing a manuscript in is the "Rokopis je doma" keepsake instead); duplicated or restored
+  text; the example books.
 
 ## The art brief
 
@@ -279,13 +292,42 @@ file), which shows best in Candlelit and Moonlit.
 Then, per keepsake: "the same scene, only [three small stacked books, muted colours] on the ground to the
 right of the basin, everything else transparent".
 
-## For the owner to decide
+## On Home
 
-1. **The name:** Vrtiček / Garden? (Or Drevo zgodb / Story tree, or Gaj / Grove.)
-2. **What grows:** one tree for every look, as above? (Or what rises from the basin in each look grows:
-   the sun, the flame, the moon, the sprout; prettier, but four kinds of art.)
-3. **The starting garden:** do the words already in her projects count once, so the garden starts grown?
-4. **Brought-in manuscripts:** a keepsake of their own (as above), or do their words count too?
-5. **Sound:** a soft chime when the sounds are on, or never?
-6. **Home:** leave the garden in its panel, or also show the little plant on Home later?
-7. **The list:** too many keepsakes, too few, any to drop or add?
+Home has no free room at 1366 × 768: the left column (the mark, the verse, the counts, the Continue card,
+the to-dos) fills the height, and the projects fill the right. So the garden takes a place Home already has.
+
+**A. The mark becomes her tree (proposed).** Home's large Basin mark, top left, shows the basin with her
+plant at its stage, the look's sun, flame or moon behind it as now. It is where the garden's story starts
+(the basin), it costs no room, and every time she opens Pensieve she sees it has grown. A click opens Write
+with the garden beside the page. The small mark in the window bar stays the plain logo. In Gentle mode it
+stands still, as the mark does now; otherwise only the plant sways a little, as the Forest sprout does.
+
+```
+   ☀
+  🌳     WEDNESDAY 14 OCTOBER · 12:00
+ \___/   A word fitly spoken ...
+```
+
+Art for it: the eight plant stages already drawn for the garden, cropped to the basin (no keepsakes), and
+the mark's basin and light per look (already there).
+
+**B. A third count.** Beside "0 words today" and "61 in the book": a small plant and its stage, "Drevesce",
+which opens the garden. Small and clear; needs only a little plant picture per stage, cut from the same art.
+
+```
+  0              61             🌱 Drevesce
+  words today    in the book    Vrt zgodb
+```
+
+**C. A garden strip under the projects.** The whole garden, wide and low, in the right column under the
+project cards. The fullest picture, but with many projects it falls below the window and she would scroll
+to it. Needs a wide (3:1) version of the art.
+
+A and B can go together: the mark shows the tree, the count says its stage.
+
+## Still to decide
+
+1. **The name:** Vrt zgodb / Garden of stories, as proposed? (Or Vrt besed / Garden of words.)
+2. **Home:** A, B, both, or C?
+3. **The chime:** on to start with, as proposed, with a switch in Settings → Ambience?
