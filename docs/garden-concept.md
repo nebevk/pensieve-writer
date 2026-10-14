@@ -63,7 +63,7 @@ used it.
 About 40 to start with, in families. Each family leaves its own kind of thing in the garden, so the picture
 tells what she has done. Names are short and warm; the Slovenian ones lead, as the app does.
 
-### Words (flowers bloom around the basin)
+### Words (flowers bloom around the basin, grander as they grow)
 
 Words written in Pensieve, all projects together (see "Counting").
 
@@ -108,7 +108,7 @@ Days with at least 100 words, **in any order**, never in a row.
 | 10 times | Pridne čebele | Busy bees |
 | 50 times | Vrtnarka | The gardener |
 
-### Chapters and books (little books stacked by the basin)
+### Chapters and books (little books stacked by the basin, a pennant, a tied manuscript)
 
 | What | Slovenian | English |
 |---|---|---|
@@ -118,7 +118,7 @@ Days with at least 100 words, **in any order**, never in a row.
 | A book's target reached | Knjiga je dosegla cilj | A book at its target |
 | A manuscript brought in from Word | Rokopis je doma | The manuscript came home |
 
-### Notes and ideas (birds, and a butterfly or two)
+### Notes and ideas (birds and a birdhouse; lavender butterflies)
 
 | What | Slovenian | English |
 |---|---|---|
@@ -259,37 +259,9 @@ Every file is **600 × 400** (3:2), drawn so the pieces lie exactly on each othe
 
 ### The files
 
-| Files | What | How many |
-|---|---|---|
-| `backdrop-{daylight,sunset,candlelit,moonlit,forest}` | The look's sky or halo, its ground and the basin, in the look's colours (the basin as the mark has it) | 5 |
-| `stage-1` … `stage-8` | The plant alone, from a seed in the basin to the story tree, in the same greens for every look | 8 |
-| `flower-1` … `flower-9` | Word milestones: small flowers on the ground, a little bigger as they go; the last three may be fruit on the tree (stages 6 to 8 only) | 9 |
-| `firefly-1` … `firefly-5` | Writing days: small glowing dots in the air | 5 |
-| `butterfly-1` … `butterfly-6` | Good days and ideas | 6 |
-| `can`, `bee-1`, `bee-2` | The daily goal | 3 |
-| `books-1` … `books-3`, `ribbon`, `manuscript` | Chapters (books stacked by the basin, the pile growing), a book's target, the brought-in manuscript | 5 |
-| `bird-1` … `bird-3` | Notes | 3 |
-| `stone-1` … `stone-3` | To-dos: stepping stones towards the basin | 3 |
-| `cup-1` … `cup-3`, `lantern`, `chime` | Pomodoros and Zen | 5 |
-| `robin`, `owl`, `rainbow`, `gate` | The rituals | 4 |
-
-About 56 small files. The keepsake files double as the pictures in the All keepsakes window, cut from the
-canvas.
-
-The plant and keepsakes are the same for every look, so they must read on both a light and a dark backdrop:
-mid tones, with a lighter edge where light falls. The fireflies and the lantern should glow (a soft halo in the
-file), which shows best in Candlelit and Moonlit.
-
-### A prompt to start from
-
-> Flat vector illustration, simple geometric shapes, soft warm palette (deep green #3f7d4e, light green
-> #74b350, terracotta #a94f2e, warm orange #e0975a, cream #fcf9f2), no outlines, no text, transparent
-> background, 600 × 400. A small stone basin at the bottom centre (the Pensieve logo's basin), with
-> [stage: a young sapling with a few leaves] growing out of it. Cozy, quiet, naive, like a children's book
-> printed in few colours.
-
-Then, per keepsake: "the same scene, only [three small stacked books, muted colours] on the ground to the
-right of the basin, everything else transparent".
+Every file, with its exact place, shapes and colours, is in **[garden-art-brief.md](garden-art-brief.md)**,
+written to be pasted into Claude Design: 8 plant stages, 5 backdrops and 5 basins (the basin is its own layer,
+drawn over the plant as the logo does), and the 44 keepsakes, 62 files in all.
 
 ## On Home
 
