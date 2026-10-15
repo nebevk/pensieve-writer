@@ -1,11 +1,13 @@
+use crate::disk;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 const KEEP: usize = 20;
 
 /// Writes one backup file. With `book`, only that book's backups count toward the 20 kept,
-/// so working on one book never prunes another book's backups.
-#[tauri::command]
+/// so working on one book never prunes another book's backups. Off the window's thread (ARCH-10): a
+/// backup of several MB into a synced folder would hold up her typing.
+#[tauri::command(async)]
 pub fn write_backup(
     folder: String,
     filename: String,
@@ -36,7 +38,10 @@ pub fn write_backup(
 
     let path = dir.join(&filename);
     let temporary = dir.join(format!("{filename}.writing"));
-    fs::write(&temporary, contents).map_err(|error| error.to_string())?;
+    if let Err(error) = disk::write_synced(&temporary, contents.as_bytes()) {
+        let _ = fs::remove_file(&temporary);
+        return Err(error.to_string());
+    }
     if path.exists() {
         let _ = fs::remove_file(&temporary);
         return Err("That backup already exists".into());
@@ -45,8 +50,10 @@ pub fn write_backup(
         let _ = fs::remove_file(&temporary);
         return Err(error.to_string());
     }
-    remove_partial_backups(dir)?;
-    prune_old_backups(dir, &prefix)?;
+    // The backup is written. Tidying the folder can fail (a file Drive holds open, say) and is tried again
+    // with the next backup: it never makes this one count as failed (ARCH-16).
+    remove_partial_backups(dir);
+    prune_old_backups(dir, &prefix);
     Ok(path.display().to_string())
 }
 
@@ -64,20 +71,27 @@ pub fn read_backup_file(path: String) -> Result<String, String> {
     fs::read_to_string(&file).map_err(|error| error.to_string())
 }
 
-fn remove_partial_backups(dir: &Path) -> Result<(), String> {
-    for entry in fs::read_dir(dir).map_err(|error| error.to_string())?.filter_map(Result::ok) {
+/// Removes what a backup cut short left behind; one that can't go now goes next time.
+fn remove_partial_backups(dir: &Path) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.filter_map(Result::ok) {
         let name = entry.file_name();
         let name = name.to_string_lossy();
         if name.starts_with("pensieve-") && name.ends_with(".json.writing") {
-            fs::remove_file(entry.path()).map_err(|error| error.to_string())?;
+            let _ = fs::remove_file(entry.path());
         }
     }
-    Ok(())
 }
 
-fn prune_old_backups(dir: &Path, prefix: &str) -> Result<(), String> {
-    let mut files: Vec<_> = fs::read_dir(dir)
-        .map_err(|error| error.to_string())?
+/// Keeps the newest 20 backups with this prefix. One that can't be removed now is passed over, and goes
+/// with a later backup.
+fn prune_old_backups(dir: &Path, prefix: &str) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    let mut files: Vec<_> = entries
         .filter_map(Result::ok)
         .filter(|entry| {
             let name = entry.file_name();
@@ -95,7 +109,59 @@ fn prune_old_backups(dir: &Path, prefix: &str) -> Result<(), String> {
 
     let extra = files.len().saturating_sub(KEEP);
     for entry in files.into_iter().take(extra) {
-        fs::remove_file(entry.path()).map_err(|error| error.to_string())?;
+        let _ = fs::remove_file(entry.path());
     }
-    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, SystemTime};
+
+    fn folder(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("pensieve-backup-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// An older backup of book "abc", from `day` days into 2023.
+    fn older(dir: &Path, day: u64) -> PathBuf {
+        let path = dir.join(format!("pensieve-abc-{day:03}.json"));
+        fs::write(&path, "{}").unwrap();
+        let file = fs::OpenOptions::new().write(true).open(&path).unwrap();
+        file.set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(1_672_531_200 + day * 86_400)).unwrap();
+        path
+    }
+
+    #[test]
+    fn writes_the_backup_and_keeps_the_newest_twenty() {
+        let dir = folder("keep");
+        let paths: Vec<_> = (0..25).map(|day| older(&dir, day)).collect();
+        let contents = r#"{"naslov":"Čaša, šola, žaba"}"#;
+        let written = write_backup(dir.display().to_string(), "pensieve-abc-new.json".into(), contents.into(), Some("abc".into())).unwrap();
+        assert_eq!(fs::read_to_string(&written).unwrap(), contents);
+        // 26 backups: the six oldest go.
+        assert!(paths[..6].iter().all(|path| !path.exists()));
+        assert!(paths[6..].iter().all(|path| path.exists()));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_backup_written_is_never_reported_as_failed() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = folder("held");
+        let paths: Vec<_> = (0..21).map(|day| older(&dir, day)).collect();
+        let partial = dir.join("pensieve-abc-old.json.writing");
+        fs::write(&partial, "{").unwrap();
+        // The oldest backup and a partial one, held open by a program that shares nothing.
+        let held = [&paths[0], &partial].map(|path| fs::OpenOptions::new().read(true).share_mode(0).open(path).unwrap());
+        let written = write_backup(dir.display().to_string(), "pensieve-abc-new.json".into(), "{}".into(), Some("abc".into()));
+        assert!(written.is_ok(), "{written:?}");
+        // Pruning went on past the backup it couldn't remove.
+        assert!(paths[0].exists() && !paths[1].exists() && paths[2].exists());
+        drop(held);
+        fs::remove_dir_all(&dir).unwrap();
+    }
 }

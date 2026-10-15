@@ -1,4 +1,5 @@
 mod backup;
+mod disk;
 mod export;
 mod library;
 mod project;

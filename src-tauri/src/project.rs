@@ -1,3 +1,4 @@
+use crate::disk;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
@@ -98,25 +99,14 @@ pub fn read_prefs(app: AppHandle) -> Result<String, String> {
     fs::read_to_string(path).map_err(|error| error.to_string())
 }
 
-/// Replace the settings file by writing a temp file and renaming it into place.
-#[tauri::command]
+/// Replaces the settings file in one step: a temp file, on the disk, renamed over the old one, which stays
+/// whole until then (ARCH-17). Off the window's thread (ARCH-10); prefs.ts sends one write at a time.
+#[tauri::command(async)]
 pub fn write_prefs(app: AppHandle, contents: String) -> Result<(), String> {
     let path = prefs_path(&app)?;
     let dir = path.parent().ok_or("The settings folder is missing")?;
     fs::create_dir_all(dir).map_err(|error| error.to_string())?;
-    let temporary = dir.join("prefs.json.writing");
-    let previous = dir.join("prefs.json.previous");
-    fs::write(&temporary, contents).map_err(|error| error.to_string())?;
-    if path.exists() {
-        let _ = fs::remove_file(&previous);
-        fs::rename(&path, &previous).map_err(|error| error.to_string())?;
-    }
-    if let Err(error) = fs::rename(&temporary, &path) {
-        let _ = fs::rename(&previous, &path);
-        return Err(error.to_string());
-    }
-    let _ = fs::remove_file(&previous);
-    Ok(())
+    disk::replace(&path, &dir.join("prefs.json.writing"), contents.as_bytes()).map_err(|error| error.to_string())
 }
 
 /// Read an image the writer just chose. Only common image extensions are accepted.

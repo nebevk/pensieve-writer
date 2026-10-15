@@ -1,3 +1,4 @@
+use crate::disk;
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -36,8 +37,9 @@ fn decode_hex(hex: &str) -> Result<String, String> {
 /// Writes an exported file (raw bytes) by temp file and rename. The path comes hex-encoded in
 /// `x-path`, so letters such as č, š and ž survive the request header. With `x-expect`, the file
 /// is only replaced if it still has the stamp Pensieve last wrote ("absent": only if it doesn't
-/// exist), so edits made in Word are never overwritten.
-#[tauri::command]
+/// exist), so edits made in Word are never overwritten. Off the window's thread (ARCH-10), and on the disk
+/// before the rename (ARCH-17).
+#[tauri::command(async)]
 pub fn write_document(request: tauri::ipc::Request<'_>) -> Result<WrittenFile, String> {
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
         return Err("The file contents are missing".into());
@@ -76,7 +78,10 @@ pub fn write_document(request: tauri::ipc::Request<'_>) -> Result<WrittenFile, S
     }
 
     let temporary = dir.join(format!("~{name}.writing"));
-    fs::write(&temporary, bytes).map_err(|error| error.to_string())?;
+    if let Err(error) = disk::write_synced(&temporary, bytes) {
+        let _ = fs::remove_file(&temporary);
+        return Err(error.to_string());
+    }
     if let Err(error) = fs::rename(&temporary, &path) {
         let _ = fs::remove_file(&temporary);
         let locked = error.raw_os_error() == Some(32) || error.kind() == std::io::ErrorKind::PermissionDenied;
