@@ -2336,6 +2336,16 @@
     }
   }
 
+  /** A web or e-mail link in her text, opened in her browser or mail program. */
+  async function openLink(href: string) {
+    if (!/^(https?:|mailto:)/i.test(href)) return;
+    try {
+      await invoke("open_link", { url: href });
+    } catch (error) {
+      notice(errorMessage(error));
+    }
+  }
+
   /** What the library's tree can do, in one place. */
   const libraryActions: LibraryActions = {
     openProject: (path) => void openFromLibrary(path),
@@ -3142,6 +3152,7 @@
             printWhenLaidOut = false;
             window.print();
           }}
+          onOpenLink={(href) => void openLink(href)}
         />
       {/if}
     </div>

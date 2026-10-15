@@ -9,12 +9,15 @@
     chapters,
     title = "",
     onLaidOut,
+    onOpenLink,
   }: {
     chapters: Chapter[];
     /** The book's title, in the running head over the left-hand pages. */
     title?: string;
     /** Every page is laid out (Print waits for this). */
     onLaidOut?: () => void;
+    /** A link in the book, clicked: opened outside, as the window has no way back from a web page. */
+    onOpenLink?: (href: string) => void;
   } = $props();
 
   let size = $state<keyof typeof BOOK_SIZES>("a5");
@@ -100,6 +103,18 @@
       },
     };
   }
+
+  /** A link on the pages opens outside, never in the window (the book's links have no target of their own). */
+  function links(element: HTMLElement) {
+    const open = (event: MouseEvent) => {
+      const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (!link) return;
+      event.preventDefault();
+      onOpenLink?.(link.getAttribute("href") ?? "");
+    };
+    element.addEventListener("click", open);
+    return { destroy: () => element.removeEventListener("click", open) };
+  }
 </script>
 
 <svelte:head>
@@ -131,7 +146,7 @@
   </div>
   <!-- Where a chapter is measured as one long column before it is cut into pages. -->
   <div class="copy column" bind:this={column} aria-hidden="true"></div>
-  <div class="spreads">
+  <div class="spreads" use:links>
     {#each spreads as spread, index (index)}
       <div class="spread">
         {#each spread as page, side (side)}

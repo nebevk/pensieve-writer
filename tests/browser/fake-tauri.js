@@ -166,6 +166,8 @@
   window.__PV_HARNESS__.files = files;
   window.__PV_HARNESS__.opened = [];
   window.__PV_HARNESS__.revealed = [];
+  // Links opened in her browser or mail program (links.rs open_link).
+  window.__PV_HARNESS__.links = [];
   const PROGRAMS = /\.(appref-ms|application|bat|chm|cmd|com|cpl|exe|gadget|hta|inf|jar|js|jse|lnk|msc|msi|msp|pif|ps1|psm1|reg|scf|scr|sct|url|vb|vbe|vbs|ws|wsc|wsf|wsh)$/i;
 
   // Database files open now: Windows won't move a folder with one of them inside.
@@ -310,6 +312,10 @@
       case "show_in_explorer":
         if (!files.has(lower(args.path)) && !folders.has(lower(args.path)) && !fileExists(args.path)) throw "That isn't there any more";
         window.__PV_HARNESS__.revealed.push(args.path);
+        return null;
+      case "open_link":
+        if (!/^(https?:|mailto:)/i.test(String(args.url))) throw "Pensieve opens only web and e-mail links";
+        window.__PV_HARNESS__.links.push(args.url);
         return null;
       case "write_backup": {
         // backup.rs write_backup: the backup as a file in her folder; what was written is in __PV_HARNESS__.backups.

@@ -2,6 +2,7 @@ mod backup;
 mod disk;
 mod export;
 mod library;
+mod links;
 mod project;
 mod spellcheck;
 
@@ -32,6 +33,8 @@ pub fn run() {
     ];
 
     tauri::Builder::default()
+        // The window stays on Pensieve: a link opens in her browser.
+        .plugin(links::guard())
         .plugin(tauri_plugin_dialog::init())
         // Updates from GitHub Releases, signed with the owner's key (see docs/releasing.md).
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -54,6 +57,7 @@ pub fn run() {
             library::open_library_file,
             library::show_in_explorer,
             library::read_document_file,
+            links::open_link,
             project::default_project_path,
             project::project_file_exists,
             project::example_book_path,
