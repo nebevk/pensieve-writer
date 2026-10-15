@@ -32,6 +32,9 @@
     onPickBackup,
     onRestoreBackup,
     onCancelBackup,
+    keptCount = 0,
+    onBringBackKept = () => {},
+    onRemoveKept = () => {},
     bookTitle = "",
     onChooseWordFolder,
     onUpdateWordCopy,
@@ -81,6 +84,11 @@
     onPickBackup: () => void;
     onRestoreBackup: () => void;
     onCancelBackup: () => void;
+    /** How many copies Pensieve keeps in its own folder: writings deleted for good, and rescue copies. */
+    keptCount?: number;
+    /** Picks a kept copy, to restore it as a backup is. */
+    onBringBackKept?: () => void;
+    onRemoveKept?: () => void;
     bookTitle?: string;
     onChooseWordFolder: () => void;
     onUpdateWordCopy: () => void;
@@ -116,6 +124,8 @@
 
   // Turning "Split into chapters" off joins the chapters, so it asks first.
   let joinAsked = $state(false);
+  // Removing the kept copies asks first: they can't be brought back after that.
+  let removeAsked = $state(false);
 
   type Section = "General" | "Writing & goals" | "Appearance" | "Ambience" | "Backup & export" | "Language" | "Shortcuts";
 
@@ -626,6 +636,33 @@
                   <div class="actions">
                     <button type="button" onclick={onRestoreBackup}>{t("restore")}</button>
                     <button type="button" onclick={onCancelBackup}>{t("cancel")}</button>
+                  </div>
+                </div>
+              {/if}
+            </div>
+            <!-- What Pensieve keeps in its own folder (ARCH-1, ARCH-5); one brought back is restored as a backup is, above. -->
+            <div class="row stack">
+              <span class="what">
+                <span>{t("keptCopies")}</span>
+                <span class="note">{t("keptCopiesHint")}</span>
+                <span class="path" class:none={keptCount === 0}>{keptCount > 0 ? plural("keptCount", keptCount) : t("keptNone")}</span>
+              </span>
+              <div class="actions">
+                <button type="button" onclick={onBringBackKept}>{t("bringOneBack")}</button>
+                <button type="button" onclick={() => (removeAsked = true)} disabled={keptCount === 0}>{t("removeThem")}</button>
+              </div>
+              {#if removeAsked && keptCount > 0}
+                <div class="offer" role="alertdialog" aria-label={t("keptCopies")}>
+                  <p>{plural("removeKept", keptCount)}</p>
+                  <div class="actions">
+                    <button
+                      type="button"
+                      onclick={() => {
+                        removeAsked = false;
+                        onRemoveKept();
+                      }}>{t("remove")}</button
+                    >
+                    <button type="button" onclick={() => (removeAsked = false)}>{t("cancel")}</button>
                   </div>
                 </div>
               {/if}

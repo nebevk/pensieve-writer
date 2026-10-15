@@ -14,6 +14,8 @@ export type BackupFile = {
   writings: BackupWriting[];
   notes: unknown[];
   tasks: unknown[];
+  /** A rescue copy of what couldn't be saved (ARCH-1): its notes and to-dos are newer than the project's. */
+  rescue?: boolean;
 };
 
 /**
@@ -29,6 +31,8 @@ export type BackupContent = {
   writings: BackupWriting[];
   notes: Note[];
   tasks: Task[];
+  /** A rescue copy: notes and to-dos in it that the project has in an older version come back too. */
+  rescue: boolean;
 };
 
 export function backupFile(
@@ -77,7 +81,7 @@ export function parseBackup(text: string): BackupContent {
   } catch {
     throw new Error(t("errNotBackup"));
   }
-  type Saved = { kind?: unknown; format?: unknown; savedAt?: unknown; project?: Record<string, unknown>; writings?: unknown; notes?: unknown; tasks?: unknown };
+  type Saved = { kind?: unknown; format?: unknown; savedAt?: unknown; project?: Record<string, unknown>; writings?: unknown; notes?: unknown; tasks?: unknown; rescue?: unknown };
   const file = data as Saved | null;
   if (!file || file.kind !== "pensieve-backup" || !file.project || typeof file.project !== "object") {
     throw new Error(t("errNotBackup"));
@@ -116,5 +120,6 @@ export function parseBackup(text: string): BackupContent {
     })),
     notes: Array.isArray(file.notes) ? (file.notes as Note[]) : [],
     tasks: Array.isArray(file.tasks) ? (file.tasks as Task[]) : [],
+    rescue: file.rescue === true,
   };
 }

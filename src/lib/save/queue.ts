@@ -4,11 +4,15 @@ type SaveQueueOptions<T> = {
   key: (item: T) => string;
   save: (item: T) => Promise<void>;
   onError?: (error: unknown) => void;
+  /** After a round of saves that all worked. */
+  onSaved?: () => void;
 };
 
 export type SaveQueue<T> = {
   schedule: (item: T) => void;
   flush: () => Promise<void>;
+  /** What isn't saved yet: waiting, or being written now. */
+  waiting: () => T[];
 };
 
 /**
@@ -17,6 +21,8 @@ export type SaveQueue<T> = {
  */
 export function createSaveQueue<T>(options: SaveQueueOptions<T>): SaveQueue<T> {
   const pending = new Map<string, T>();
+  // Being written now: off `pending` until each is saved, so what waiting() gives meanwhile still has them.
+  const writing = new Map<string, T>();
   let timer: ReturnType<typeof setTimeout> | null = null;
   let running: Promise<void> = Promise.resolve();
 
@@ -31,6 +37,7 @@ export function createSaveQueue<T>(options: SaveQueueOptions<T>): SaveQueue<T> {
   async function drain(): Promise<void> {
     const items = [...pending.entries()];
     pending.clear();
+    for (const [key, item] of items) writing.set(key, item);
     let failure: { error: unknown } | null = null;
     for (const [key, item] of items) {
       try {
@@ -39,12 +46,15 @@ export function createSaveQueue<T>(options: SaveQueueOptions<T>): SaveQueue<T> {
         // Keep the edit for the next attempt, unless a newer one arrived meanwhile.
         if (!pending.has(key)) pending.set(key, item);
         failure ??= { error };
+      } finally {
+        writing.delete(key);
       }
     }
     if (failure) {
       options.onError?.(failure.error);
       throw failure.error;
     }
+    if (items.length > 0) options.onSaved?.();
   }
 
   /** Saves everything pending, after any save that is already running. */
@@ -58,5 +68,10 @@ export function createSaveQueue<T>(options: SaveQueueOptions<T>): SaveQueue<T> {
     return run;
   }
 
-  return { schedule, flush };
+  function waiting(): T[] {
+    // A newer change waiting takes the place of the one being written.
+    return [...new Map([...writing, ...pending]).values()];
+  }
+
+  return { schedule, flush, waiting };
 }

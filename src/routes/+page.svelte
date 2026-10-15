@@ -13,6 +13,8 @@
   import { PageFind } from "$lib/editor/pageFind.svelte";
   import { Updates } from "$lib/updates.svelte";
   import { DriveBackup, WordCopy, copyPathFor, safeName } from "$lib/save/copies.svelte";
+  import { keptCopiesFolder, listKeptCopies, removeKeptCopy } from "$lib/save/kept";
+  import { Rescue, type RescueOffer } from "$lib/save/rescue.svelte";
   import { WritingActions } from "$lib/chapters/writingActions.svelte";
   import { EarlierVersions } from "$lib/views/earlierVersions.svelte";
   import { createChapter, createWriting, effectiveLanguage, type Chapter, type DocumentJson, type Shelf, type Writing, type WritingLanguage } from "$lib/model";
@@ -43,7 +45,7 @@
   import { panelNotes, panelOrder } from "$lib/views/panelNotes";
   import { isUntitled } from "$lib/i18n";
   import { locale, snapshotName, t, ui } from "$lib/ui.svelte";
-  import { deleteNote, flushNoteSave, listNotes, listTasks, saveNote, saveTask, scheduleNoteSave, type Note, type NoteCategory, type Task } from "$lib/storage/organize";
+  import { deleteNote, flushNoteSave, listNotes, listTasks, saveNote, saveTask, scheduleNoteSave, watchNoteSaving, type Note, type NoteCategory, type Task } from "$lib/storage/organize";
   import { ideaNote, namesANote, noteFromComment, noteFromWords, todoFromComment } from "$lib/storage/fromComment";
   import type { NoteTarget } from "$lib/editor/noteLinks";
   import type { CommentInfo } from "$lib/editor/comments";
@@ -73,6 +75,8 @@
   const SearchPart = lazy(() => import("$lib/views/SearchWindow.svelte"));
   const IdeasPart = lazy(() => import("$lib/views/IdeasView.svelte"));
   const FindPart = lazy(() => import("$lib/editor/FindPanel.svelte"));
+  const SaveTroublePart = lazy(() => import("$lib/views/SaveTrouble.svelte"));
+  const RescueOfferPart = lazy(() => import("$lib/views/RescueOffer.svelte"));
 
   // The writing open in Write: one of the open project's writings, with all its chapters.
   let writing = $state<Writing | null>(null);
@@ -230,6 +234,28 @@
   const ambience = createAmbience();
   // A newer Pensieve on GitHub Releases, offered in the window bar; and what Settings' check last found.
   const updates = new Updates((work) => withEditorClosed(work));
+  // When saving fails (ARCH-1): a rescue copy in Pensieve's own folder, offered back when its project opens.
+  const rescue = new Rescue({
+    project: () => (shelf ? { id: shelf.projectId, title: shelf.title, folders: shelf.folders } : null),
+    writing: () => {
+      if (!writing) return null;
+      const open = $state.snapshot(writing) as Writing;
+      const outline = shelf?.writings.find((item) => item.id === open.id);
+      return { ...open, folder: outline?.folder ?? "", position: outline?.position ?? 0, deletedAt: "" };
+    },
+    unsaved: () => saveStatus.state !== "saved",
+  });
+  // Notes and to-dos that fail to save keep a rescue copy too; a save waiting for a switch to finish hasn't failed.
+  watchNoteSaving({
+    failed: () => {
+      if (!switchingBooks) rescue.failed();
+    },
+    saved: () => rescue.saved(),
+  });
+  // Closing while saving fails: whether a rescue copy holds her words, and why the save failed.
+  let saveTrouble = $state<{ kept: boolean; message: string } | null>(null);
+  // How many copies Pensieve keeps in its own folder, for Settings.
+  let keptCount = $state(0);
 
   const autosave = createAutosave({
     delayMs: 2000,
@@ -247,7 +273,16 @@
     },
     onStatus: (status) => {
       saveStatus = status;
+      // A copy of what couldn't be saved, and away again once saving works (ARCH-1).
+      if (status.state === "error" && !switchingBooks) rescue.failed();
+      else if (status.state === "saved") rescue.saved();
     },
+  });
+
+  // A rescue copy left from a time saving failed is offered back when its project opens (ARCH-1).
+  $effect(() => {
+    const id = projectId;
+    if (id) untrack(() => void rescue.check(id));
   });
 
   const chapters = $derived(
@@ -389,7 +424,7 @@
       }
       requestIdleCallback(
         () => {
-          for (const part of [EditorPart, CommentRailPart, NotesPart, TodosPart, SettingsPart, OutlinePart, BookPart, HistoryPart, NotePanePart, SelectionBarPart, NewProjectPart, QuickIdeaPart, SearchPart, IdeasPart, FindPart]) {
+          for (const part of [EditorPart, CommentRailPart, NotesPart, TodosPart, SettingsPart, OutlinePart, BookPart, HistoryPart, NotePanePart, SelectionBarPart, NewProjectPart, QuickIdeaPart, SearchPart, IdeasPart, FindPart, SaveTroublePart]) {
             // A part that fails here is tried again, and reported, when it is shown.
             part.load().catch(() => undefined);
           }
@@ -404,8 +439,16 @@
           event.preventDefault();
           closing = true;
           try {
-            await flushNoteSave();
-            await autosave.flush();
+            let failure: unknown = null;
+            await flushNoteSave().catch((error: unknown) => (failure ??= error));
+            await autosave.flush().catch((error: unknown) => (failure ??= error));
+            if (failure) {
+              // Her last words couldn't be saved: a rescue copy of them now, and she is asked once (ARCH-1).
+              saveTrouble = { kept: await rescue.keep(), message: errorMessage(failure) };
+              await SaveTroublePart.load().catch(() => undefined);
+              closing = false;
+              return;
+            }
             await flushPrefs();
             try {
               await driveBackup.run(false);
@@ -1328,19 +1371,31 @@
     void autosave.flush().catch(() => undefined);
   }
 
-  /** Saves pending edits, asks where to save, then writes the export there. */
-  async function saveExport(kind: ExportKind, contents: (book: Writing) => Promise<Uint8Array>) {
-    if (!writing) return;
+  /** Saves the notes and the page first; when that fails, the page's words as they are on screen go out all the same (ARCH-1). */
+  async function saveFirst() {
     try {
       await flushNoteSave();
       await autosave.flush();
+    } catch {
+      captureEditor();
+    }
+  }
+
+  /** Saves pending edits, asks where to save, then writes the export there; gives where it went, or "". */
+  async function saveExport(kind: ExportKind, contents: (book: Writing) => Promise<Uint8Array>): Promise<string> {
+    if (!writing) return "";
+    try {
+      await saveFirst();
       const book = writing;
+      if (!book) return "";
       const path = await chooseSavePath(`${safeName(book.title)}.${kind}`, kind);
-      if (!path) return;
+      if (!path) return "";
       const written = await writeFileTo(path, await contents(book));
       backupMessage = t("savedTo", { path: written.path });
+      return written.path;
     } catch (error) {
       backupMessage = errorMessage(error);
+      return "";
     }
   }
 
@@ -1364,7 +1419,8 @@
   async function copyHtml() {
     if (!writing) return;
     try {
-      await autosave.flush();
+      await saveFirst();
+      if (!writing) return;
       await navigator.clipboard.writeText(chaptersToHtml(writing.title || "Pensieve", writing.chapters));
       backupMessage = t("copiedHtml");
     } catch (error) {
@@ -1437,23 +1493,7 @@
     if (!backup) return;
     pendingBackup = null;
     try {
-      await withEditorClosed(async () => {
-        const before = writingWords;
-        const open = await restoreFromBackup(backup);
-        shelf = await readOpenShelf();
-        const restored = await loadWriting(backup.writings.some((item) => item.id === writingId) ? writingId : open || writingId);
-        if (restored.id === writingId) {
-          writing = restored;
-          keepToday(before);
-        } else {
-          const written = wordsToday;
-          writing = restored;
-          prefs = { ...prefs, writingDay: dayKey(new Date(clock)), dayStartWords: writingWords - written };
-        }
-        resetWritingState();
-        activeId = restored.chapters[0]?.id ?? null;
-        rememberProject();
-      });
+      await restoreContent(backup);
       settingsOpen = false;
       view = "write";
     } catch (error) {
@@ -1461,12 +1501,104 @@
     }
   }
 
+  /** A rescue copy brought back (ARCH-1): into its project, after what is there now is kept in Earlier versions. */
+  async function bringBackRescue(offer: RescueOffer) {
+    try {
+      await restoreContent(offer.backup);
+      await rescue.done(offer);
+      view = "write";
+      notice(t("rescueBack"));
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+    }
+  }
+
+  /** When saving failed, closes Pensieve once her words are safe: the settings first, then the window. */
+  async function closeAfterTrouble() {
+    saveTrouble = null;
+    await flushPrefs().catch(() => undefined);
+    try {
+      await getCurrentWindow().destroy();
+    } catch {
+      // The page is open in a browser, outside the Pensieve window.
+    }
+  }
+
+  /** The open writing's text on the clipboard, as it is on the page: a way out when saving fails (ARCH-1). */
+  async function copyPlainText(): Promise<boolean> {
+    captureEditor();
+    if (!writing) return false;
+    try {
+      await navigator.clipboard.writeText(chaptersToPlain(writing.title || "Pensieve", writing.chapters));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Counts the copies Pensieve keeps in its own folder, for Settings. */
+  async function refreshKept() {
+    try {
+      keptCount = (await listKeptCopies("deleted")).length + (await listKeptCopies("rescue")).length;
+    } catch {
+      keptCount = 0;
+    }
+  }
+  $effect(() => {
+    if (settingsOpen) untrack(() => void refreshKept());
+  });
+
+  /** Settings' Bring one back: a kept copy, picked in their folder, restored as a backup is. */
+  async function bringBackKept() {
+    try {
+      const path = await chooseBackupFile(await keptCopiesFolder(), t("dialogKeptCopy"));
+      if (path) pendingBackup = await readBackupFile(path);
+    } catch (error) {
+      backupMessage = errorMessage(error);
+    }
+  }
+
+  /** Settings' Remove them: every copy Pensieve keeps goes. */
+  async function removeKept() {
+    try {
+      for (const kind of ["deleted", "rescue"] as const) {
+        for (const copy of await listKeptCopies(kind)) await removeKeptCopy(kind, copy.name);
+      }
+      backupMessage = t("keptRemoved");
+    } catch (error) {
+      backupMessage = errorMessage(error);
+    }
+    await refreshKept();
+  }
+
+  /** Puts a backup, or a rescue copy, back into the open project and opens what came back. */
+  async function restoreContent(backup: BackupContent) {
+    await withEditorClosed(async () => {
+      const before = writingWords;
+      const open = await restoreFromBackup(backup);
+      shelf = await readOpenShelf();
+      const restored = await loadWriting(backup.writings.some((item) => item.id === writingId) ? writingId : open || writingId);
+      if (restored.id === writingId) {
+        writing = restored;
+        keepToday(before);
+      } else {
+        const written = wordsToday;
+        writing = restored;
+        prefs = { ...prefs, writingDay: dayKey(new Date(clock)), dayStartWords: writingWords - written };
+      }
+      resetWritingState();
+      activeId = restored.chapters[0]?.id ?? null;
+      rememberProject();
+    });
+  }
+
   function backupOffer(backup: BackupContent | null) {
     if (!backup || !writing) return null;
     const saved = new Date(backup.savedAt);
     const ids = new Set(shelf?.writings.map((item) => item.id) ?? []);
     return {
-      title: (backup.format === 2 ? backup.title : backup.writings[0]?.title) || t("untitled"),
+      // One writing (a copy of a writing deleted for good, say) is named as itself; a whole project by its name.
+      title: (backup.format === 2 && backup.writings.length > 1 ? backup.title : backup.writings[0]?.title) || t("untitled"),
       savedAt: Number.isNaN(saved.getTime()) ? t("unknownDate") : saved.toLocaleString(locale()),
       // A backup of this project, or of a writing it has, puts things back; any other comes in beside them.
       otherBook: backup.format === 2 ? backup.projectId !== projectId : !backup.writings.some((item) => ids.has(item.id)),
@@ -3214,6 +3346,9 @@
       onPickBackup={() => void pickBackup()}
       onRestoreBackup={() => void restoreBackup()}
       onCancelBackup={() => (pendingBackup = null)}
+      {keptCount}
+      onBringBackKept={() => void bringBackKept()}
+      onRemoveKept={() => void removeKept()}
       bookTitle={writing.title}
       onAddExamples={() => void addExampleBooks()}
       examplesAdded={sampleNames.some((name) => name !== "long-test-book")}
@@ -3294,6 +3429,27 @@
   {#if quickIdeaOpen && QuickIdeaPart.current}
     {@const QuickIdea = QuickIdeaPart.current}
     <QuickIdea project={shelf?.title ?? ""} onSave={addIdea} onClose={() => (quickIdeaOpen = false)} />
+  {/if}
+  {#if saveTrouble && SaveTroublePart.current}
+    {@const SaveTrouble = SaveTroublePart.current}
+    <SaveTrouble
+      kept={saveTrouble.kept}
+      message={saveTrouble.message}
+      onClose={() => void closeAfterTrouble()}
+      onStay={() => (saveTrouble = null)}
+      onCopy={copyPlainText}
+      onSaveWord={exportWord}
+    />
+  {:else if rescue.offer && RescueOfferPart.current}
+    {@const RescueOffer = RescueOfferPart.current}
+    {@const offer = rescue.offer}
+    {@const saved = new Date(offer.backup.savedAt)}
+    <RescueOffer
+      title={offer.backup.writings[0]?.title || t("untitled")}
+      date={Number.isNaN(saved.getTime()) ? t("unknownDate") : saved.toLocaleString(locale())}
+      onBringBack={() => bringBackRescue(offer)}
+      onLater={() => rescue.later()}
+    />
   {/if}
 </div>
 

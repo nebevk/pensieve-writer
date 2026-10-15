@@ -36,6 +36,19 @@ export function missingItems<T extends { id: string }>(items: T[] | undefined, e
   return items.filter((item) => item && typeof item.id === "string" && !have.has(item.id));
 }
 
+/**
+ * The notes or to-dos from a rescue copy that the project lacks, or has in an older version: there, the
+ * copy's are the newer words, which couldn't be saved (ARCH-1). `existing` gives each one's last change.
+ */
+export function newerItems<T extends { id: string; updatedAt: string }>(items: T[] | undefined, existing: Map<string, string>): T[] {
+  if (!Array.isArray(items)) return [];
+  return items.filter((item) => {
+    if (!item || typeof item.id !== "string") return false;
+    const saved = existing.get(item.id);
+    return saved === undefined || String(item.updatedAt ?? "") > saved;
+  });
+}
+
 export function normalizeNote(note: Note, projectId: string, now = new Date().toISOString()): Note {
   const category =
     note.category === "characters" || note.category === "places" || note.category === "research"

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWriting } from "$lib/model";
 import { createSaveQueue } from "$lib/save/queue";
-import { missingItems, normalizeNote, normalizeTask, snapshotPayload, writingFromBackup, writingFromSnapshot } from "$lib/storage/restore";
+import { missingItems, newerItems, normalizeNote, normalizeTask, snapshotPayload, writingFromBackup, writingFromSnapshot } from "$lib/storage/restore";
 import { backupBookKey, backupFile, backupFileName, backupSignature, parseBackup } from "$lib/storage/backupFile";
 import { hasTransparency, imageType } from "$lib/editor/imageSize";
 import type { Note, Task } from "$lib/storage/organize";
@@ -127,6 +127,54 @@ describe("note save queue", () => {
     queue.schedule({ kind: "delete", id: "task" });
     await queue.flush();
     expect(done).toEqual(["delete:task"]);
+  });
+
+  it("tells what isn't saved yet, for a rescue copy: waiting, being written, or failed", async () => {
+    let fail = true;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const queue = createSaveQueue<Note>({
+      delayMs: 800,
+      key: byId,
+      save: async (item) => {
+        if (item.id === "slow") await gate;
+        if (fail) throw new Error("unable to open database file");
+      },
+    });
+    const text = () => queue.waiting().map((item) => `${item.id}:${item.plainText}`);
+    queue.schedule(note("a", "Ana, čšž"));
+    queue.schedule(note("a", "Ana Novak, čšž"));
+    queue.schedule(note("b", "Bor"));
+    expect(text()).toEqual(["a:Ana Novak, čšž", "b:Bor"]);
+    await expect(queue.flush()).rejects.toThrow("unable to open database file");
+    expect(text()).toEqual(["a:Ana Novak, čšž", "b:Bor"]);
+    // Being written: still unsaved, and a newer edit waiting takes its place.
+    fail = false;
+    queue.schedule(note("slow", "first"));
+    const flushing = queue.flush();
+    await Promise.resolve();
+    queue.schedule(note("slow", "second"));
+    expect(text()).toContain("slow:second");
+    expect(text()).not.toContain("slow:first");
+    release();
+    await flushing;
+    await queue.flush();
+    expect(queue.waiting()).toEqual([]);
+  });
+});
+
+describe("a rescue copy's notes, brought back", () => {
+  it("are the ones the project lacks, or has older", () => {
+    const later = (item: Note) => ({ ...item, updatedAt: "2026-10-15T09:00:00.000Z" });
+    const saved = new Map([
+      ["same", when],
+      ["older", when],
+      ["newer", "2026-10-16T09:00:00.000Z"],
+    ]);
+    const back = newerItems([note("same", "x"), later(note("older", "Anine besede, čšž")), later(note("newer", "y")), note("gone", "z")], saved);
+    expect(back.map((item) => item.id)).toEqual(["older", "gone"]);
+    expect(back[0].plainText).toBe("Anine besede, čšž");
+    expect(newerItems(undefined, saved)).toEqual([]);
   });
 });
 

@@ -54,11 +54,13 @@ export async function chooseBackupFolder(title = t("dialogBackupFolder")): Promi
   return typeof selected === "string" ? selected : null;
 }
 
-export async function chooseBackupFile(): Promise<string | null> {
+/** A backup file to restore; `folder` is where the picker starts (the kept copies', say). */
+export async function chooseBackupFile(folder = "", title = t("dialogRestoreBackup")): Promise<string | null> {
   const selected = await open({
     directory: false,
     multiple: false,
-    title: t("dialogRestoreBackup"),
+    title,
+    ...(folder ? { defaultPath: folder } : {}),
     filters: [{ name: t("dialogBackupFilter"), extensions: ["json"] }],
   });
   return typeof selected === "string" ? selected : null;

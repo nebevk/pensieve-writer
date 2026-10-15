@@ -41,6 +41,8 @@ export type Task = {
 type Change = { kind: "note"; note: Note } | { kind: "task"; task: Task } | { kind: "deleteTask"; id: string };
 
 let saveError: ((message: string) => void) | null = null;
+// The page's, apart from the views' saveError: it keeps a rescue copy while saves fail (ARCH-1).
+let savingWatch: { failed: () => void; saved: () => void } | null = null;
 
 /**
  * Every note and to-do write goes through this one queue, one at a time, and the latest change to
@@ -69,7 +71,9 @@ const saves = createSaveQueue<Change>({
   },
   onError: (error) => {
     saveError?.(error instanceof Error ? error.message : t("notesSaveFailed"));
+    savingWatch?.failed();
   },
+  onSaved: () => savingWatch?.saved(),
 });
 
 /** Lists read what was last typed, not what happened to be saved: pending writes go first. */
@@ -121,7 +125,23 @@ export function watchNoteSaves(onError: (message: string) => void): void {
   saveError = onError;
 }
 
+/** Hears every note and to-do save fail, and work again. */
+export function watchNoteSaving(watch: { failed: () => void; saved: () => void }): void {
+  savingWatch = watch;
+}
+
 /** Saves every pending note and to-do change. */
 export function flushNoteSave(): Promise<void> {
   return saves.flush();
+}
+
+/** Notes and to-dos changed but not saved yet (a save failing, say): what a rescue copy keeps of them (ARCH-1). */
+export function unsavedNotesAndTasks(): { notes: Note[]; tasks: Task[] } {
+  const notes: Note[] = [];
+  const tasks: Task[] = [];
+  for (const change of saves.waiting()) {
+    if (change.kind === "note") notes.push(change.note);
+    else if (change.kind === "task") tasks.push(change.task);
+  }
+  return { notes, tasks };
 }

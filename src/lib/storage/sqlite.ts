@@ -20,6 +20,7 @@ import { shownJson, storedJson } from "./pictures";
 import { readNotesWith, readTasksWith, writeNoteWith, writeTaskWith } from "./noteRows";
 import {
   missingItems,
+  newerItems,
   normalizeChapter,
   normalizeNote,
   normalizeTask,
@@ -103,6 +104,8 @@ function connectionUrl(): string {
 }
 
 let databasePromise: Promise<Database> | null = null;
+// The open file failed to open: the next try opens it only if it is still there (ARCH-1).
+let reopening = false;
 let writeChain: Promise<unknown> = Promise.resolve();
 /** The open project's id, set once its shelf is read: notes and to-dos for any other project are refused. */
 let openProjectId = "";
@@ -118,14 +121,32 @@ function enqueue<T>(work: () => Promise<T>): Promise<T> {
 
 async function database(): Promise<Database> {
   if (!databasePromise) {
-    databasePromise = openDatabase();
+    const opening = openDatabase(reopening);
+    databasePromise = opening;
+    // A file that failed to open is tried again at the next save or read, instead of failing for the rest of
+    // the session (ARCH-1): a folder put back where it was, or a file another program let go of, saves again.
+    opening.then(
+      () => {
+        reopening = false;
+      },
+      () => {
+        if (databasePromise !== opening) return;
+        databasePromise = null;
+        reopening = true;
+      },
+    );
   }
   return databasePromise;
 }
 
-async function openDatabase(): Promise<Database> {
+async function openDatabase(mustExist = false): Promise<Database> {
   if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
     throw new Error(t("errNoWindow"));
+  }
+  // Tried again after failing, it opens only while it is there: the plugin would make a missing file anew,
+  // empty, where her project was.
+  if (mustExist && !(await invoke<boolean>("project_file_exists", { path: await databaseFilePath() }))) {
+    throw new Error(t("errProjectUnreachable"));
   }
   const db = await Database.load(connectionUrl());
   try {
@@ -997,6 +1018,7 @@ export function switchProjectFile(absolutePath: string, remember = true): Promis
       }
     }
     databasePromise = null;
+    reopening = false;
     openProjectId = "";
     await database();
   });
@@ -1006,6 +1028,7 @@ export function switchProjectFile(absolutePath: string, remember = true): Promis
 async function closeOpen(): Promise<void> {
   const open = databasePromise;
   databasePromise = null;
+  reopening = false;
   if (!open) return;
   try {
     await (await open).close(connectionUrl());
@@ -1073,6 +1096,19 @@ async function addMissingNotesAndTasks(db: Database, notes: Note[] | undefined, 
   }
 }
 
+/** A rescue copy's notes and to-dos: the ones the project lacks, or has in an older version (ARCH-1). */
+async function putNewerNotesAndTasks(db: Database, notes: Note[] | undefined, tasks: Task[] | undefined): Promise<void> {
+  if (!openProjectId) return;
+  const noteTimes = await db.select<{ id: string; updated_at: string }[]>(`SELECT id, updated_at FROM notes`);
+  for (const note of newerItems(notes, new Map(noteTimes.map((row) => [row.id, row.updated_at])))) {
+    await writeNoteWith(db, normalizeNote(note, openProjectId));
+  }
+  const taskTimes = await db.select<{ id: string; updated_at: string }[]>(`SELECT id, updated_at FROM tasks`);
+  for (const task of newerItems(tasks, new Map(taskTimes.map((row) => [row.id, row.updated_at])))) {
+    await writeTaskWith(db, normalizeTask(task, openProjectId));
+  }
+}
+
 /** The whole open project, every writing with its text, for a Drive backup. */
 export function readWholeProject(): Promise<{ shelf: Shelf; writings: BackupWriting[]; notes: Note[]; tasks: Task[] }> {
   return enqueue(async () => {
@@ -1093,7 +1129,8 @@ export function readWholeProject(): Promise<{ shelf: Shelf; writings: BackupWrit
  * after a "Before restore" snapshot of that one, or comes back as a writing of its own when the project
  * no longer has it. A backup of one book (from before projects held several writings) restores into the
  * writing it came from when the project has it, and otherwise comes in as a new writing; nothing else is
- * written over. Writings the backup doesn't have stay, and so do notes and to-dos it doesn't have.
+ * written over. Writings the backup doesn't have stay, and so do notes and to-dos it doesn't have. A rescue
+ * copy's notes and to-dos also replace older versions of themselves, as its are the words that couldn't be saved.
  * Returns the id of the writing to open.
  */
 export function restoreFromBackup(backup: BackupContent): Promise<string> {
@@ -1138,7 +1175,8 @@ export function restoreFromBackup(backup: BackupContent): Promise<string> {
       const folders = [...new Set([...(row ? foldersOf(row.folders_json) : []), ...backup.folders])];
       await db.execute(`UPDATE shelf SET folders_json = $1 WHERE id = 1`, [JSON.stringify(folders)]);
     }
-    await addMissingNotesAndTasks(db, backup.notes, backup.tasks);
+    if (backup.rescue) await putNewerNotesAndTasks(db, backup.notes, backup.tasks);
+    else await addMissingNotesAndTasks(db, backup.notes, backup.tasks);
     return first;
   });
 }

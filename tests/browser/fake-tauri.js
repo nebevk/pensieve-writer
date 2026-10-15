@@ -168,6 +168,18 @@
   window.__PV_HARNESS__.revealed = [];
   // Links opened in her browser or mail program (links.rs open_link).
   window.__PV_HARNESS__.links = [];
+  // The copies Pensieve keeps in its own folder (kept.rs), kept between page loads: { "kind/name": { contents, modified } }.
+  const KEPT = `${USER}\\AppData\\Roaming\\com.pensieve.app\\Kept copies`;
+  const keptFolder = (kind) => `${KEPT}\\${kind === "rescue" ? "Rescue" : "Deleted writings"}`;
+  const keptCopies = new Map(Object.entries(JSON.parse(localStorage.getItem("pv-kept") ?? "{}")));
+  const keepCopies = () => localStorage.setItem("pv-kept", JSON.stringify(Object.fromEntries(keptCopies)));
+  window.__PV_HARNESS__.keptCopies = keptCopies;
+  // Raises a window event as Tauri does: "tauri://close-requested" when her ✕ asks the window to close.
+  window.__PV_HARNESS__.emit = (event, payload = null) => {
+    for (const listener of window.__PV_HARNESS__.listeners ?? []) {
+      if (listener.event === event) callbacks.get(listener.handler)?.({ event, id: listener.handler, payload });
+    }
+  };
   const PROGRAMS = /\.(appref-ms|application|bat|chm|cmd|com|cpl|exe|gadget|hta|inf|jar|js|jse|lnk|msc|msi|msp|pif|ps1|psm1|reg|scf|scr|sct|url|vb|vbe|vbs|ws|wsc|wsf|wsh)$/i;
 
   // Database files open now: Windows won't move a folder with one of them inside.
@@ -219,7 +231,8 @@
     return to;
   };
 
-  async function handle(cmd, args) {
+  const UNREACHABLE = "error returned from database: (code: 14) unable to open database file";
+  async function handle(cmd, args, options) {
     window.__PV_HARNESS__.calls.push(args.query ? `${cmd} ${args.query.replace(/\s+/g, " ").trim().slice(0, 80)}` : cmd);
     if (window.__PV_STACKS__ && args.query && window.__PV_STACKS__.test(args.query)) {
       window.__PV_HARNESS__.stacks.push(`${args.query.replace(/\s+/g, " ").trim().slice(0, 60)}\n${new Error().stack}`);
@@ -233,6 +246,7 @@
         return args.db;
       }
       case "plugin:sql|execute": {
+        if (window.__PV_HARNESS__.failSaves) throw UNREACHABLE;
         const db = books.get(args.db);
         // VACUUM INTO writes a copy of the database file beside it; here it is one more pretend file.
         const into = /^\s*VACUUM\s+INTO\s+\$1\s*$/i.exec(args.query);
@@ -251,13 +265,18 @@
         return [changes, last];
       }
       case "plugin:sql|select":
+        if (window.__PV_HARNESS__.failSaves) throw UNREACHABLE;
         return rowsOf(books.get(args.db), args.query, args.values);
       case "plugin:sql|close":
         if (args.db) openPools.delete(args.db);
         else openPools.clear();
         return true;
       case "plugin:event|listen":
+        (window.__PV_HARNESS__.listeners ??= []).push({ event: args.event, handler: args.handler });
         return args.handler ?? 0;
+      case "plugin:window|destroy":
+        window.__PV_HARNESS__.destroyed = true;
+        return null;
       case "plugin:window|is_maximized":
         return false;
       case "default_project_path":
@@ -329,7 +348,36 @@
         (window.__PV_HARNESS__.backups ??= []).push(path);
         return path;
       }
+      case "kept_copies_folder":
+        return KEPT;
+      case "write_kept_copy": {
+        // kept.rs write_kept_copy; failKept stands for a full disk.
+        if (window.__PV_HARNESS__.failKept) throw "There is not enough space on the disk. (os error 112)";
+        if (!/\.json$/.test(args.name) || /[\\/:*?"<>|]|\.\./.test(args.name)) throw "The copy's name isn't valid";
+        keptCopies.set(`${args.kind}/${args.name}`, { contents: String(args.contents), modified: Date.now() });
+        keepCopies();
+        return `${keptFolder(args.kind)}\\${args.name}`;
+      }
+      case "list_kept_copies":
+        return [...keptCopies]
+          .filter(([key]) => key.startsWith(`${args.kind}/`))
+          .map(([key, copy]) => {
+            const name = key.slice(args.kind.length + 1);
+            return { name, path: `${keptFolder(args.kind)}\\${name}`, bytes: copy.contents.length, modified: copy.modified };
+          })
+          .sort((a, b) => b.modified - a.modified);
+      case "remove_kept_copy":
+        keptCopies.delete(`${args.kind}/${args.name}`);
+        keepCopies();
+        return null;
       case "read_backup_file": {
+        for (const kind of ["rescue", "deleted"]) {
+          const folder = `${keptFolder(kind)}\\`;
+          if (!String(args.path).startsWith(folder)) continue;
+          const copy = keptCopies.get(`${kind}/${String(args.path).slice(folder.length)}`);
+          if (!copy) throw "That file isn't there any more";
+          return copy.contents;
+        }
         const file = files.get(lower(String(args.path)));
         if (!file) throw "That file isn't there any more";
         return new TextDecoder().decode(bytesOf(file.base64));
@@ -347,7 +395,20 @@
       }
       // The file and folder pickers: the answers a check queued, in turn; none left is a Cancel.
       case "plugin:dialog|open":
+      case "plugin:dialog|save":
         return window.__PV_HARNESS__.dialogAnswers?.shift() ?? null;
+      case "write_document": {
+        // export.rs write_document: the file's bytes, its path hex-encoded in a header; kept as one of her files.
+        const headers = options?.headers instanceof Headers ? Object.fromEntries(options.headers) : (options?.headers ?? {});
+        const path = new TextDecoder().decode(new Uint8Array((String(headers["x-path"] ?? "").match(/../g) ?? []).map((pair) => parseInt(pair, 16))));
+        if (!path) throw "The file path is missing";
+        const bytes = args instanceof Uint8Array ? args : new Uint8Array(args);
+        let binary = "";
+        for (let at = 0; at < bytes.length; at += 0x8000) binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+        addFolder(parentOf(path));
+        files.set(lower(path), { path, base64: btoa(binary) });
+        return { path, stamp: `${bytes.length}:1` };
+      }
       case "remove_library_folder": {
         const path = String(args.path).replace(/[\\/]+$/, "");
         if (!folders.has(lower(path))) throw "That folder isn't there any more";
@@ -394,7 +455,7 @@
   }
 
   window.__TAURI_INTERNALS__ = {
-    invoke: (cmd, args = {}) => handle(cmd, args),
+    invoke: (cmd, args = {}, options) => handle(cmd, args, options),
     transformCallback(callback, once = false) {
       const id = nextCallback++;
       callbacks.set(id, (data) => {

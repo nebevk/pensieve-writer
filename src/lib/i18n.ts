@@ -716,6 +716,35 @@ const en = {
   errFileProgram: "Pensieve doesn't start programs; open it from Explorer if you trust it",
   errNotDocument: "Only a Word, OpenDocument, text or Markdown file can come in as a writing",
   errFileTooBig: "That file is too big to bring in",
+  // When saving fails (ARCH-1): the rescue copy, closing, and bringing the words back.
+  errProjectUnreachable: "Pensieve can't reach this project's file. If its folder was moved or renamed, put it back where it was, and saving starts again.",
+  errDiskFull: "The disk is full. Make some room on it, and saving starts again.",
+  saveTroubleTitle: "Pensieve couldn't save",
+  saveTroubleKept:
+    "Your latest words couldn't be saved to this project. They are safe in a rescue copy in Pensieve's own folder, and the next time you open this project, Pensieve offers to bring them back.",
+  saveTroubleNotKept:
+    "Your latest words couldn't be saved to this project, and Pensieve couldn't keep a rescue copy of them either. Before you close it, copy the text, or save it as a Word file somewhere else, such as a USB stick.",
+  saveTroubleWhy: "What went wrong: {message}",
+  keepOpen: "Keep it open",
+  closePensieve: "Close Pensieve",
+  copyTheText: "Copy the text",
+  saveAsWordFile: "Save as a Word file…",
+  textCopied: "Copied. Paste it somewhere safe, and then close Pensieve.",
+  rescueTitle: "A rescue copy",
+  rescueOffer: "Last time, Pensieve couldn't save “{title}” to this project, so it kept your words in a rescue copy ({date}). Bring them back?",
+  rescueHint: "What is in the project now is kept first, in Earlier versions.",
+  notNow: "Not now",
+  bringThemBack: "Bring them back",
+  rescueBack: "Your words from the rescue copy are back.",
+  // A copy of each writing deleted for good (ARCH-5), kept with the rescue copies in Pensieve's own folder.
+  deleteNotKept: "Nothing was deleted: Pensieve couldn't first keep a copy of “{title}”. {message}",
+  keptCopies: "Kept copies",
+  keptCopiesHint: "A copy of each writing deleted for good, and a rescue copy when saving fails, in Pensieve's own folder.",
+  keptNone: "None yet",
+  bringOneBack: "Bring one back…",
+  removeThem: "Remove them…",
+  keptRemoved: "The kept copies are removed.",
+  dialogKeptCopy: "Bring back a kept copy",
 };
 
 export type UiKey = keyof typeof en;
@@ -1416,6 +1445,33 @@ const sl: Record<UiKey, string> = {
   errFileProgram: "Pensieve ne zaganja programov; odprite ga v Raziskovalcu, če mu zaupate",
   errNotDocument: "Kot besedilo je mogoče uvoziti le Wordov dokument, dokument OpenDocument, besedilno datoteko ali datoteko Markdown",
   errFileTooBig: "Ta datoteka je prevelika za uvoz",
+  errProjectUnreachable: "Pensieve ne doseže datoteke tega projekta. Če ste njegovo mapo premaknili ali preimenovali, jo vrnite, kjer je bila, in shranjevanje se spet začne.",
+  errDiskFull: "Disk je poln. Naredite na njem nekaj prostora in shranjevanje se spet začne.",
+  saveTroubleTitle: "Pensieve ni mogel shraniti",
+  saveTroubleKept:
+    "Zadnjih besed ni bilo mogoče shraniti v ta projekt. Varne so v reševalni kopiji v mapi Pensieva in ko boste ta projekt naslednjič odprli, vam jih Pensieve ponudi nazaj.",
+  saveTroubleNotKept:
+    "Zadnjih besed ni bilo mogoče shraniti v ta projekt, Pensieve pa jih ni mogel shraniti niti v reševalno kopijo. Preden ga zaprete, kopirajte besedilo ali ga shranite kot datoteko Word drugam, na primer na ključek USB.",
+  saveTroubleWhy: "Kaj je šlo narobe: {message}",
+  keepOpen: "Pusti odprto",
+  closePensieve: "Zapri Pensieve",
+  copyTheText: "Kopiraj besedilo",
+  saveAsWordFile: "Shrani kot datoteko Word …",
+  textCopied: "Kopirano. Prilepite ga na varno, nato zaprite Pensieve.",
+  rescueTitle: "Reševalna kopija",
+  rescueOffer: "Zadnjič Pensieve ni mogel shraniti »{title}« v ta projekt, zato je vaše besede shranil v reševalno kopijo ({date}). Jih vrnem?",
+  rescueHint: "Kar je zdaj v projektu, se prej shrani med prejšnje različice.",
+  notNow: "Ne zdaj",
+  bringThemBack: "Vrni jih",
+  rescueBack: "Besede iz reševalne kopije so spet tu.",
+  deleteNotKept: "Nič ni izbrisano: Pensieve ni mogel najprej shraniti kopije »{title}«. {message}",
+  keptCopies: "Shranjene kopije",
+  keptCopiesHint: "Kopija vsakega za vedno izbrisanega besedila in reševalna kopija, ko shranjevanje ne uspe, v mapi Pensieva.",
+  keptNone: "Še nobene",
+  bringOneBack: "Vrni eno …",
+  removeThem: "Odstrani jih …",
+  keptRemoved: "Shranjene kopije so odstranjene.",
+  dialogKeptCopy: "Vrnitev shranjene kopije",
 };
 
 const STRINGS: Record<UiLanguage, Record<UiKey, string>> = { en, sl };
@@ -1455,6 +1511,18 @@ const PLURALS = {
   noteCount: { en: ["{n} note", "{n} notes"], sl: ["{n} zapisek", "{n} zapiska", "{n} zapiski", "{n} zapiskov"] },
   /** "In 3 projects": Slovenian "v" takes the locative. */
   inProjects: { en: ["in {n} project", "in {n} projects"], sl: ["v {n} projektu", "v {n} projektih", "v {n} projektih", "v {n} projektih"] },
+  /** Settings' kept copies: "3 kept copies". */
+  keptCount: { en: ["{n} kept copy", "{n} kept copies"], sl: ["{n} shranjena kopija", "{n} shranjeni kopiji", "{n} shranjene kopije", "{n} shranjenih kopij"] },
+  /** Asked before they go; Slovenian "odstranim" takes the accusative, and the pronoun follows the number. */
+  removeKept: {
+    en: ["Remove {n} kept copy? It can't be brought back after that.", "Remove {n} kept copies? They can't be brought back after that."],
+    sl: [
+      "Odstranim {n} shranjeno kopijo? Potem je ni več mogoče vrniti.",
+      "Odstranim {n} shranjeni kopiji? Potem ju ni več mogoče vrniti.",
+      "Odstranim {n} shranjene kopije? Potem jih ni več mogoče vrniti.",
+      "Odstranim {n} shranjenih kopij? Potem jih ni več mogoče vrniti.",
+    ],
+  },
   longSentence: { en: ["A long sentence: {n} word", "A long sentence: {n} words"], sl: ["Dolg stavek: {n} beseda", "Dolg stavek: {n} besedi", "Dolg stavek: {n} besede", "Dolg stavek: {n} besed"] },
 } satisfies Record<string, { en: [string, string]; sl: [string, string, string, string] }>;
 
@@ -1542,6 +1610,9 @@ const RUST_ERRORS = new Map<string, UiKey>(
   ).map((key) => [en[key], key]),
 );
 const OPEN_ELSEWHERE = /^“(.+)” is open in another program, probably Word\. Close it there, then try again\.$/;
+// What SQLite and Windows say when the project's file can't be reached or the disk is full, in plain words (ARCH-1).
+const UNREACHABLE = /unable to open database file/i;
+const DISK_FULL = /database or disk is full|not enough space on the disk/i;
 
 /** Shows a problem reported in English by the Windows side in the interface language. */
 export function localizeError(language: UiLanguage, message: string): string {
@@ -1549,5 +1620,7 @@ export function localizeError(language: UiLanguage, message: string): string {
   if (key) return translate(language, key);
   const open = OPEN_ELSEWHERE.exec(message);
   if (open) return translate(language, "errOpenElsewhere", { name: open[1] });
+  if (UNREACHABLE.test(message)) return translate(language, "errProjectUnreachable");
+  if (DISK_FULL.test(message)) return translate(language, "errDiskFull");
   return message;
 }

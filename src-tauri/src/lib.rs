@@ -1,6 +1,7 @@
 mod backup;
 mod disk;
 mod export;
+mod kept;
 mod library;
 mod links;
 mod project;
@@ -61,6 +62,10 @@ pub fn run() {
             backup::write_backup,
             backup::read_backup_file,
             export::write_document,
+            kept::kept_copies_folder,
+            kept::write_kept_copy,
+            kept::list_kept_copies,
+            kept::remove_kept_copy,
             library::library_places,
             library::list_library,
             library::create_library_folder,
