@@ -52,6 +52,9 @@ export function copyPathFor(folder: string, name: string, writingId: string, cop
 export class DriveBackup {
   #host: CopiesHost;
   #running: Promise<void> | null = null;
+  // When an automatic backup last failed. The next try waits a quarter of an hour, not a minute (owner,
+  // 15 October): each try reads and packs the whole project, for a folder that is likely still missing.
+  #failedAt = -Infinity;
 
   constructor(host: CopiesHost) {
     this.#host = host;
@@ -93,14 +96,18 @@ export class DriveBackup {
     }
   }
 
-  /** Every minute, a backup once the last is an hour old. Gives how to stop. */
+  /** Every minute, a backup once the last is an hour old, or a quarter of an hour after one failed. Gives how to stop. */
   start(): () => void {
     const timer = window.setInterval(() => {
       const prefs = this.#host.prefs();
       if (!prefs.backupFolder || !this.#host.writing()) return;
       const last = Date.parse(prefs.lastBackupAt);
       if (!Number.isNaN(last) && Date.now() - last < 60 * 60 * 1000) return;
-      void this.run(false);
+      if (Date.now() - this.#failedAt < 15 * 60 * 1000) return;
+      this.run(false).catch(() => {
+        // Shown in the window bar already.
+        this.#failedAt = Date.now();
+      });
     }, 60_000);
     return () => window.clearInterval(timer);
   }
@@ -116,6 +123,8 @@ export class DriveBackup {
         return;
       }
       host.setPrefs({ backupFolder: folder });
+      // A new folder is tried at the next minute, not a quarter of an hour after the old one failed.
+      this.#failedAt = -Infinity;
     } catch (error) {
       host.say(errorMessage(error));
     }
