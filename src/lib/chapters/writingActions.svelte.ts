@@ -5,6 +5,8 @@ import { replaceBookChapters, type ImportedChapter, type WordImport } from "$lib
 import { isUntitled } from "$lib/i18n";
 import { createChapter, emptyDocument, type Shelf, type Writing } from "$lib/model";
 import { errorMessage } from "$lib/save/autosave";
+import { deletedName, writeKeptCopy } from "$lib/save/kept";
+import { backupFile } from "$lib/storage/backupFile";
 import { flushNoteSave, listNotes, listTasks, saveNote, saveTask } from "$lib/storage/organize";
 import {
   addWriting,
@@ -20,6 +22,25 @@ import {
   sqliteStorage,
 } from "$lib/storage/sqlite";
 import { t } from "$lib/ui.svelte";
+
+/**
+ * A writing about to be deleted for good, as it is, in Pensieve's own folder: a backup file of it alone, which
+ * Settings' Bring one back puts back into the project (ARCH-5). Its earlier versions aren't in it.
+ */
+async function keepErasedCopy(shelf: Shelf | null, id: string): Promise<void> {
+  if (!shelf) throw new Error(t("couldNotSave"));
+  const writing = await loadWriting(id);
+  const outline = shelf.writings.find((item) => item.id === id);
+  const now = new Date();
+  const file = backupFile(
+    { id: shelf.projectId, title: shelf.title, folders: shelf.folders },
+    [{ ...writing, folder: outline?.folder ?? "", position: outline?.position ?? 0, deletedAt: "" }],
+    [],
+    [],
+    now.toISOString(),
+  );
+  await writeKeptCopy("deleted", deletedName(writing.title, now), JSON.stringify(file));
+}
 
 /** What a project's writings need from the page around them (+page.svelte), IMP-28. */
 export type WritingsHost = {
@@ -257,7 +278,16 @@ export class WritingActions {
 
   async erase(id: string) {
     if (id === this.#host.writingId()) return;
+    const shelf = this.#host.shelf();
     try {
+      // A copy of it first, in Pensieve's own folder: nothing goes if the copy can't be written (ARCH-5).
+      try {
+        await keepErasedCopy(shelf, id);
+      } catch (error) {
+        const title = shelf?.writings.find((item) => item.id === id)?.title || t("untitled");
+        this.#host.fail(t("deleteNotKept", { title, message: errorMessage(error) }));
+        return;
+      }
       await eraseWriting(id);
       await this.#host.refreshShelf();
     } catch (error) {

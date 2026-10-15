@@ -656,7 +656,8 @@ const en = {
   deletedFolder: "Deleted",
   putBack: "Put back",
   deleteForGood: "Delete for good",
-  deleteForGoodQuestion: "Delete “{title}” for good? Its chapters and earlier versions go too.",
+  deleteForGoodQuestion:
+    "Delete “{title}” for good? Its chapters and earlier versions go too. Pensieve keeps one copy of it in its own folder, which Settings → Backup & export can bring back.",
   writingDeleted: "“{title}” is in Deleted, at the end of the project. You can put it back from there.",
   elsewhere: "Elsewhere",
   moveIntoLibrary: "Move into the library",
@@ -1404,7 +1405,8 @@ const sl: Record<UiKey, string> = {
   deletedFolder: "Izbrisano",
   putBack: "Vrni",
   deleteForGood: "Izbriši za vedno",
-  deleteForGoodQuestion: "Za vedno izbrišem »{title}«? Z njim gredo tudi poglavja in prejšnje različice.",
+  deleteForGoodQuestion:
+    "Za vedno izbrišem »{title}«? Z njim gredo tudi poglavja in prejšnje različice. Pensieve obdrži eno kopijo v svoji mapi, ki jo lahko vrnete v Nastavitvah → Varnostne kopije in izvoz.",
   writingDeleted: "»{title}« je v mapi Izbrisano, na koncu projekta. Od tam ga lahko vrnete.",
   elsewhere: "Drugje",
   moveIntoLibrary: "Premakni v knjižnico",
