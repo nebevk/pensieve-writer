@@ -205,7 +205,7 @@ Coziness is the top product priority, within the performance budget in Section 5
 | Word | `docx` to write (loaded on first use) and `mammoth` to read |
 | Pages | Measured in the page itself: the Book view cuts chapters into pages, and Pages in Write adds room where a sheet ends once typing pauses |
 | Sound | Ambience: looping recordings in `static/ambience/`. Keystrokes: Web Audio playing parts of one recording per keyboard, in `static/keys/` |
-| Updates and files | Tauri's updater plugin (signed updates) and opener plugin (used from Rust only) |
+| Updates, files and the window | Tauri's updater plugin (signed updates), opener plugin (used from Rust only: her files, Show in Explorer, and links, which open in her browser while the window stays on Pensieve) and single-instance plugin (one Pensieve at a time, in installed builds) |
 
 ## 7. Data and backups
 
@@ -224,8 +224,9 @@ Coziness is the top product priority, within the performance budget in Section 5
   notes and to-dos that still exist; it brings back the ones deleted since.
 - **Backups:** the live file never sits in a synced folder, where a sync could copy it mid-write. Instead
   Pensieve writes a backup file of each project into a folder she picks inside Google Drive (Drive for
-  desktop syncs it), hourly while open and on close, keeping each project's latest 20. Settings → Backup &
-  export restores from one.
+  desktop syncs it), hourly while open and on close, keeping each project's latest 20. One that failed is
+  tried again a quarter of an hour later; one that was written never counts as failed because an older
+  one couldn't be tidied away. Settings → Backup & export restores from one.
 
 ## 8. UX principles
 
@@ -240,6 +241,10 @@ Coziness is the top product priority, within the performance budget in Section 5
 The owner's decisions that shaped the app, newest first. Each replaced what the original plan or the
 design system said.
 
+- **15 Oct:** One Pensieve at a time: starting it again, while it sits minimised say, brings the open window
+  back (Tauri's single-instance plugin, in installed builds). A save comes at least every 10 seconds while
+  she types without a pause. An automatic backup that failed is tried again a quarter of an hour later, not
+  every minute.
 - **14 Oct:** A garden of stories (Vrt zgodb) for cozy rewards: one tree for every look growing out of the
   basin, keepsakes for what she does, a little chime, shown on Home in the large mark; words brought in from
   Word don't count. New project starts from a blank page or From Word, each saying what it makes, and the window

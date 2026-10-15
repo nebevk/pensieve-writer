@@ -33,14 +33,14 @@ Every other finding holds as written.
 
 ## The fixes, most urgent first
 
-| | Fix | Size | Needs |
+| | Fix | Size | Needs, or done |
 |---|---|---|---|
-| **1** | **ARCH-13, stop the old copy.** `showNote`, `changeNote` and `duplicateNote` wait for a fresh read of the notes when the note isn't the one open beside the page, and Home reads them again when it opens. A browser check for both ways it happened | S | — |
-| **2** | **Book view links.** A navigation guard on the window keeps it on Pensieve and opens web links in her browser (the opener crate is already there for Show in Explorer), and the Book view's links open beside it. A check that the window stays | S | — |
-| **3** | **ARCH-2, one copy.** Tauri's `tauri-plugin-single-instance` 2.5 (it matches the Tauri 2.12 already used): a second start brings the open window forward, restored if minimised, and quits. Only in installed builds, so `tauri dev` still runs beside an installed Pensieve | S | your yes to the plugin |
-| **4** | **ARCH-3, a save at least every 10 seconds** while she types, not only at a pause. It waits while she is still naming a new chapter's heading, because a save there splits the chapter under her cursor | S | — |
+| **1** | **ARCH-13, stop the old copy.** `showNote`, `changeNote` and `duplicateNote` wait for a fresh read of the notes when the note isn't the one open beside the page, and Home reads them again when it opens. A browser check for both ways it happened | S | **Done** 15 Oct |
+| **2** | **Book view links.** A navigation guard on the window keeps it on Pensieve and opens web links in her browser (the opener crate is already there for Show in Explorer), and the Book view's links open beside it. A check that the window stays | S | **Done** 15 Oct |
+| **3** | **ARCH-2, one copy.** Tauri's `tauri-plugin-single-instance` 2.5 (it matches the Tauri 2.12 already used): a second start brings the open window forward, restored if minimised, and quits. Only in installed builds, so `tauri dev` still runs beside an installed Pensieve | S | **Done** 15 Oct, with your yes |
+| **4** | **ARCH-3, a save at least every 10 seconds** while she types, not only at a pause. It waits while she is still naming a new chapter's heading, because a save there splits the chapter under her cursor | S | **Done** 15 Oct |
 | **5** | **ARCH-1, a way out.** a) A failed open is tried again at the next save, without creating a missing file. b) Export and Copy HTML work from the text in memory when saving fails. c) At close, a failed save leaves a rescue copy (the open writing, its notes and to-dos) in the app's folder, she is asked once, and Pensieve closes; the next start offers the copy back through the existing restore | M | your choice: close after the rescue copy, or keep refusing |
-| **6** | **The backup, in one pass:** ARCH-16 (a backup that worked is never reported as failed, and pruning goes on past an error), ARCH-10 (the backup runs off the window's thread, as do the Word copy and prefs), ARCH-17 (files written through to disk before a rename; prefs.json replaced in one step) | S | — |
+| **6** | **The backup, in one pass:** ARCH-16 (a backup that worked is never reported as failed, and pruning goes on past an error), ARCH-10 (the backup runs off the window's thread, as do the Word copy and prefs), ARCH-17 (files written through to disk before a rename; prefs.json replaced in one step). After a failed automatic backup, the next try a quarter of an hour later | S | **Done** 15 Oct |
 | **7** | **ARCH-5, delete for good keeps a copy** in the app's folder, in the backup format; nothing is deleted if the copy fails. Shares the writer of 5c | S | where the copies live, and for how long |
 | **8** | **ARCH-6, move into the library** with `VACUUM INTO` inside the save queue, and back to the old file if the new one won't open | S–M | — |
 | **9** | **ARCH-18, back up the project she leaves**, with a backup signature per project so switching back and forth makes no duplicates | S–M | — |
@@ -52,21 +52,24 @@ Every other finding holds as written.
 | **15** | **ARCH-4, one transaction per save:** one call holding `BEGIN IMMEDIATE … COMMIT` (no dependency), or a Rust command with `sqlx` | M | your choice of the two |
 | **16** | **The small ones:** ARCH-15 (the old migrations go; it restarts your `tauri dev` once), ARCH-19 (a test that each Rust error text matches its translation, library paths checked; a CSP last, as insurance only), ARCH-20 (the goal bar and the Tour move by `transform`), ARCH-21 (the Ribbon's questions from one derived summary), ARCH-22 (the storage rule rewritten to say what the code does) | S each | — |
 
-1 to 4 and 6 are small and could go out together as 0.5.1. 5 and 7 share their rescue-copy writer, so they
-go together.
+1 to 4 and 6 are done (15 October) and can go out together as 0.5.1. 5 and 7 share their rescue-copy
+writer, so they go together.
 
 ## For you to decide
 
-1. **ARCH-2:** may the single-instance plugin come in? The fallback is about 40 lines of our own Windows code.
+1. ~~**ARCH-2:** may the single-instance plugin come in?~~ Yes (15 October); it is in.
 2. **ARCH-1:** when a save fails at close and a rescue copy is kept, close after asking once (recommended), or
    keep refusing?
 3. **ARCH-4:** one call holding the transaction (recommended, no dependency) or `sqlx` in Cargo.toml?
 4. **ARCH-5:** keep erased writings' copies for how long: 30 days, say, or for good?
-5. **ARCH-3:** is 10 seconds the right longest wait?
-6. **ARCH-16:** after an automatic backup fails, try again in 15 minutes rather than every minute?
+5. ~~**ARCH-3:** is 10 seconds the right longest wait?~~ Yes (15 October).
+6. ~~**ARCH-16:** after an automatic backup fails, try again in 15 minutes rather than every minute?~~ Yes
+   (15 October); it is in.
 
 ## Not checked
 
 - No timings: what makes up a key's 40 ms on her laptop is still unknown (IMP-10, then fix 11).
 - Two copies of the app, Drive's file locks and a shutdown during a save can only be tried on Windows itself.
+  By hand, on the installed 0.5.1: with Pensieve minimised, start it again from its icon; the open window
+  comes back and no second one opens. In the Book view, a link opens in the browser and the window stays.
 - The review's note that a failed note save says nothing unless Notes or Ideas was opened wasn't checked again.
