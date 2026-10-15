@@ -35,7 +35,7 @@
   import { PAPER, SHEET_GAP, flushPrefs, loadPrefs, loadPrefsFile, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs, type KnownProject, type Prefs } from "$lib/prefs";
   import { duplicateChapterIn, insertChapterAfter, patchChapter, removeChapter, renameChapterIn, reorderChapterList, setChapterText } from "$lib/chapters/mutate";
   import { chapterTitle } from "$lib/chapters/welcome";
-  import { applyPage, chapterBreak, composePage, heldHeading, isLeadLine, leadLines, readPage, startsPart, withoutBreaks } from "$lib/chapters/page";
+  import { applyPage, chapterBreak, composePage, heldHeading, isLeadLine, leadLines, opensChapter, readPage, startsPart, withoutBreaks } from "$lib/chapters/page";
   import { summarize, summarizeOutline, summarizeProject } from "$lib/chapters/progress";
   import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, joinPath, lastName, looksSynced, parentFolder, prefsAfterMove, prefsWithoutProject, projectFile, projectFiles, projectFolders, projectName, rebasePath, sameFolder, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "$lib/chapters/library";
   import { moveOpen } from "$lib/chapters/treeState.svelte";
@@ -233,6 +233,10 @@
 
   const autosave = createAutosave({
     delayMs: 2000,
+    // Saved at least every 10 seconds while she types on (ARCH-3). Not while she is naming a new chapter in
+    // its heading: a save cuts the page there, under her cursor, so that one waits for her pause.
+    maxWaitMs: 10000,
+    mayInterrupt: () => !namingChapter(),
     save: async () => {
       captureEditor();
       if (!writing) return;
@@ -1017,6 +1021,14 @@
     editor.commands.setTextSelection(place);
     editor.view.focus();
     editor.commands.scrollIntoView();
+  }
+
+  /** Whether she is typing a heading that begins another part or chapter, where a save would cut the page. */
+  function namingChapter(): boolean {
+    const editor = textEditor;
+    if (!editor || editor.isDestroyed || !editorSplit) return false;
+    const { doc, selection } = editor.state;
+    return opensChapter(doc, selection.$from.index(0));
   }
 
   /**

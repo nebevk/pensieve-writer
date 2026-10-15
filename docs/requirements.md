@@ -126,7 +126,7 @@ said), Not started, Dropped. IDs are fixed; code comments and the backlog refer 
 
 | ID | Requirement | Pri | Status |
 |----|-------------|-----|--------|
-| SV-1 | Autosave a few seconds after a change, and on close | M | Done |
+| SV-1 | Autosave two seconds after she stops typing, and at least every 10 seconds while she types on (ARCH-3, 15 October: not while she is naming a new chapter in its heading, which waits for her pause), and on close | M | Done |
 | SV-2 | Crash-safe writes | M | Done |
 | SV-3 | Automatic snapshots (hourly, daily) with an easy restore | M | Done |
 | SV-4 | Earlier versions: a window listing the snapshots, showing the open chapter as it was, and restoring that chapter or the whole book (after keeping the book as it is as a "Before restore" snapshot) | S | Done |
