@@ -734,13 +734,17 @@ const en = {
   rescueTitle: "A rescue copy",
   rescueOffer: "Last time, Pensieve couldn't save “{title}” to this project, so it kept your words in a rescue copy ({date}). Bring them back?",
   rescueHint: "What is in the project now is kept first, in Earlier versions.",
+  rescueOfferBeside:
+    "Last time, Pensieve couldn't save “{title}” to this project, so it kept your words in a rescue copy ({date}). “{title}” has changed since, so they come back beside it, as a writing of their own.",
+  rescuedTitle: "{title} (rescue copy)",
   notNow: "Not now",
   bringThemBack: "Bring them back",
   rescueBack: "Your words from the rescue copy are back.",
   // A copy of each writing deleted for good (ARCH-5), kept with the rescue copies in Pensieve's own folder.
   deleteNotKept: "Nothing was deleted: Pensieve couldn't first keep a copy of “{title}”. {message}",
   keptCopies: "Kept copies",
-  keptCopiesHint: "A copy of each writing deleted for good, and a rescue copy when saving fails, in Pensieve's own folder.",
+  keptCopiesHint:
+    "A copy of each writing deleted for good, in Pensieve's own folder. Rescue copies from times saving failed are kept there too, and offered back when their project opens.",
   keptNone: "None yet",
   bringOneBack: "Bring one back…",
   removeThem: "Remove them…",
@@ -1463,12 +1467,16 @@ const sl: Record<UiKey, string> = {
   rescueTitle: "Reševalna kopija",
   rescueOffer: "Zadnjič Pensieve ni mogel shraniti »{title}« v ta projekt, zato je vaše besede shranil v reševalno kopijo ({date}). Jih vrnem?",
   rescueHint: "Kar je zdaj v projektu, se prej shrani med prejšnje različice.",
+  rescueOfferBeside:
+    "Zadnjič Pensieve ni mogel shraniti »{title}« v ta projekt, zato je vaše besede shranil v reševalno kopijo ({date}). Besedilo »{title}« se je od takrat spremenilo, zato se vrnejo poleg njega, kot samostojno besedilo.",
+  rescuedTitle: "{title} (reševalna kopija)",
   notNow: "Ne zdaj",
   bringThemBack: "Vrni jih",
   rescueBack: "Besede iz reševalne kopije so spet tu.",
   deleteNotKept: "Nič ni izbrisano: Pensieve ni mogel najprej shraniti kopije »{title}«. {message}",
   keptCopies: "Shranjene kopije",
-  keptCopiesHint: "Kopija vsakega za vedno izbrisanega besedila in reševalna kopija, ko shranjevanje ne uspe, v mapi Pensieva.",
+  keptCopiesHint:
+    "Kopija vsakega za vedno izbrisanega besedila, v mapi Pensieva. Tam so tudi reševalne kopije iz časov, ko shranjevanje ni uspelo; ponudijo se nazaj, ko odprete njihov projekt.",
   keptNone: "Še nobene",
   bringOneBack: "Vrni eno …",
   removeThem: "Odstrani jih …",

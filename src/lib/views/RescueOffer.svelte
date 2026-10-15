@@ -5,6 +5,7 @@
   let {
     title,
     date,
+    beside = false,
     onBringBack,
     onLater,
   }: {
@@ -12,6 +13,8 @@
     title: string;
     /** When the copy was made, as she reads dates. */
     date: string;
+    /** The writing has changed since: the copy comes back beside it, as a writing of its own. */
+    beside?: boolean;
     /** Puts the copy's words back into the project. */
     onBringBack: () => Promise<void>;
     /** Asked again the next time Pensieve starts. */
@@ -36,8 +39,12 @@
   }}
 >
   <div class="body">
-    <p>{t("rescueOffer", { title, date })}</p>
-    <p class="hint">{t("rescueHint")}</p>
+    {#if beside}
+      <p>{t("rescueOfferBeside", { title, date })}</p>
+    {:else}
+      <p>{t("rescueOffer", { title, date })}</p>
+      <p class="hint">{t("rescueHint")}</p>
+    {/if}
   </div>
   {#snippet foot()}
     <button type="button" disabled={busy} onclick={onLater}>{t("notNow")}</button>

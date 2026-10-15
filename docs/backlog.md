@@ -63,6 +63,7 @@ replacing. What needs work is a few paths, listed below.
 | **ARCH-20** Animations off the rule | The goal bar animates `width`, and the Tour animates its position and size; only `opacity` and `transform` should move | Open | P3 |
 | **ARCH-21** The Ribbon's checks | The Ribbon asks the editor about 13 `isActive` questions on every change. Ask them only when the selection or the marks change | Open | P3 |
 | **ARCH-22** The storage rule | `.cursor/rules/data-safety.mdc` asks for a storage interface the code doesn't have (`sqlite.ts` exports 37 functions to 8 modules). Change the rule to match what is there, rather than build the interface | Open | P3 |
+| **ARCH-23** Windows shutting down | Shutting Windows down (or a restart for an update) skips Pensieve's close: the windowing layer ends the process when the session ends (`tao` on WM_ENDSESSION, checked 15 October), so the last words typed since the save before (up to ten seconds), the backup at close and the Word copy are skipped. Saving first when Windows asks to end the session would close the gap | Open | P2 |
 
 **Order:** as [review-plan.md](review-plan.md) has it: ARCH-6 and ARCH-18 next, then ARCH-14, then ARCH-11
 and the typing fixes it measures (ARCH-7 to 9).
@@ -74,7 +75,6 @@ and the typing fixes it measures (ARCH-7 to 9).
 **Not checked:**
 
 - No timings were taken, so what makes up today's 40 ms a key, and the laptop's real numbers, are unknown.
-- Whether Windows shutting down runs the close handler.
 - How Drive for desktop locks files.
 - One pass found that a failed note save says nothing unless Notes or Ideas was opened that session; this
   wasn't checked again.

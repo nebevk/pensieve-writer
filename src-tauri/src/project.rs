@@ -31,8 +31,9 @@ pub fn example_book_path(app: AppHandle, name: String) -> Result<ExamplePath, St
     })
 }
 
-/// Whether a remembered book file is still there. Opening a missing path would create an empty book.
-#[tauri::command]
+/// Whether a remembered book file is still there. Opening a missing path would create an empty book. Off the
+/// window's thread: on a network drive that is gone, asking can take Windows a long while.
+#[tauri::command(async)]
 pub fn project_file_exists(path: String) -> bool {
     Path::new(&path).is_file()
 }

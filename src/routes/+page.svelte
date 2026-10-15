@@ -14,7 +14,7 @@
   import { Updates } from "$lib/updates.svelte";
   import { DriveBackup, WordCopy, copyPathFor, safeName } from "$lib/save/copies.svelte";
   import { keptCopiesFolder, listKeptCopies, removeKeptCopy } from "$lib/save/kept";
-  import { Rescue, type RescueOffer } from "$lib/save/rescue.svelte";
+  import { Rescue, besideItsWriting, type RescueOffer } from "$lib/save/rescue.svelte";
   import { WritingActions } from "$lib/chapters/writingActions.svelte";
   import { EarlierVersions } from "$lib/views/earlierVersions.svelte";
   import { createChapter, createWriting, effectiveLanguage, type Chapter, type DocumentJson, type Shelf, type Writing, type WritingLanguage } from "$lib/model";
@@ -211,6 +211,8 @@
   // How many closings of the editor are under way; it opens again when the last one is done.
   let closings = 0;
   let pendingBackup = $state<BackupContent | null>(null);
+  // Where it was picked, for a rescue copy restored that way.
+  let pendingBackupPath = "";
   // Her copies outside Pensieve: the backup in a folder she chose, and the Word copy (see copies.svelte.ts).
   const copiesHost = {
     writing: () => writing,
@@ -238,12 +240,13 @@
   const rescue = new Rescue({
     project: () => (shelf ? { id: shelf.projectId, title: shelf.title, folders: shelf.folders } : null),
     writing: () => {
-      if (!writing) return null;
-      const open = $state.snapshot(writing) as Writing;
+      const open = writingNow();
+      if (!open) return null;
       const outline = shelf?.writings.find((item) => item.id === open.id);
       return { ...open, folder: outline?.folder ?? "", position: outline?.position ?? 0, deletedAt: "" };
     },
     unsaved: () => saveStatus.state !== "saved",
+    savedAt: (id) => shelf?.writings.find((item) => item.id === id)?.updatedAt ?? "",
   });
   // Notes and to-dos that fail to save keep a rescue copy too; a save waiting for a switch to finish hasn't failed.
   watchNoteSaving({
@@ -396,6 +399,8 @@
     let unlistenClose: (() => void) | undefined;
     let unlistenFocus: (() => void) | undefined;
     let closing = false;
+    // Her words and settings are saved: only the backup and the Word copy are left to do.
+    let wordsSaved = false;
 
     void (async () => {
       try {
@@ -435,8 +440,14 @@
       try {
         const win = getCurrentWindow();
         unlistenClose = await win.onCloseRequested(async (event) => {
-          if (closing) return;
+          // Held here every time: for a handler that doesn't, Tauri destroys the window, mid-save (a double click on ✕).
           event.preventDefault();
+          if (closing) {
+            // Asked again while closing: once her words are saved, the window goes without waiting for the backup
+            // and the Word copy; before that, it waits.
+            if (wordsSaved) await win.destroy().catch(() => undefined);
+            return;
+          }
           closing = true;
           try {
             let failure: unknown = null;
@@ -446,10 +457,14 @@
               // Her last words couldn't be saved: a rescue copy of them now, and she is asked once (ARCH-1).
               saveTrouble = { kept: await rescue.keep(), message: errorMessage(failure) };
               await SaveTroublePart.load().catch(() => undefined);
+              // Closed from the taskbar while minimised, the question would wait unseen.
+              await win.unminimize().catch(() => undefined);
+              await win.setFocus().catch(() => undefined);
               closing = false;
               return;
             }
             await flushPrefs();
+            wordsSaved = true;
             try {
               await driveBackup.run(false);
             } catch {
@@ -460,6 +475,7 @@
             await win.destroy();
           } catch {
             closing = false;
+            wordsSaved = false;
           }
         });
         unlistenFocus = await win.onFocusChanged(({ payload: focused }) => {
@@ -910,6 +926,17 @@
     pageFind = { id: hit.chapterId, query: find.query, nth: hit.nth };
     await openFromLibrary(hit.path, { writingId: hit.writingId, chapterId: hit.chapterId });
     view = "write";
+  }
+
+  /** The open writing with the page's words as they are now, leaving the page and the writing as they are. */
+  function writingNow(): Writing | null {
+    const editor = textEditor;
+    const id = editorChapter;
+    if (!writing) return null;
+    const open = $state.snapshot(writing) as Writing;
+    if (!editor || editor.isDestroyed || !id || open.id !== editorWriting) return open;
+    const page = applyPage(open, id, editor.getJSON() as DocumentJson, new Date().toISOString(), t("untitled"), { began: editorBegan, split: editorSplit });
+    return withArticleTitle(page.writing);
   }
 
   function captureEditor() {
@@ -1483,6 +1510,7 @@
     try {
       const path = await chooseBackupFile();
       if (path) pendingBackup = await readBackupFile(path);
+      pendingBackupPath = path ?? "";
     } catch (error) {
       backupMessage = errorMessage(error);
     }
@@ -1490,10 +1518,17 @@
 
   async function restoreBackup() {
     const backup = pendingBackup;
+    const path = pendingBackupPath;
     if (!backup) return;
     pendingBackup = null;
     try {
       await restoreContent(backup);
+      // A rescue copy from Pensieve's own folder, back in its project now: it isn't offered again.
+      if (backup.rescue && path) {
+        const folder = (await keptCopiesFolder("rescue").catch(() => "")).toLowerCase();
+        const name = path.split(/[\\/]/).pop() ?? "";
+        if (folder && path.toLowerCase().startsWith(folder)) await removeKeptCopy("rescue", name).catch(() => undefined);
+      }
       settingsOpen = false;
       view = "write";
     } catch (error) {
@@ -1504,7 +1539,7 @@
   /** A rescue copy brought back (ARCH-1): into its project, after what is there now is kept in Earlier versions. */
   async function bringBackRescue(offer: RescueOffer) {
     try {
-      await restoreContent(offer.backup);
+      await restoreContent(offer.beside ? besideItsWriting(offer.backup) : offer.backup);
       await rescue.done(offer);
       view = "write";
       notice(t("rescueBack"));
@@ -1526,20 +1561,20 @@
 
   /** The open writing's text on the clipboard, as it is on the page: a way out when saving fails (ARCH-1). */
   async function copyPlainText(): Promise<boolean> {
-    captureEditor();
-    if (!writing) return false;
+    const open = writingNow();
+    if (!open) return false;
     try {
-      await navigator.clipboard.writeText(chaptersToPlain(writing.title || "Pensieve", writing.chapters));
+      await navigator.clipboard.writeText(chaptersToPlain(open.title || "Pensieve", open.chapters));
       return true;
     } catch {
       return false;
     }
   }
 
-  /** Counts the copies Pensieve keeps in its own folder, for Settings. */
+  /** Counts the copies of writings deleted for good, for Settings; rescue copies go only once brought back. */
   async function refreshKept() {
     try {
-      keptCount = (await listKeptCopies("deleted")).length + (await listKeptCopies("rescue")).length;
+      keptCount = (await listKeptCopies("deleted")).length;
     } catch {
       keptCount = 0;
     }
@@ -1551,19 +1586,18 @@
   /** Settings' Bring one back: a kept copy, picked in their folder, restored as a backup is. */
   async function bringBackKept() {
     try {
-      const path = await chooseBackupFile(await keptCopiesFolder(), t("dialogKeptCopy"));
+      const path = await chooseBackupFile(await keptCopiesFolder("deleted"), t("dialogKeptCopy"));
       if (path) pendingBackup = await readBackupFile(path);
+      pendingBackupPath = path ?? "";
     } catch (error) {
       backupMessage = errorMessage(error);
     }
   }
 
-  /** Settings' Remove them: every copy Pensieve keeps goes. */
+  /** Settings' Remove them: the copies of writings deleted for good go. */
   async function removeKept() {
     try {
-      for (const kind of ["deleted", "rescue"] as const) {
-        for (const copy of await listKeptCopies(kind)) await removeKeptCopy(kind, copy.name);
-      }
+      for (const copy of await listKeptCopies("deleted")) await removeKeptCopy("deleted", copy.name);
       backupMessage = t("keptRemoved");
     } catch (error) {
       backupMessage = errorMessage(error);
@@ -3445,6 +3479,7 @@
     {@const offer = rescue.offer}
     {@const saved = new Date(offer.backup.savedAt)}
     <RescueOffer
+      beside={offer.beside}
       title={offer.backup.writings[0]?.title || t("untitled")}
       date={Number.isNaN(saved.getTime()) ? t("unknownDate") : saved.toLocaleString(locale())}
       onBringBack={() => bringBackRescue(offer)}

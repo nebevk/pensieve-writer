@@ -84,10 +84,10 @@ fn remove_in(dir: &Path, name: &str) -> Result<(), String> {
     }
 }
 
-/// The folder kept copies are in, for the file picker that brings one back.
+/// The folder one kind of kept copy is in, for the file picker that brings one back.
 #[tauri::command(async)]
-pub fn kept_copies_folder(app: AppHandle) -> Result<String, String> {
-    let dir = root(&app)?;
+pub fn kept_copies_folder(app: AppHandle, kind: String) -> Result<String, String> {
+    let dir = folder(&app, &kind)?;
     fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
     Ok(dir.display().to_string())
 }

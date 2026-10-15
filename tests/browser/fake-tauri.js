@@ -349,11 +349,14 @@
         return path;
       }
       case "kept_copies_folder":
-        return KEPT;
+        return keptFolder(args.kind);
       case "write_kept_copy": {
         // kept.rs write_kept_copy; failKept stands for a full disk.
         if (window.__PV_HARNESS__.failKept) throw "There is not enough space on the disk. (os error 112)";
-        if (!/\.json$/.test(args.name) || /[\\/:*?"<>|]|\.\./.test(args.name)) throw "The copy's name isn't valid";
+        // kept.rs valid_name: at most 200 bytes, a .json, no leading dot or space, no "..", nothing Windows refuses.
+        const valid =
+          new TextEncoder().encode(args.name).length <= 200 && /\.json$/.test(args.name) && !/^[. ]/.test(args.name) && !args.name.includes("..") && !/[\p{Cc}<>:"/\\|?*]/u.test(args.name);
+        if (!valid) throw "The copy's name isn't valid";
         keptCopies.set(`${args.kind}/${args.name}`, { contents: String(args.contents), modified: Date.now() });
         keepCopies();
         return `${keptFolder(args.kind)}\\${args.name}`;
