@@ -32,7 +32,21 @@ pub fn run() {
         },
     ];
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // One Pensieve at a time (ARCH-2): starting it again, from its icon while it sits minimised say, brings
+    // the open window back instead of a second copy whose saves would overwrite the first's. First, so a
+    // second copy quits before anything else starts. Not under `tauri dev`, which runs beside an installed
+    // Pensieve.
+    #[cfg(not(dev))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }));
+
+    builder
         // The window stays on Pensieve: a link opens in her browser.
         .plugin(links::guard())
         .plugin(tauri_plugin_dialog::init())
