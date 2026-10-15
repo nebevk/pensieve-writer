@@ -283,9 +283,10 @@
     return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
   }
 
-  // Back in Write, the panel reads the notes and to-dos again: they may have changed in their views.
+  // Back in Write, the panel reads the notes and to-dos again: they may have changed in their views. Home
+  // too, whose tree names them and can rename, move or open them (ARCH-13).
   $effect(() => {
-    if (view === "write" && projectId && projectLocation) void loadOrganizer();
+    if ((view === "write" || view === "home") && projectId && projectLocation) void loadOrganizer();
   });
 
   /**
@@ -706,11 +707,36 @@
     noteOpenRequest = { id, title: note?.title ?? "", at: Date.now() };
   }
 
+  /**
+   * A note as it is now: the panel's copy while she writes it there, else read again from the file (after any
+   * save still waiting), as the Notes, Ideas and To-dos views keep copies of their own and may have changed
+   * it since the page last read the notes. Acting on the page's older copy would save it over her newer
+   * words (ARCH-13).
+   */
+  async function currentNote(id: string): Promise<Note | null> {
+    if (paneNote?.note.id === id) return paneNote.note;
+    const project = projectId;
+    const notes = await listNotes();
+    if (project !== projectId) return null;
+    bookNotes = notes;
+    return notes.find((item) => item.id === id) ?? null;
+  }
+
+  // The latest note asked for in the panel: one asked for before it, read later, doesn't take its place.
+  let noteAsked = 0;
+
   /** Shows a note in the panel beside the page, to read and write; `fresh` for one just made, to be named. */
-  function showNote(id: string, fresh = false) {
+  async function showNote(id: string, fresh = false) {
+    const asked = ++noteAsked;
     if (paneNote) leaveNote();
-    const note = bookNotes.find((item) => item.id === id);
-    if (!note) return;
+    let note: Note | null;
+    try {
+      note = await currentNote(id);
+    } catch (error) {
+      reportSaveError(errorMessage(error));
+      return;
+    }
+    if (!note || asked !== noteAsked) return;
     paneNote = { note, fresh };
     if (prefs.panel !== "notes") prefs = { ...prefs, panel: "notes" };
   }
@@ -2132,14 +2158,14 @@
   }
 
   async function changeNote(id: string, patch: Partial<Note>) {
-    // A note open in the panel is changed there too, or its next word would save the old name back.
-    const inPane = paneNote?.note.id === id;
-    const note = inPane ? paneNote?.note : bookNotes.find((item) => item.id === id);
-    if (!note) return;
-    const next = { ...note, ...patch, updatedAt: new Date().toISOString() };
-    bookNotes = bookNotes.map((item) => (item.id === id ? next : item));
-    if (inPane && paneNote) paneNote = { ...paneNote, note: next };
     try {
+      // As it is now, never the page's older copy; a note open in the panel is changed there too, or its
+      // next word would save the old name back.
+      const note = await currentNote(id);
+      if (!note) return;
+      const next = { ...note, ...patch, updatedAt: new Date().toISOString() };
+      bookNotes = bookNotes.map((item) => (item.id === id ? next : item));
+      if (paneNote?.note.id === id) paneNote = { ...paneNote, note: next };
       await saveNote(next);
     } catch (error) {
       reportSaveError(errorMessage(error));
@@ -2148,12 +2174,12 @@
   }
 
   async function duplicateNote(id: string) {
-    const note = paneNote?.note.id === id ? paneNote.note : bookNotes.find((item) => item.id === id);
-    if (!note) return;
-    const now = new Date().toISOString();
-    // A JSON copy: the note's text must be its own, not shared with the original.
-    const copy: Note = { ...(JSON.parse(JSON.stringify(note)) as Note), id: crypto.randomUUID(), title: t("copyOf", { title: note.title }), createdAt: now, updatedAt: now };
     try {
+      const note = await currentNote(id);
+      if (!note) return;
+      const now = new Date().toISOString();
+      // A JSON copy: the note's text must be its own, not shared with the original.
+      const copy: Note = { ...(JSON.parse(JSON.stringify(note)) as Note), id: crypto.randomUUID(), title: t("copyOf", { title: note.title }), createdAt: now, updatedAt: now };
       await saveNote(copy);
       bookNotes = [copy, ...bookNotes];
     } catch (error) {
@@ -2302,7 +2328,7 @@
   const libraryActions: LibraryActions = {
     openProject: (path) => void openFromLibrary(path),
     openWriting: (path, id, chapterId) => void openFromLibrary(path, { writingId: id, chapterId }),
-    openNote: (id) => showNote(id),
+    openNote: (id) => void showNote(id),
     openTodos: () => showTodos("all"),
     startProject,
     newLibraryFolder,
@@ -2347,7 +2373,7 @@
       }),
     openNote: (id) => {
       view = "write";
-      showNote(id);
+      void showNote(id);
     },
     openTodos: () => {
       view = "write";
