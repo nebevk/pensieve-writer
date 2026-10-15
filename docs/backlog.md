@@ -27,7 +27,7 @@ until the owner asks for them.
 A review of the whole app on 14 October 2026, in three read-only passes: data safety, the typing path and
 the code's structure. Each finding was then checked in the code. Nothing was profiled or run. The plan made
 from it, with the fixes in order, is [review-plan.md](review-plan.md). ARCH-2, 3, 10, 16 and 17 are done
-(15 October, in 0.5.1), and are in the git history.
+(15 October, in 0.5.1), and ARCH-1 and ARCH-5 later that day; they are in the git history.
 
 **Verdict:** the architecture stays. A thin Rust side, one SQLite file per project, the editor loaded after
 Home and one queue for every database call suit one writer on an older laptop; nothing in the stack needs
@@ -48,9 +48,7 @@ replacing. What needs work is a few paths, listed below.
 
 | ID | What | Status | Pri |
 |----|------|--------|-----|
-| **ARCH-1** A way out when saving fails | When the project file fails to open, `database()` in `sqlite.ts` keeps the failed promise for the session, so every later save fails too. Close refuses while the save fails, and switching, export and installing an update all save first. A folder renamed in Explorer while it is open, a full disk, or Drive or antivirus holding the file is enough: her only way out is to kill the app, losing what she typed since the last save. Clear `databasePromise` when the open fails. When the last save fails at close, write a rescue copy into the app's data folder (a temporary file, then a rename) and let the window close. Let export and copy work from what is in memory | Open | P1 |
 | **ARCH-4** Saves and restores in one transaction | These are many statements, each committed on its own: a writing's save, a restore from a backup, a writing deleted for good and a sample project. JavaScript can't wrap them in a transaction: plugin-sql runs each call on any connection of its pool, so a `BEGIN` doesn't hold. A crash mid-restore leaves the writing half restored. A crash mid-save only doubles text, because of the order chapters are written in. Add Rust commands that save and restore a writing in one transaction, with one disk sync per save instead of one per chapter | Open | P2 |
-| **ARCH-5** Delete for good keeps a copy | `eraseWriting` deletes the writing's earlier versions along with it; only a Drive backup not yet pruned still has it. Write a backup file of the writing first | Open | P2 |
 | **ARCH-6** Move into library copies safely | `relocate_project` (`project.rs`) copies the live file with `fs::copy`, after a checkpoint whose result is never read, so the copy can miss her latest text. Make the copy with `VACUUM INTO`, as `keepCopyBeforeUpgrade` does | Open | P2 |
 | **ARCH-7** Save only what changed | Every 2-second pause sends the whole book to the file again. `writeWriting` turns every chapter into JSON, changed or not, and walks each one for pictures through Svelte's proxies (`writing` in `+page.svelte` is deep `$state`). On the long test book this is the likeliest hitch on the first key after a pause. Write only the chapters that changed, and make `writing` `$state.raw` (its updates already replace objects). Measure with ARCH-11 first | Open | P2 |
 | **ARCH-8** Typing in the Notes tab | Each key in a note replaces the notes list, and "Appears in" (`Notes.svelte`) walks every chapter's JSON and text again. Keep a copy of the open note while she types, as the panel's note does. ARCH-13 does this for every view | Open | P2 |
@@ -66,13 +64,11 @@ replacing. What needs work is a few paths, listed below.
 | **ARCH-21** The Ribbon's checks | The Ribbon asks the editor about 13 `isActive` questions on every change. Ask them only when the selection or the marks change | Open | P3 |
 | **ARCH-22** The storage rule | `.cursor/rules/data-safety.mdc` asks for a storage interface the code doesn't have (`sqlite.ts` exports 37 functions to 8 modules). Change the rule to match what is there, rather than build the interface | Open | P3 |
 
-**Order:** as [review-plan.md](review-plan.md) has it: ARCH-1 with ARCH-5 next (they share the rescue
-copy), then ARCH-6 and ARCH-18, then ARCH-14, then ARCH-11 and the typing fixes it measures (ARCH-7 to 9).
+**Order:** as [review-plan.md](review-plan.md) has it: ARCH-6 and ARCH-18 next, then ARCH-14, then ARCH-11
+and the typing fixes it measures (ARCH-7 to 9).
 
 **For the owner to decide:**
 
-- When the last save fails, whether the window closes after a rescue copy or keeps refusing (ARCH-1).
-- How long copies of writings deleted for good are kept: 30 days, say, or for good (ARCH-5).
 - One call holding the transaction, or Rust's `sqlx` as a new dependency (ARCH-4).
 
 **Not checked:**

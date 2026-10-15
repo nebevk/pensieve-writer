@@ -138,6 +138,8 @@ said), Not started, Dropped. IDs are fixed; code comments and the backlog refer 
 | SV-10 | EPUB export | C | Not started |
 | SV-11 | Copy as clean HTML for a blog, and a Markdown export | S | Done |
 | SV-12 | Backups straight to Google Drive through its API | C | Not started |
+| SV-13 | When saving fails (the project's folder renamed in Explorer, a full disk), a rescue copy of the page's words, with the notes and to-dos not saved yet, goes to Pensieve's own folder at once, and again each minute while it keeps failing; a save that works takes it away. Closing asks once, says the words are safe, and closes; the next time the project opens, the copy is offered back, after what is there now is kept in Earlier versions. With no rescue copy either, the window stays open until the words are copied or saved as a Word file elsewhere. Export and copying work from the page while saving fails, and a file that failed to open is tried again at the next save, never made again empty (ARCH-1, 15 October) | M | Done |
+| SV-14 | Delete for good keeps one copy of the writing as it was in Pensieve's own folder, with no time limit, and nothing is deleted if that copy can't be written. Settings → Backup & export counts the kept copies, brings one back as a backup is restored, and removes them after asking (ARCH-5, 15 October) | S | Done |
 
 ### 4.7 Atmosphere
 
@@ -227,6 +229,10 @@ Coziness is the top product priority, within the performance budget in Section 5
   desktop syncs it), hourly while open and on close, keeping each project's latest 20. One that failed is
   tried again a quarter of an hour later; one that was written never counts as failed because an older
   one couldn't be tidied away. Settings → Backup & export restores from one.
+- **Kept copies:** apart from her projects, in Pensieve's own folder (`Kept copies` in its app data), a
+  rescue copy of each project whose saves are failing (SV-13), and a copy of each writing deleted for good
+  (SV-14). Both are backup files; a rescue copy's notes and to-dos replace older versions of themselves
+  when it is brought back.
 
 ## 8. UX principles
 
@@ -244,7 +250,9 @@ design system said.
 - **15 Oct:** One Pensieve at a time: starting it again, while it sits minimised say, brings the open window
   back (Tauri's single-instance plugin, in installed builds). A save comes at least every 10 seconds while
   she types without a pause. An automatic backup that failed is tried again a quarter of an hour later, not
-  every minute.
+  every minute. When saving fails, a rescue copy is written at once, and closing asks once and then closes
+  rather than refusing; it refuses only while no copy of her words exists. Writings deleted for good leave a
+  copy in Pensieve's own folder, kept with no time limit.
 - **14 Oct:** A garden of stories (Vrt zgodb) for cozy rewards: one tree for every look growing out of the
   basin, keepsakes for what she does, a little chime, shown on Home in the large mark; words brought in from
   Word don't count. New project starts from a blank page or From Word, each saying what it makes, and the window
