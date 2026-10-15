@@ -22,6 +22,75 @@ Each item keeps its ID so it can be asked for by name; a new one gets the next f
 Requirements marked *Not started* (VW-5, SV-10, SV-12, AT-7, tables in ED-12, scenes in CH-5) wait
 until the owner asks for them.
 
+## Architecture code review
+
+A review of the whole app on 14 October 2026, in three read-only passes: data safety, the typing path and
+the code's structure. Each finding was then checked in the code. Nothing was profiled or run.
+
+**Verdict:** the architecture stays. A thin Rust side, one SQLite file per project, the editor loaded after
+Home and one queue for every database call suit one writer on an older laptop; nothing in the stack needs
+replacing. What needs work is a few paths, listed below.
+
+**Already sound, keep it:**
+
+- **Saving:** WAL with full sync, so "Saved" means the text is on disk. A failed save keeps the text, says
+  so and tries again.
+- **Copies before anything risky:** a snapshot before every destructive edit, hourly and daily snapshots, a
+  `VACUUM INTO` copy before a schema upgrade, backups written to a temporary file and then renamed, and
+  deleted projects sent to the Recycle Bin.
+- **The editor kept apart:** the chapter's JSON is read only when it saves, the word count waits for a
+  pause, find and repetition marks cover only what is on screen, and no key calls Rust.
+- **Loading:** TipTap, `docx` and `mammoth` load when first needed.
+- **The code:** no import cycles, SQL only in `src/lib/storage/`, and a missing Slovenian string fails the
+  type check.
+
+| ID | What | Status | Pri |
+|----|------|--------|-----|
+| **ARCH-1** A way out when saving fails | When the project file fails to open, `database()` in `sqlite.ts` keeps the failed promise for the session, so every later save fails too. Close refuses while the save fails, and switching, export and installing an update all save first. A folder renamed in Explorer while it is open, a full disk, or Drive or antivirus holding the file is enough: her only way out is to kill the app, losing what she typed since the last save. Clear `databasePromise` when the open fails. When the last save fails at close, write a rescue copy into the app's data folder (a temporary file, then a rename) and let the window close. Let export and copy work from what is in memory | Open | P1 |
+| **ARCH-2** One copy of the app | Nothing stops a second copy starting, which a second double-click on the slow laptop does. Every save rewrites every chapter of the writing and deletes the chapters that window doesn't have (`writeWriting`), so typing in the stale window undoes the other one's work. Add Tauri's `tauri-plugin-single-instance`, which brings the open window forward. It is a new dependency, so it waits for the owner's yes | Open | P1 |
+| **ARCH-3** Autosave's longest wait | The 2-second timer in `autosave.ts` starts again with every key, so steady typing is saved only when she pauses or leaves the window. Also save at least every 10 seconds while something is unsaved | Open | P2 |
+| **ARCH-4** Saves and restores in one transaction | These are many statements, each committed on its own: a writing's save, a restore from a backup, a writing deleted for good and a sample project. JavaScript can't wrap them in a transaction: plugin-sql runs each call on any connection of its pool, so a `BEGIN` doesn't hold. A crash mid-restore leaves the writing half restored. A crash mid-save only doubles text, because of the order chapters are written in. Add Rust commands that save and restore a writing in one transaction, with one disk sync per save instead of one per chapter | Open | P2 |
+| **ARCH-5** Delete for good keeps a copy | `eraseWriting` deletes the writing's earlier versions along with it; only a Drive backup not yet pruned still has it. Write a backup file of the writing first | Open | P2 |
+| **ARCH-6** Move into library copies safely | `relocate_project` (`project.rs`) copies the live file with `fs::copy`, after a checkpoint whose result is never read, so the copy can miss her latest text. Make the copy with `VACUUM INTO`, as `keepCopyBeforeUpgrade` does | Open | P2 |
+| **ARCH-7** Save only what changed | Every 2-second pause sends the whole book to the file again. `writeWriting` turns every chapter into JSON, changed or not, and walks each one for pictures through Svelte's proxies (`writing` in `+page.svelte` is deep `$state`). On the long test book this is the likeliest hitch on the first key after a pause. Write only the chapters that changed, and make `writing` `$state.raw` (its updates already replace objects). Measure with ARCH-11 first | Open | P2 |
+| **ARCH-8** Typing in the Notes tab | Each key in a note replaces the notes list, and "Appears in" (`Notes.svelte`) walks every chapter's JSON and text again. Keep a copy of the open note while she types, as the panel's note does. ARCH-13 does this for every view | Open | P2 |
+| **ARCH-9** Work at each pause | The comment rail reads the whole chapter 150 ms after every key, whether there are comments or not (`CommentRail.svelte`). At 400 ms the chapter's text is read, one search per note runs over it, and the footnotes are walked. With Pages on, a pagination pass measures the page at 300 ms. Skip the comment read when the chapter has no comments, and move the 400 ms work to when the window is idle | Open | P2 |
+| **ARCH-10** The backup blocks the window | `write_backup` (`backup.rs`) isn't async, so Tauri runs it on the window's thread while it writes a file of several MB into the Drive folder, hourly and at close. Make it `async` | Open | P2 |
+| **ARCH-11** Speed checks that see the real case | The browser checks time a key until it is sent, not until it shows. They type in a small book with no pauses and with Pages and comments off, and they compare two runs instead of checking against a budget, so ARCH-7 to ARCH-10 never show. Use the long test book with Pages and comments on, and pauses of 0.5 to 2.5 seconds between bursts of keys. Measure the time from key to paint (the browser's Event Timing) against the 40 ms of the speed requirement. This comes before ARCH-7 and ARCH-9; IMP-10 then confirms it on the laptop | Open | P2 |
+| **ARCH-12** One place for the open project | The open project is kept in five places: `projectLocation` and `prefs.projectPath` in the page (read together 19 times), the plain `switchingBooks` flag, and `openPath` and `openProjectId` in `sqlite.ts`, which also reads `prefs` itself. No bug today, but a save into the wrong file would start here. A session module owns it, and storage is given the path. This is the first step of what is left of IMP-28 | Open | P2 |
+| **ARCH-13** One copy of the notes | The page (`bookNotes`, `paneNote`) and Notes, To-dos, Ideas and Home each load and save their own notes, kept in step by reading them again. The fix in `changeNote` shows an old copy once saved over a newer edit. Make one notes store that every view reads and writes. With a prefs store as well, it also shortens the lists of callbacks the page hands each module (IMP-28) | Open | P2 |
+| **ARCH-14** Tests where her text is kept | `sqlite.ts` (1,318 lines) and `autosave.ts` have no unit tests. CI runs on master and pull requests only, so `feat/…` branches aren't checked; it runs `cargo check`, not `cargo test`, and no browser checks. Add Vitest tests for `sqlite.ts` on sql.js (already a dev dependency) and for autosave, and run CI on every push with `cargo test`. Do this before IMP-28 goes on | Open | P2 |
+| **ARCH-15** Old Rust migrations | The migrations in `lib.rs` run only for `sqlite:pensieve.db`, which nothing opens any more; the real schema is `ensureSchema` in `sqlite.ts`. Remove them. They are no risk to her files: the only file they would break on would date from 1 October | Open | P3 |
+| **ARCH-16** A backup that worked, reported as failed | A cleanup or prune error after the backup file is written fails the whole backup. Its time and signature aren't kept, so Pensieve writes another full backup every minute and shows a backup failure each time | Open | P3 |
+| **ARCH-17** Files flushed before a rename | Backups, `prefs.json` and exports are renamed into place without first being written through to disk (no `sync_all`), so a power cut can leave an empty file. The `.previous` copy of `prefs.json` is never read back | Open | P3 |
+| **ARCH-18** Back up the project she leaves | The hourly backup covers only the open project; switching doesn't back up the one she leaves | Open | P3 |
+| **ARCH-19** The Rust side's edges | Commands that move or delete folders accept any path. Rust's errors are matched by their English text, not by a code. `csp` is `null` in `tauri.conf.json` | Open | P3 |
+| **ARCH-20** Animations off the rule | The goal bar animates `width`, and the Tour animates its position and size; only `opacity` and `transform` should move | Open | P3 |
+| **ARCH-21** The Ribbon's checks | The Ribbon asks the editor about 13 `isActive` questions on every change. Ask them only when the selection or the marks change | Open | P3 |
+| **ARCH-22** The storage rule | `.cursor/rules/data-safety.mdc` asks for a storage interface the code doesn't have (`sqlite.ts` exports 37 functions to 8 modules). Change the rule to match what is there, rather than build the interface | Open | P3 |
+
+**Suggested order:**
+
+1. ARCH-1 and ARCH-3: both small, with no new dependency.
+2. ARCH-2, once the owner agrees to the dependency.
+3. ARCH-14, as the safety net for what follows.
+4. ARCH-11, then ARCH-7 and ARCH-10, measured before and after.
+5. IMP-28, starting with ARCH-12, then ARCH-13 (which also ends ARCH-8).
+6. ARCH-4, ARCH-6 and ARCH-5.
+
+**For the owner to decide:**
+
+- Whether to add `tauri-plugin-single-instance` (ARCH-2).
+- When the last save fails, whether the window closes after a rescue copy or keeps refusing (ARCH-1).
+
+**Not checked:**
+
+- No timings were taken, so what makes up today's 40 ms a key, and the laptop's real numbers, are unknown.
+- Whether Windows shutting down runs the close handler.
+- How Drive for desktop locks files.
+- One pass found that a failed note save says nothing unless Notes or Ideas was opened that session; this
+  wasn't checked again.
+
 ## Known differences from the design system
 
 On purpose: keep them when matching the design.
