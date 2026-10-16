@@ -28,7 +28,7 @@ A review of the whole app on 14 October 2026, in three read-only passes: data sa
 the code's structure. Each finding was then checked in the code. Nothing was profiled or run. The plan made
 from it, with the fixes in order, is [review-plan.md](review-plan.md). ARCH-2, 3, 10, 16 and 17 are done
 (15 October, in 0.5.1), ARCH-1 and ARCH-5 later that day, ARCH-15, 20, 21 and 22 on 16 October (0.5.2), and ARCH-6,
-18 and 23 after it; they are in the git history.
+18, 23 and 14 after it; they are in the git history.
 
 **Verdict:** the architecture stays. A thin Rust side, one SQLite file per project, the editor loaded after
 Home and one queue for every database call suit one writer on an older laptop; nothing in the stack needs
@@ -56,11 +56,10 @@ replacing. What needs work is a few paths, listed below.
 | **ARCH-11** Speed checks that see the real case | The browser checks time a key until it is sent, not until it shows. They type in a small book with no pauses and with Pages and comments off, and they compare two runs instead of checking against a budget, so ARCH-7 to ARCH-10 never show. Use the long test book with Pages and comments on, and pauses of 0.5 to 2.5 seconds between bursts of keys. Measure the time from key to paint (the browser's Event Timing) against the 40 ms of the speed requirement. This comes before ARCH-7 and ARCH-9; IMP-10 then confirms it on the laptop | Open | P2 |
 | **ARCH-12** One place for the open project | The open project is kept in five places: `projectLocation` and `prefs.projectPath` in the page (read together 19 times), the plain `switchingBooks` flag, and `openPath` and `openProjectId` in `sqlite.ts`, which also reads `prefs` itself. No bug today, but a save into the wrong file would start here. A session module owns it, and storage is given the path. This is the first step of what is left of IMP-28 | Open | P2 |
 | **ARCH-13** One copy of the notes | The page (`bookNotes`, `paneNote`) and Notes, To-dos, Ideas and Home each load and save their own notes, kept in step by reading them again. An old copy did get saved over newer words, from Home's tree; since 15 October the page reads a note again before it renames, copies or shows it. Left: one notes store that every view reads and writes. With a prefs store as well, it also shortens the lists of callbacks the page hands each module (IMP-28) | Partial | P2 |
-| **ARCH-14** Tests where her text is kept | `sqlite.ts` (1,318 lines) has no unit tests; `autosave.ts` has a few since 15 October. CI runs on master and pull requests only, so `feat/…` branches aren't checked; it runs `cargo check`, not `cargo test`, and no browser checks. Add Vitest tests for `sqlite.ts` on sql.js (already a dev dependency), and run CI on every push with `cargo test`. Do this before IMP-28 goes on | Open | P2 |
 | **ARCH-19** The Rust side's edges | Commands that move or delete folders accept any path. Rust's errors are matched by their English text, not by a code. `csp` is `null` in `tauri.conf.json` | Open | P3 |
 
-**Order:** as [review-plan.md](review-plan.md) has it: ARCH-14 next, then ARCH-11 and the typing fixes it
-measures (ARCH-7 to 9).
+**Order:** as [review-plan.md](review-plan.md) has it: ARCH-11 next, then the typing fixes it measures
+(ARCH-7 to 9).
 
 **For the owner to decide:**
 

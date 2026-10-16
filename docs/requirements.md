@@ -185,6 +185,10 @@ Coziness is the top product priority, within the performance budget in Section 5
 - **Reliability:** no lost text after a crash, a power cut or a forced close; a failed save or backup says so.
   When Windows shuts down or signs out, it waits, saying "Pensieve is saving your words", until her last words
   are saved (or in a rescue copy), then Pensieve closes (ARCH-23); a forced shutdown can't be held.
+  Where her text is kept is tested against a real SQLite (sql.js standing in for the SQL plugin): saves with
+  č, š, ž and pictures, other writings' chapters left alone, a save cut short, earlier versions and their
+  limits, restores, switching and moving projects, and an older file upgraded. CI runs these and the Rust
+  tests on every push (ARCH-14, 16 October).
 - **Install:** one small installer with no prerequisites to install by hand; updates as in ST-7. The
   installer speaks Slovenian on a Slovenian Windows and English otherwise, and shows Daylight's Basin mark on
   its first and last page. The app's Windows icon is the mark alone, filling its square as Windows' own icons
