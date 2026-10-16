@@ -8,31 +8,9 @@ mod project;
 mod spellcheck;
 
 use tauri::Manager;
-use tauri_plugin_sql::{Migration, MigrationKind};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let migrations = vec![
-        Migration {
-            version: 1,
-            description: "projects_chapters_schema_version",
-            sql: include_str!("../migrations/001_init.sql"),
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 2,
-            description: "notes_tasks_and_chapter_meta",
-            sql: include_str!("../migrations/002_notes_tasks.sql"),
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 3,
-            description: "language_snapshot_kinds_dictionary",
-            sql: include_str!("../migrations/003_language_snapshots.sql"),
-            kind: MigrationKind::Up,
-        },
-    ];
-
     let builder = tauri::Builder::default();
     // One Pensieve at a time (ARCH-2): starting it again, from its icon while it sits minimised say, brings
     // the open window back instead of a second copy whose saves would overwrite the first's. First, so a
@@ -53,11 +31,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         // Updates from GitHub Releases, signed with the owner's key (see docs/releasing.md).
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(
-            tauri_plugin_sql::Builder::default()
-                .add_migrations("sqlite:pensieve.db", migrations)
-                .build(),
-        )
+        // A project's file is made ready by sqlite.ts (ensureSchema), whatever its path; the plugin only opens it.
+        .plugin(tauri_plugin_sql::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             backup::write_backup,
             backup::read_backup_file,

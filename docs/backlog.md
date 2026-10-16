@@ -27,7 +27,8 @@ until the owner asks for them.
 A review of the whole app on 14 October 2026, in three read-only passes: data safety, the typing path and
 the code's structure. Each finding was then checked in the code. Nothing was profiled or run. The plan made
 from it, with the fixes in order, is [review-plan.md](review-plan.md). ARCH-2, 3, 10, 16 and 17 are done
-(15 October, in 0.5.1), and ARCH-1 and ARCH-5 later that day; they are in the git history.
+(15 October, in 0.5.1), ARCH-1 and ARCH-5 later that day, and ARCH-15, 20, 21 and 22 on 16 October (0.5.2); they
+are in the git history.
 
 **Verdict:** the architecture stays. A thin Rust side, one SQLite file per project, the editor loaded after
 Home and one queue for every database call suit one writer on an older laptop; nothing in the stack needs
@@ -57,12 +58,8 @@ replacing. What needs work is a few paths, listed below.
 | **ARCH-12** One place for the open project | The open project is kept in five places: `projectLocation` and `prefs.projectPath` in the page (read together 19 times), the plain `switchingBooks` flag, and `openPath` and `openProjectId` in `sqlite.ts`, which also reads `prefs` itself. No bug today, but a save into the wrong file would start here. A session module owns it, and storage is given the path. This is the first step of what is left of IMP-28 | Open | P2 |
 | **ARCH-13** One copy of the notes | The page (`bookNotes`, `paneNote`) and Notes, To-dos, Ideas and Home each load and save their own notes, kept in step by reading them again. An old copy did get saved over newer words, from Home's tree; since 15 October the page reads a note again before it renames, copies or shows it. Left: one notes store that every view reads and writes. With a prefs store as well, it also shortens the lists of callbacks the page hands each module (IMP-28) | Partial | P2 |
 | **ARCH-14** Tests where her text is kept | `sqlite.ts` (1,318 lines) has no unit tests; `autosave.ts` has a few since 15 October. CI runs on master and pull requests only, so `feat/…` branches aren't checked; it runs `cargo check`, not `cargo test`, and no browser checks. Add Vitest tests for `sqlite.ts` on sql.js (already a dev dependency), and run CI on every push with `cargo test`. Do this before IMP-28 goes on | Open | P2 |
-| **ARCH-15** Old Rust migrations | The migrations in `lib.rs` run only for `sqlite:pensieve.db`, which nothing opens any more; the real schema is `ensureSchema` in `sqlite.ts`. Remove them. They are no risk to her files: the only file they would break on would date from 1 October | Open | P3 |
 | **ARCH-18** Back up the project she leaves | The hourly backup covers only the open project; switching doesn't back up the one she leaves | Open | P3 |
 | **ARCH-19** The Rust side's edges | Commands that move or delete folders accept any path. Rust's errors are matched by their English text, not by a code. `csp` is `null` in `tauri.conf.json` | Open | P3 |
-| **ARCH-20** Animations off the rule | The goal bar animates `width`, and the Tour animates its position and size; only `opacity` and `transform` should move | Open | P3 |
-| **ARCH-21** The Ribbon's checks | The Ribbon asks the editor about 13 `isActive` questions on every change. Ask them only when the selection or the marks change | Open | P3 |
-| **ARCH-22** The storage rule | `.cursor/rules/data-safety.mdc` asks for a storage interface the code doesn't have (`sqlite.ts` exports 37 functions to 8 modules). Change the rule to match what is there, rather than build the interface | Open | P3 |
 | **ARCH-23** Windows shutting down | Shutting Windows down (or a restart for an update) skips Pensieve's close: the windowing layer ends the process when the session ends (`tao` on WM_ENDSESSION, checked 15 October), so the last words typed since the save before (up to ten seconds), the backup at close and the Word copy are skipped. Saving first when Windows asks to end the session would close the gap | Open | P2 |
 
 **Order:** as [review-plan.md](review-plan.md) has it: ARCH-6 and ARCH-18 next, then ARCH-14, then ARCH-11

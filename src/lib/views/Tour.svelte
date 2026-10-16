@@ -69,7 +69,7 @@
 </script>
 
 {#if ring}
-  <div class="ring" aria-hidden="true" style:top="{ring.top}px" style:left="{ring.left}px" style:width="{ring.width}px" style:height="{ring.height}px"></div>
+  <div class="ring" aria-hidden="true" style:transform="translate({ring.left}px, {ring.top}px)" style:width="{ring.width}px" style:height="{ring.height}px"></div>
 {/if}
 <!-- A tutorial tip: it points at a part of the window and leaves the rest free to use. -->
 <div
@@ -113,19 +113,18 @@
 </div>
 
 <style>
+  /* It glides to the next part by transform only (ARCH-20); its size changes at once. */
   .ring {
     position: fixed;
+    top: 0;
+    left: 0;
     z-index: 40;
     border-radius: var(--pv-radius-sm);
     box-shadow:
       0 0 0 2px var(--pv-accent),
       0 0 0 6px color-mix(in srgb, var(--pv-accent) 18%, transparent);
     pointer-events: none;
-    transition:
-      top var(--pv-dur) var(--pv-ease),
-      left var(--pv-dur) var(--pv-ease),
-      width var(--pv-dur) var(--pv-ease),
-      height var(--pv-dur) var(--pv-ease);
+    transition: transform var(--pv-dur) var(--pv-ease);
   }
 
   .tip {

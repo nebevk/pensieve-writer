@@ -88,15 +88,35 @@
     else onPaper("continuous", paperSize);
   }
 
+  /**
+   * What the buttons show depends on this: the marks and blocks where the cursor is, and whether there is anything
+   * to undo or redo. It is worked out at each change, cheaply, and the buttons ask the editor again only when it
+   * differs, not at every key typed (ARCH-21). Selected words are asked about anew each time: marks run across them.
+   */
+  const here = $derived.by((): string => {
+    const current = ready();
+    if (!current || revision < 0) return "";
+    const { state } = current;
+    const { selection } = state;
+    if (!selection.empty) return `words ${revision}`;
+    const marks = (state.storedMarks ?? selection.$from.marks()).map((mark) => mark.type.name + JSON.stringify(mark.attrs));
+    const blocks: string[] = [];
+    for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
+      const node = selection.$from.node(depth);
+      blocks.push(node.type.name + JSON.stringify(node.attrs));
+    }
+    return `${marks.join(",")}|${blocks.join(",")}|${current.can().undo()},${current.can().redo()}`;
+  });
+
   // The font and size where the cursor is, as Word's boxes show them (TOOL-6): the words' own, or the manuscript's.
   const fontHere = $derived.by((): ManuscriptFont => {
     const current = ready();
-    if (!current || revision < 0) return manuscriptFont;
+    if (!current || here === "") return manuscriptFont;
     return fontName(current.getAttributes("font").name, manuscriptFont);
   });
   const sizeHere = $derived.by((): number => {
     const current = ready();
-    if (!current || revision < 0) return manuscriptPt;
+    if (!current || here === "") return manuscriptPt;
     return pointSize(current.getAttributes("fontSize").pt, manuscriptPt);
   });
   // Word's sizes (but 10.5, which would widen the box past the laptop's row), the manuscript's and the one
@@ -195,8 +215,8 @@
       icon,
       glyph,
       title,
-      pressed: revision >= 0 && current !== null && active(current),
-      disabled: current === null || (current !== null && !enabled(current)),
+      pressed: here !== "" && current !== null && active(current),
+      disabled: here === "" || current === null || !enabled(current),
       run: () => {
         const next = ready();
         if (next) command(next);
@@ -206,7 +226,7 @@
 
   const styleValue = $derived.by(() => {
     const current = ready();
-    if (!current || revision < 0) return "p";
+    if (!current || here === "") return "p";
     if (current.isActive("heading", { level: 1 })) return "h1";
     if (current.isActive("heading", { level: 2 })) return "h2";
     if (current.isActive("heading", { level: 3 })) return "h3";
@@ -277,7 +297,7 @@
       .filter((note) => `${note.title},${note.aliases}`.toLowerCase().includes(noteQuery.trim().toLowerCase()))
       .slice(0, 12),
   );
-  const onNoteLink = $derived(revision >= 0 && ready()?.isActive("noteLink") === true);
+  const onNoteLink = $derived(here !== "" && ready()?.isActive("noteLink") === true);
 
   async function openNotePicker() {
     if (notePicker) {

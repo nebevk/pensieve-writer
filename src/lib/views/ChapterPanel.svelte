@@ -141,7 +141,7 @@
     {#if target > 0}
       <p class="words"><b>{num(words)}</b> {plural("wordsOf", target)}</p>
       <div class="bar" role="progressbar" aria-label={title} aria-valuemin={0} aria-valuemax={target} aria-valuenow={Math.min(words, target)}>
-        <span style:width="{Math.min(100, (words / target) * 100)}%"></span>
+        <span style:transform="translateX({Math.min(100, (words / target) * 100) - 100}%)"></span>
       </div>
     {:else}
       <p class="words"><b>{plural("words", words)}</b></p>
@@ -562,12 +562,14 @@
     overflow: hidden;
   }
 
+  /* The bar's fill slides in from the left, by transform only (ARCH-20); the bar's own corners clip it. */
   .bar span {
     display: block;
+    width: 100%;
     height: 100%;
     border-radius: inherit;
     background: var(--pv-accent);
-    transition: width var(--pv-dur) var(--pv-ease);
+    transition: transform var(--pv-dur) var(--pv-ease);
   }
 
   .goal.reached .bar span {

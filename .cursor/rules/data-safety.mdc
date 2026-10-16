@@ -1,13 +1,13 @@
 ---
-description: Autosave, atomic writes, snapshots, and storage rules; protects the user's writing from loss
+description: Autosave, crash-safe writes, snapshots, kept copies and storage rules; protects the user's writing from loss
 globs: src-tauri/**,src/lib/storage/**,src/lib/save/**
 alwaysApply: false
 ---
-- Autosave a few seconds after the last change (debounced) and on window close/blur; show a subtle saved/saving indicator.
-- Writes must be crash-safe: SQLite transactions (WAL mode) or write temp file then atomic rename. Never write in place.
-- Store chapter content as TipTap/ProseMirror JSON plus a derived plain-text copy for search/word count. Include a schema version and migrations.
-- Local snapshots: rolling (e.g. hourly + daily), restorable from the UI. Restore must be tested.
-- The live project file stays on local disk. Backups are snapshot files written to a user-chosen folder (e.g. inside Google Drive for desktop), never the live database.
-- All persistence goes through a storage interface (`save`, `load`, `listSnapshots`, `restore`) so a Drive API backend can be added later.
-- Surface save failures clearly and keep the unsaved text in memory; never swallow errors.
-- Never delete user data without a confirmation and a recoverable snapshot.
+- Autosave two seconds after typing stops, at least every ten seconds while she types on, when the window loses focus, and before anything that changes the project (a switch, a restore, an export, an update, closing). The status bar says saved, saving or why it failed (`src/lib/save/autosave.ts`).
+- Writes are crash-safe. SQLite runs in WAL mode with full sync. Files Pensieve writes outside SQLite (backups, `prefs.json`, exports, the Word copy, kept copies) go through `src-tauri/src/disk.rs`: a temporary file, flushed to disk, then renamed into place. Never write a file in place.
+- All SQL lives in `src/lib/storage/`. Every database call goes through the one queue in `sqlite.ts` (`enqueue`), so writes never interleave and a write asked for before a switch can't land in the next project's file. Notes and to-dos are saved through their own queue in `organize.ts`, which keeps a failed write for the next try.
+- A chapter is stored as ProseMirror JSON plus a plain-text copy for counts, search and export. The file carries a schema version; `ensureSchema` in `sqlite.ts` upgrades it, after keeping a `VACUUM INTO` copy beside it. There are no Rust-side migrations.
+- Snapshots: hourly, daily, and "Before restore" before any restore; Earlier versions restores from them. Test restores.
+- The live project file stays in the library on local disk, never in a synced folder. Backups are files written to a folder she picks (inside Google Drive, say), never the live database.
+- When a save fails, keep the text in memory, say so, try again, and write a rescue copy to Pensieve's own folder (`src/lib/save/rescue.svelte.ts`, `kept.rs`). Closing then asks once; it refuses only while no copy of her words exists.
+- Never delete her data without a question and a way back: writings go to Deleted first, deleting for good keeps a copy, projects go to the Recycle Bin. Never swallow an error that means her text wasn't saved.

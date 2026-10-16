@@ -30,7 +30,8 @@ const goals = () =>
     title: goal.querySelector("h4")?.textContent.trim(),
     aside: goal.querySelector(".aside")?.textContent.trim() ?? "",
     words: goal.querySelector(".words")?.textContent.replace(/\\s+/g, " ").trim(),
-    bar: goal.querySelector(".bar span")?.style.width ?? "",
+    // How full the bar is: its fill slides in by transform (ARCH-20), translateX(-75%) for a quarter.
+    bar: ((shift) => (shift ? 100 + Number(shift[1]) + "%" : ""))(/translateX\\((-?[\\d.]+)%\\)/.exec(goal.querySelector(".bar span")?.style.transform ?? "")),
     reached: goal.classList.contains("reached"),
     target: goal.querySelector("input")?.value,
     label: goal.querySelector("label")?.textContent.trim(),

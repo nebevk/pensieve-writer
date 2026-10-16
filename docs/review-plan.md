@@ -50,7 +50,7 @@ Every other finding holds as written.
 | **13** | **ARCH-12, one place for the open project:** storage stops reading and writing prefs (S), then a session module owns switching (M). Takes ARCH-15 with it | S, then M | — |
 | **14** | **ARCH-13's store:** one copy of the notes for every view, keystrokes kept in a draft so typing doesn't redraw the list | M–L | — |
 | **15** | **ARCH-4, one transaction per save:** one call holding `BEGIN IMMEDIATE … COMMIT` (no dependency), or a Rust command with `sqlx` | M | your choice of the two |
-| **16** | **The small ones:** ARCH-15 (the old migrations go; it restarts your `tauri dev` once), ARCH-19 (a test that each Rust error text matches its translation, library paths checked; a CSP last, as insurance only), ARCH-20 (the goal bar and the Tour move by `transform`), ARCH-21 (the Ribbon's questions from one derived summary), ARCH-22 (the storage rule rewritten to say what the code does) | S each | — |
+| **16** | **The small ones** (ARCH-15, 20, 21 and 22 done 16 Oct, in 0.5.2; ARCH-19 left): ARCH-15 (the old migrations go; it restarts your `tauri dev` once), ARCH-19 (a test that each Rust error text matches its translation, library paths checked; a CSP last, as insurance only), ARCH-20 (the goal bar and the Tour move by `transform`), ARCH-21 (the Ribbon's questions from one derived summary), ARCH-22 (the storage rule rewritten to say what the code does) | S each | — |
 
 1 to 4 and 6 went out in 0.5.1 (15 October). 5 and 7, which share their rescue-copy writer, were done the
 same day, after it.
