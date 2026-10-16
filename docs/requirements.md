@@ -184,7 +184,9 @@ Coziness is the top product priority, within the performance budget in Section 5
   typing path.
 - **Reliability:** no lost text after a crash, a power cut or a forced close; a failed save or backup says so.
 - **Install:** one small installer with no prerequisites to install by hand; updates as in ST-7. The
-  installer and the app wear Daylight's Basin mark.
+  installer speaks Slovenian on a Slovenian Windows and English otherwise, and shows Daylight's Basin mark on
+  its first and last page. The app's Windows icon is the mark alone, filling its square as Windows' own icons
+  do, drawn at each size Windows shows (`scripts/brand-images.mjs`).
 - **Privacy:** everything stays on her computer; no telemetry and no account.
 - **Usability:** a Word user can write and format within minutes; every action can be found in the toolbar
   or a menu.
@@ -247,6 +249,9 @@ Coziness is the top product priority, within the performance budget in Section 5
 The owner's decisions that shaped the app, newest first. Each replaced what the original plan or the
 design system said.
 
+- **16 Oct:** The Windows icon is the Basin mark alone, larger and without the tile, which shrank to a pale
+  square on the taskbar. The installer comes in Slovenian and English and wears the mark; its uninstaller says
+  that deleting Pensieve's own folder takes the copies it keeps, not her projects.
 - **15 Oct:** One Pensieve at a time: starting it again, while it sits minimised say, brings the open window
   back (Tauri's single-instance plugin, in installed builds). A save comes at least every 10 seconds while
   she types without a pause. An automatic backup that failed is tried again a quarter of an hour later, not

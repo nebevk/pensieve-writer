@@ -25,6 +25,7 @@ https://v2.tauri.app/start/prerequisites/
 | `npm test` | Runs the unit tests (Vitest) |
 | `npm run build` | Builds the web part only |
 | `npm run tauri build` | Builds an installer, without the update files |
+| `node --experimental-websocket scripts/brand-images.mjs` | Draws the Windows icons and the installer's picture from the design system's Basin mark, into `src-tauri/icons` and `src-tauri/installer` |
 | `npm run release -- 0.2.0 --notes "…"` | Builds a signed release for GitHub Releases ([releasing.md](releasing.md)) |
 
 Before a change is done: it runs, `npm run check` reports nothing, the tests pass, the console shows no

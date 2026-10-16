@@ -44,7 +44,14 @@
       },
       "nsis": {
         "installMode": "currentUser",
-        "installerIcon": "icons/icon.ico"
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "sidebarImage": "installer/sidebar.bmp",
+        "languages": ["English", "Slovenian"],
+        "customLanguageFiles": {
+          "English": "installer/English.nsh",
+          "Slovenian": "installer/Slovenian.nsh"
+        }
       }
     }
   },
