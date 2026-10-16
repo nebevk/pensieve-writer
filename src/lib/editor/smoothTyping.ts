@@ -10,6 +10,11 @@ import type { EditorView } from "@tiptap/pm/view";
  * Both are drawn over the page and never touch the text: a letter is on the page at once, a thin veil
  * of paper over it fades away (an animation the browser runs by itself), and the caret is moved once a
  * frame at most. Marking the letters in the text itself made each key slower on a long chapter.
+ *
+ * Each frame reads the page once, then draws (ARCH-24): what is measured first, the caret and the letters,
+ * then the veil and the caret are moved. A veil keeps one size and one animation, which each letter starts
+ * again: a veil sized to its letters, or a new animation for every key, cost each key more than the
+ * whole caret did otherwise (the typing check, 16 October).
  */
 const key = new PluginKey<Typed | null>("smoothTyping");
 // How long a new letter takes to ink in: long enough to be seen at typing speed (150 ms wasn't), a
@@ -68,6 +73,8 @@ export function refreshSmoothTyping(view: EditorView) {
 class Caret {
   private caret: HTMLDivElement;
   private veils: HTMLDivElement[] = [];
+  // Each veil's animation, started again for the next letters it covers.
+  private inks: (Animation | undefined)[] = [];
   private veilTurn = 0;
   private inked = 0;
   private frame = 0;
@@ -148,7 +155,6 @@ class Caret {
     }
     const host = view.dom.parentElement?.getBoundingClientRect();
     if (!host) return;
-    this.ink(host);
     // Where the browser's own caret is, which knows the end of a wrapped line from the next line's start.
     const selection = document.getSelection();
     let box: DOMRect | null = null;
@@ -160,6 +166,8 @@ class Caret {
       const at = view.coordsAtPos(view.state.selection.head);
       box = new DOMRect(at.left, at.top, 0, at.bottom - at.top);
     }
+    // After the caret is measured: the veil's letters are measured on the same layout, and nothing is moved before.
+    this.ink(host);
     // The first place it shows, it is put there; after that it glides.
     if (this.placed) this.caret.classList.add("gliding");
     const transform = `translate(${box.left - host.left}px, ${box.top - host.top}px)`;
@@ -199,19 +207,26 @@ class Caret {
     const end = this.view.coordsAtPos(typed.to, -1);
     // Letters that started a new line (the line wrapped) just appear.
     if (Math.abs(start.top - end.top) > 2 || end.right <= start.left) return;
-    const veil = this.veils[this.veilTurn];
+    const turn = this.veilTurn;
     this.veilTurn = (this.veilTurn + 1) % this.veils.length;
-    const place = `translate(${start.left - host.left}px, ${start.top - host.top}px)`;
-    veil.style.width = `${end.right - start.left + 1}px`;
-    veil.style.height = `${end.bottom - start.top}px`;
-    // Drawn back toward its right edge (transform and opacity only, which the browser animates without
-    // painting anything again; drawing back its outline instead made each key slower).
-    veil.animate(
-      [
-        { opacity: INK_VEIL, transform: `${place} scaleX(1)` },
-        { opacity: 0, transform: `${place} scaleX(0)` },
-      ],
-      { duration: INK_MS, easing: "cubic-bezier(0.3, 0.6, 0.4, 1)", fill: "forwards" },
-    );
+    // The veil is a 100 px square (Editor.svelte), stretched over the letters, then drawn back toward their
+    // right edge: transform and opacity only, which the browser animates without laying out or painting
+    // anything again (drawing back its outline instead made each key slower).
+    const left = start.left - host.left;
+    const top = start.top - host.top;
+    const width = end.right - start.left + 1;
+    const tall = (end.bottom - start.top) / 100;
+    const frames = [
+      { opacity: INK_VEIL, transform: `translate(${left}px, ${top}px) scale(${width / 100}, ${tall})` },
+      { opacity: 0, transform: `translate(${left + width}px, ${top}px) scale(0, ${tall})` },
+    ];
+    const running = this.inks[turn];
+    if (running?.effect instanceof KeyframeEffect) {
+      running.effect.setKeyframes(frames);
+      running.currentTime = 0;
+      running.play();
+      return;
+    }
+    this.inks[turn] = this.veils[turn].animate(frames, { duration: INK_MS, easing: "cubic-bezier(0.3, 0.6, 0.4, 1)", fill: "forwards" });
   }
 }

@@ -327,14 +327,17 @@
   }
 
   /* A veil of paper over letters just typed, faded away by smoothTyping.ts, so they seem to ink in. */
+  /* One size, stretched over the letters it inks by its transform (smoothTyping.ts). */
   .editor-host :global(.ink-veil) {
     position: absolute;
     top: 0;
     left: 0;
+    width: 100px;
+    height: 100px;
     background: var(--pv-paper);
     pointer-events: none;
     opacity: 0;
-    transform-origin: right center;
+    transform-origin: 0 0;
     will-change: transform, opacity;
   }
 

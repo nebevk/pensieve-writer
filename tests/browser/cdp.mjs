@@ -11,7 +11,10 @@ export async function connect({ width = 1366, height = 820 } = {}) {
   for (let attempt = 0; attempt < 60 && !socketUrl; attempt += 1) {
     try {
       const list = await (await fetch(`http://127.0.0.1:${process.env.CDP_PORT ?? 9333}/json`)).json();
-      socketUrl = list.find((target) => target.type === "page")?.webSocketDebuggerUrl ?? null;
+      // The tab the checks use, never a page of Edge's own: a while after it starts, Edge opens its sync dialog
+      // (edge://sync-confirmation-dialog) and lists it first, and a check driving it saw frames only every few
+      // seconds, so every key seemed seconds late.
+      socketUrl = list.find((target) => target.type === "page" && !/^(edge|chrome|devtools):/.test(target.url))?.webSocketDebuggerUrl ?? null;
     } catch {
       await sleep(500);
     }

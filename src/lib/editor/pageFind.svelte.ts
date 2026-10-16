@@ -139,7 +139,10 @@ export class PageFind {
   close() {
     this.open = false;
     this.notice = "";
-    this.#host.editor()?.commands.focus();
+    // At once, while the field still has it: the editor's own focus command waits a frame, and the field going
+    // meanwhile sometimes left the keyboard nowhere.
+    const editor = this.#host.editor();
+    if (editor && !editor.isDestroyed) editor.view.focus();
   }
 
   step(step: 1 | -1) {

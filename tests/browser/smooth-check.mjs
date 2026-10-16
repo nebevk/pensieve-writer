@@ -53,6 +53,25 @@ for (const letter of "abc") await press(letter);
 await sleep(80);
 const inked = await page.run(`({ veils: [...document.querySelectorAll(".paper .ink-veil")].filter((veil) => veil.getAnimations().length > 0).length, spans: document.querySelectorAll(".paper .ProseMirror span.ink-new").length })`);
 check("a letter just typed inks in, under a fading veil, the text itself untouched", inked.veils >= 1 && inked.spans === 0, JSON.stringify(inked));
+// The newest veil, held at its start, lies over the letter just typed (ARCH-24: it is stretched there by its transform).
+const cover = await page.run(`(() => {
+  const animations = [...document.querySelectorAll(".paper .ink-veil")].flatMap((veil) => veil.getAnimations().map((animation) => ({ veil, animation })));
+  const newest = animations.sort((a, b) => (b.animation.startTime ?? 0) - (a.animation.startTime ?? 0))[0];
+  if (!newest) return null;
+  newest.animation.pause();
+  newest.animation.currentTime = 0;
+  const veil = newest.veil.getBoundingClientRect();
+  newest.animation.finish();
+  const walker = document.createTreeWalker(document.querySelector(".paper .ProseMirror"), NodeFilter.SHOW_TEXT);
+  let last = null;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) if (node.textContent.length) last = node;
+  const range = document.createRange();
+  range.setStart(last, last.length - 1);
+  range.setEnd(last, last.length);
+  const letter = range.getBoundingClientRect();
+  return { left: Math.round(veil.left - letter.left), right: Math.round(veil.right - letter.right), top: Math.round(veil.top - letter.top), bottom: Math.round(veil.bottom - letter.bottom) };
+})()`);
+check("the veil lies over the letter, edge to edge", cover && Object.values(cover).every((gap) => Math.abs(gap) <= 2), JSON.stringify(cover));
 await sleep(150);
 caret = await page.run(CARET);
 check("the caret follows the typing, steady, and glides even with Windows animations off", caret?.shown && Math.abs(caret.dx) <= 1 && !caret.blinking && caret.glide === "0.1s", JSON.stringify(caret));
