@@ -1,0 +1,3 @@
+# The installer's words stay with plain line ends: Tauri adds Windows ones as it copies them, and NSIS can't
+# read a file that has them twice.
+src-tauri/installer/*.nsh text eol=lf
