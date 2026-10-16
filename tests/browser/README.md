@@ -18,14 +18,19 @@ the checks one after another and stops both. Screenshots some checks take land i
 ## Timing typing
 
 `typing-speed-check.mjs` types as Eva does (ARCH-11): in the long test book, on sheets, with comments
-beside the text, at 1366 × 768 with the processor slowed four times, in bursts with pauses of half a second
-to two and a half. Each key is timed from the moment it is pressed until the page shows its letter, by the
+beside the text, at 1366 × 768 with the processor slowed four times, in bursts with pauses of a third of a
+second to two and a half. Each key is timed from the moment it is pressed until the page shows its letter, by the
 browser's Event Timing, against the 40 ms of the speed requirement. With `--verbose` it says how the keys
 went (in a burst, first after a pause, meeting a save), the slowest of them, and the app's code in the frames
 over 50 ms. Every key's times are left in `shots/typing-speed.json`.
 
 For a sense of scale: a bare editable box, on an empty page, shows a key in 16 ms there. The browser rounds
-its times to 8 ms, so they come as 40, 48, 56…
+its times to 8 ms, so they come as 40, 48, 56…, and two runs differ by about 8 ms: to compare two ways of
+doing a thing, switch between them within one run rather than between runs.
+
+The checks' Edge draws without the GPU. Typing at the very end of a long chapter on sheets, it shows the frames
+seconds late although the page is idle; with the GPU on it doesn't, so it is the software drawing, not
+Pensieve. The typing check types in the middle of a chapter.
 
 ## How they work
 

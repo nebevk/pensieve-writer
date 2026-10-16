@@ -31,12 +31,16 @@ const until = async (expression, tries = 120) => {
 
 // The long test book, on A4 sheets.
 await page.open(`http://127.0.0.1:${port}/`, 1500);
-await page.run(`window.__PV_HARNESS__.forget(), localStorage.setItem("pensieve-prefs", JSON.stringify({ uiLanguage: "en", paper: "pages", paperSize: "a4" })), true`);
+// That first start saves settings of its own once it has made its first project, which can be after these go in
+// (the database in a worker is slower to start): they go in until they stay.
+await until(`(window.__PV_HARNESS__.forget(), localStorage.setItem("pensieve-prefs", JSON.stringify({ uiLanguage: "en", paper: "pages", paperSize: "a4" })),
+  new Promise((done) => setTimeout(() => done(JSON.parse(localStorage.getItem("pensieve-prefs")).uiLanguage === "en"), 700)))`, 20);
 await page.open(`http://127.0.0.1:${port}/`, 2500);
+// Settings → General → the long test book, each step once the one before is there.
 await page.click(".gear");
-await sleep(800);
-await page.clickText("nav button, [role=tab]", "General");
-await sleep(500);
+await until(`!!document.querySelector(".window nav button, .window [role=tab]")`, 40);
+await page.clickText(".window nav button, .window [role=tab]", "General");
+await until(`[...document.querySelectorAll(".window button")].some((button) => button.textContent.includes("long test book"))`, 40);
 await page.clickText(".window button", "long test book");
 check("the long test book is written", await until(`document.body.innerText.includes("The long test book is on Home.")`, 240));
 await page.key("Escape", "Escape", 27);
@@ -128,16 +132,17 @@ const keyOf = (character) => {
   return { key: character, code: { č: "Semicolon", š: "BracketLeft", ž: "Backslash" }[character] ?? "", windowsVirtualKeyCode: { č: 186, š: 219, ž: 220 }[character] ?? 0 };
 };
 // Bursts of a sentence or two, with the pause before each: some shorter than the 2-second wait before a save,
-// some longer, so saves start during pauses and the next key can meet one.
+// some longer, so saves start during pauses and the next key can meet one; and two hesitations of a moment, so
+// the next key can meet what Pensieve does once she stops for 0.3 s (the sheets) or 0.4 s (the notes' mentions).
 const BURSTS = [
   [0, "Ana je stala pri oknu. "],
   [600, "Reka je bila tiha, temna "],
   [2500, "in nekje spodaj je zaškripal pod. "],
-  [900, "Vera ni rekla ničesar. "],
+  [350, "Vera ni rekla ničesar. "],
   [2200, "Ključi so bili hladni kot led, "],
   [1500, "težji, kot bi smeli biti. "],
   [2500, "Pri mlinu je lajal pes. "],
-  [700, "Potem je bilo spet tiho. "],
+  [400, "Potem je bilo spet tiho. "],
   [2000, "Ana je prižgala luč v kuhinji "],
   [2400, "in sedla k mizi. Pisala je dolgo. "],
 ];

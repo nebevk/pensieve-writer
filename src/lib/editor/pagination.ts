@@ -20,17 +20,21 @@ export function setSheet(view: EditorView, sheet: SheetGeometry | null) {
   view.dispatch(view.state.tr.setMeta(key, { sheet } satisfies PaginationMeta).setMeta("addToHistory", false));
 }
 
+/** Where a pass begins: at a block, on a sheet whose text begins `start` px down the page, the breaks before kept. */
+type Resume = { block: number; start: number; kept: number[] };
+
 /**
  * Where each sheet's text ends, measured down the page as it lies without breaks: the position of the
  * first line that no longer fits. A heading at the foot of a sheet goes over with the text it heads,
- * and a picture or a rule goes over whole.
+ * and a picture or a rule goes over whole. From a sheet on (`from`), the breaks before it stay up and
+ * its text begins where they put it.
  */
-function findBreaks(view: EditorView, sheet: SheetGeometry): number[] {
+function findBreaks(view: EditorView, sheet: SheetGeometry, from: Resume = { block: 0, start: 0, kept: [] }): number[] {
   const room = sheet.height - sheet.top - sheet.bottom;
   const origin = view.dom.getBoundingClientRect().top;
-  const breaks: number[] = [];
+  const breaks = [...from.kept];
   // Where the open sheet's text begins.
-  let start = 0;
+  let start = from.start;
   let lastHeading: { from: number; top: number } | null = null;
 
   const charBox = (pos: number, side: number) => view.coordsAtPos(pos, side);
@@ -40,12 +44,20 @@ function findBreaks(view: EditorView, sheet: SheetGeometry): number[] {
   };
 
   // The line a position is on begins where the character before it sits a line higher, at a letter:
-  // the space a line wraps at stays at the end of the line before (where it is measured can vary).
+  // the space a line wraps at stays at the end of the line before (where it is measured can vary). The
+  // characters before it on its line are a run ending at it, so its first is found by halving.
   function lineStart(pos: number, from: number) {
     const here = charBox(pos, 1);
     const half = (here.bottom - here.top) / 2;
-    let at = pos;
-    while (at > from && charBox(at, -1).bottom > here.bottom - half) at -= 1;
+    const onLine = (at: number) => charBox(at, -1).bottom > here.bottom - half;
+    let low = from + 1;
+    let high = pos + 1;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (onLine(middle)) high = middle;
+      else low = middle + 1;
+    }
+    let at = low - 1;
     while (at < pos && /^\s$/.test(view.state.doc.textBetween(at, at + 1))) at += 1;
     return at;
   }
@@ -96,7 +108,9 @@ function findBreaks(view: EditorView, sheet: SheetGeometry): number[] {
     }
   }
 
-  view.state.doc.forEach((node, offset) => block(node, offset));
+  view.state.doc.forEach((node, offset, index) => {
+    if (index >= from.block) block(node, offset);
+  });
   return breaks;
 }
 
@@ -156,6 +170,9 @@ const COUNTS: Reason[] = ["sheet", "text", "width"];
 // seen to flicker (owner, 8 October).
 const RESTLESS = 3;
 
+/** A block of the page as the last pass left it: how tall it was, and whether a sheet ends in it. */
+type Block = { node: PmNode; height: number; holdsBreak: boolean };
+
 class Paginator {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private frame = 0;
@@ -167,6 +184,11 @@ class Paginator {
   private width = 0;
   private height = 0;
   private sheets = 0;
+  // The blocks as the last pass left them (ARCH-9); whether only edits and sizes asked for a pass since, not a new
+  // width or sheet; and whether the text's height changed meanwhile, by an edit or by itself (a picture, a font).
+  private blocks: Block[] = [];
+  private onlyEdits = false;
+  private grew = false;
 
   constructor(
     private view: EditorView,
@@ -196,6 +218,8 @@ class Paginator {
   private fontsLoaded = () => this.resized();
 
   private soon(reason: Reason, delay = PAUSE) {
+    if (reason === "sheet" || reason === "width") this.onlyEdits = false;
+    if (reason === "height") this.grew = true;
     // A reason that counts isn't taken over by one that may not.
     if (!(this.reason && COUNTS.includes(this.reason) && !COUNTS.includes(reason))) this.reason = reason;
     // Right away (a chapter opening, a new sheet size) means before the next paint, so the text is never
@@ -241,6 +265,74 @@ class Paginator {
     this.height = this.view.dom.getBoundingClientRect().height;
   }
 
+  /** Each block's height and whether a sheet ends in it, as this pass leaves them; read on the layout just made. */
+  private record() {
+    const { doc } = this.view.state;
+    const breaks = key.getState(this.view.state)?.breaks ?? [];
+    this.blocks = [];
+    doc.forEach((node, offset) => {
+      const dom = this.view.nodeDOM(offset);
+      this.blocks.push({
+        node,
+        height: dom instanceof HTMLElement ? dom.getBoundingClientRect().height : -1,
+        holdsBreak: breaks.some((at) => at.pos >= offset && at.pos <= offset + node.nodeSize),
+      });
+    });
+    this.onlyEdits = true;
+    this.grew = false;
+  }
+
+  /** Whether the block at `offset` is no longer as tall as the last pass left it. */
+  private outgrew(offset: number, was: Block): boolean {
+    const dom = this.view.nodeDOM(offset);
+    return !(dom instanceof HTMLElement) || Math.abs(dom.getBoundingClientRect().height - was.height) > 0.5;
+  }
+
+  /**
+   * Whether nothing since the last pass moved a break: the same blocks, none a sheet ends in changed (its lines
+   * may wrap anew), and each one changed (or each one at all, when the text's height changed) as tall as it
+   * was, so all below it lies where it lay. Its breaks have moved with the text, and are where a pass would
+   * put them.
+   */
+  private unmoved(): boolean {
+    const { doc } = this.view.state;
+    if (doc.childCount !== this.blocks.length) return false;
+    let offset = 0;
+    for (let index = 0; index < doc.childCount; index += 1) {
+      const node = doc.child(index);
+      const was = this.blocks[index];
+      if (node !== was.node && was.holdsBreak) return false;
+      if ((node !== was.node || this.grew) && this.outgrew(offset, was)) return false;
+      offset += node.nodeSize;
+    }
+    return true;
+  }
+
+  /**
+   * Where a pass after edits begins: the sheet the first block they changed begins on, or the first block no longer
+   * as tall as it was when the text's height changed (its break, and those after, measured again; one at the very
+   * start of that block too, as whether it goes over may have changed), and the block that sheet begins in.
+   */
+  private resumeAt(breaks: SheetBreak[]): { sheet: number; block: number } {
+    const { doc } = this.view.state;
+    const same = Math.min(doc.childCount, this.blocks.length);
+    let offset = 0;
+    for (let index = 0; index < same; index += 1) {
+      const node = doc.child(index);
+      const was = this.blocks[index];
+      if (node !== was.node || (this.grew && this.outgrew(offset, was))) break;
+      offset += node.nodeSize;
+    }
+    const sheet = breaks.filter((at) => at.pos < offset).length;
+    if (sheet === 0) return { sheet: 0, block: 0 };
+    const begins = breaks[sheet - 1].pos;
+    let block = 0;
+    doc.forEach((_node, at, index) => {
+      if (at <= begins) block = index;
+    });
+    return { sheet, block };
+  }
+
   private paginate() {
     const view = this.view;
     const reason = this.reason ?? "height";
@@ -265,40 +357,54 @@ class Paginator {
       this.settle();
       return;
     }
+    // After edits, or a block growing by itself, with the width and the sheet as they were (ARCH-9): typing that
+    // left every paragraph as tall as it was, in none a sheet ends in, moved no break (most pauses are so); else
+    // the sheets before the first block that changed end where they did, and the pass begins on the sheet that
+    // block begins on. Measuring the whole chapter again is the slow part of a pause.
+    const since = (reason === "text" || reason === "height") && this.onlyEdits;
+    if (since && this.unmoved()) return;
     const began = performance.now();
-    // Measure the text as it lies without the breaks: they step aside (the editor ignores changes
+    // Sheet n's text begins n sheets and gaps below the first's.
+    const pitch = sheet.height + sheet.gap;
+    const from = since ? this.resumeAt(state.breaks) : { sheet: 0, block: 0 };
+    const kept = state.breaks.slice(0, from.sheet);
+    // Measure the text as it lies without those breaks: they step aside (the editor ignores changes
     // inside its widgets), then lie flat where they belong, and each is made as tall as it must be.
-    for (const at of state.breaks) at.gap.classList.add("measuring");
-    const found = findBreaks(view, sheet);
+    for (const at of state.breaks.slice(kept.length)) at.gap.classList.add("measuring");
+    const found = findBreaks(view, sheet, { block: from.block, start: kept.length * pitch, kept: kept.map((at) => at.pos) });
     let breaks = state.breaks;
     const moved = !(found.length === breaks.length && found.every((pos, index) => pos === breaks[index].pos));
     if (!moved) {
       // The usual case: no break moved, so only their heights change and no line is drawn again.
-      for (const at of breaks) {
+      for (const at of breaks.slice(kept.length)) {
         at.gap.style.height = "0px";
         at.gap.classList.remove("measuring");
       }
     } else {
-      breaks = found.map((pos) => {
-        const gap = document.createElement("span");
-        gap.className = "page-gap";
-        gap.setAttribute("aria-hidden", "true");
-        return { pos, gap };
-      });
+      // The breaks kept keep their gaps, as tall as they are.
+      breaks = [
+        ...kept,
+        ...found.slice(kept.length).map((pos) => {
+          const gap = document.createElement("span");
+          gap.className = "page-gap";
+          gap.setAttribute("aria-hidden", "true");
+          return { pos, gap };
+        }),
+      ];
       view.dispatch(view.state.tr.setMeta(key, { breaks } satisfies PaginationMeta).setMeta("addToHistory", false));
     }
     const origin = view.dom.getBoundingClientRect().top;
-    const tops = breaks.map((at) => at.gap.getBoundingClientRect().top - origin);
-    // Sheet n's text begins n sheets and gaps below the first's.
-    const pitch = sheet.height + sheet.gap;
+    const measured = breaks.slice(kept.length);
+    const tops = measured.map((at) => at.gap.getBoundingClientRect().top - origin);
     let pushed = 0;
-    breaks.forEach((at, index) => {
-      const height = Math.max(0, (index + 1) * pitch - tops[index] - pushed);
+    measured.forEach((at, index) => {
+      const height = Math.max(0, (kept.length + index + 1) * pitch - tops[index] - pushed);
       at.gap.style.height = `${height}px`;
       pushed += height;
     });
     const before = { width: this.width, height: this.height };
     this.settle();
+    this.record();
     // Should Pages misbehave again: passes that come hard on each other's heels say why they came.
     if (import.meta.env.DEV && began - this.lastPass < 1000) {
       console.info(`[Pages] pass (${reason}): ${Math.round(performance.now() - began)} ms, ${moved ? "breaks moved" : "same breaks"}, ${breaks.length + 1} sheets, text ${before.width}×${Math.round(before.height)} → ${this.width}×${Math.round(this.height)}, breaks add ${Math.round(pushed)} px; ${this.describe()}`);

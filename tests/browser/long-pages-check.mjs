@@ -87,6 +87,35 @@ await sleep(4000);
 const back = await counts();
 check("after switching chapters and back, the breaks settle and stay put", back.fresh === 0 && back.resized === 0, JSON.stringify(back));
 
+// A key that leaves its paragraph as tall, in one no sheet ends in, moves no break: the page isn't measured again
+// (ARCH-9). A new line in it is, and the breaks after it follow (the margins are checked at the end).
+const placed = await page.run(`(() => {
+  const pm = document.querySelector(".paper .ProseMirror");
+  const paragraph = [...pm.querySelectorAll(":scope > p")].filter((p) => !p.querySelector(".page-gap") && p.textContent.length > 120)[8];
+  if (!paragraph) return false;
+  paragraph.scrollIntoView({ block: "center" });
+  const range = document.createRange();
+  range.setStart(document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT).nextNode(), 10);
+  range.collapse(true);
+  pm.focus();
+  getSelection().removeAllRanges();
+  getSelection().addRange(range);
+  return true;
+})()`);
+await sleep(1500);
+await reset();
+await page.type("a");
+await sleep(150);
+await page.key("Backspace", "Backspace", 8);
+await sleep(1500);
+const still = await counts();
+check("a key that leaves its paragraph as tall has the page measured again not at all", placed && still.fresh === 0 && still.resized === 0, JSON.stringify(still));
+await reset();
+await page.type(" Nova vrstica, ki se razlije čez rob in doda v odstavek še eno, dve vrsti besedila, zato se vse pod njo premakne nižje.");
+await sleep(1500);
+const grown = await counts();
+check("a new line in it has the breaks after it measured again", grown.resized > 0, JSON.stringify(grown));
+
 // A text that keeps changing size by itself (owner, 8 October: flicker twice a second) is measured at
 // most three times, then left alone until the next edit.
 await page.run(`(() => {
