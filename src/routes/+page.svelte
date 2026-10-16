@@ -79,8 +79,9 @@
   const SaveTroublePart = lazy(() => import("$lib/views/SaveTrouble.svelte"));
   const RescueOfferPart = lazy(() => import("$lib/views/RescueOffer.svelte"));
 
-  // The writing open in Write: one of the open project's writings, with all its chapters.
-  let writing = $state<Writing | null>(null);
+  // The writing open in Write: one of the open project's writings, with all its chapters. Raw: every change
+  // replaces it (and the chapters that changed), so a save walks plain objects, not Svelte's proxies (ARCH-7).
+  let writing = $state.raw<Writing | null>(null);
   // The open project, as its file holds it: the key for its notes and to-dos, its name, folders and writings.
   let shelf = $state.raw<Shelf | null>(null);
   // The library folder, and its folders and projects as last read from disk.
