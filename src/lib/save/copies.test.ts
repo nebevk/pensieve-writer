@@ -52,7 +52,7 @@ describe("the automatic backup", () => {
   it("after a failure, tries again in a quarter of an hour, not every minute, then hourly", async () => {
     const tries = vi.mocked(writeBackup);
     tries.mockRejectedValue(new Error("Choose a folder that exists. Put it inside Google Drive if you want it synced."));
-    let prefs = { backupFolder: "G:\\Moj Drive\\Pensieve", lastBackupAt: "", lastBackupError: "", lastBackupSignature: "" } as Prefs;
+    let prefs = { backupFolder: "G:\\Moj Drive\\Pensieve", lastBackupAt: "", lastBackupError: "", backupSignatures: {} } as unknown as Prefs;
     const failures: string[] = [];
     const backup = new DriveBackup({
       writing: () => ({ id: "w" }) as Writing,
@@ -73,7 +73,7 @@ describe("the automatic backup", () => {
     expect(failures).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(14 * 60_000);
     expect(tries).toHaveBeenCalledTimes(1);
-    tries.mockResolvedValue({ path: "G:\\Moj Drive\\Pensieve\\pensieve-w.json", signature: "s" });
+    tries.mockResolvedValue({ path: "G:\\Moj Drive\\Pensieve\\pensieve-w.json", signature: "s", projectId: "p" });
     await vi.advanceTimersByTimeAsync(60_000);
     expect(tries).toHaveBeenCalledTimes(2);
     expect(prefs.lastBackupError).toBe("");
@@ -82,5 +82,42 @@ describe("the automatic backup", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(tries).toHaveBeenCalledTimes(3);
     stop();
+  });
+
+  it("remembers each project's last backup on its own, so going back and forth writes no copy of the same (ARCH-18)", async () => {
+    const tries = vi.mocked(writeBackup);
+    tries.mockReset();
+    let prefs = { backupFolder: "G:\\Drive", lastBackupAt: "", lastBackupError: "", backupSignatures: { ana: "ana:1:x" } } as unknown as Prefs;
+    const asked: string[] = [];
+    let open = "bor";
+    tries.mockImplementation(async (_folder, lastOf = () => "") => {
+      const signature = `${open}:2:y`;
+      asked.push(`${open}=${lastOf(open)}`);
+      return { path: lastOf(open) === signature ? null : `G:\\Drive\\${open}.json`, signature, projectId: open };
+    });
+    const backup = new DriveBackup({
+      writing: () => ({ id: "w" }) as Writing,
+      shelf: () => null,
+      prefs: () => prefs,
+      setPrefs: (patch) => {
+        prefs = { ...prefs, ...patch };
+      },
+      switching: () => false,
+      flush: async () => undefined,
+      libraryRoot: () => "",
+      say: () => undefined,
+      fail: () => undefined,
+    });
+    await backup.run(false);
+    open = "ana";
+    await backup.run(false);
+    open = "bor";
+    await backup.run(false);
+    expect(asked).toEqual(["bor=", "ana=ana:1:x", "bor=bor:2:y"]);
+    expect(prefs.backupSignatures).toEqual({ ana: "ana:2:y", bor: "bor:2:y" });
+    // Back up now always writes one.
+    asked.length = 0;
+    await backup.run(true);
+    expect(asked).toEqual(["bor="]);
   });
 });

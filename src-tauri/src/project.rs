@@ -43,32 +43,28 @@ pub fn default_project_path(app: AppHandle) -> Result<String, String> {
     Ok(app_database(&app)?.display().to_string())
 }
 
-/// Copy the live project database into `folder/pensieve.db` using a temp file and rename.
-#[tauri::command]
-pub fn relocate_project(source: String, folder: String) -> Result<String, String> {
-    let from = PathBuf::from(source);
-    if !from.is_file() {
+/// A project's copy, which SQLite wrote (`VACUUM INTO`) as `pensieve.db.writing` in `folder`, put on the disk and
+/// then in place as the folder's `pensieve.db`: never over another project's file (ARCH-6). Returns where it is.
+#[tauri::command(async)]
+pub fn settle_project_copy(copy: String, folder: String) -> Result<String, String> {
+    settle_copy(Path::new(&copy), Path::new(&folder)).map(|dest| dest.display().to_string())
+}
+
+fn settle_copy(copy: &Path, dir: &Path) -> Result<PathBuf, String> {
+    if copy.parent() != Some(dir) || copy.file_name().and_then(|name| name.to_str()) != Some("pensieve.db.writing") || !copy.is_file() {
         return Err("The project file was not found".into());
     }
-    let dir = Path::new(&folder);
-    if !dir.is_dir() {
-        return Err("Choose a folder that exists".into());
-    }
     let dest = dir.join("pensieve.db");
-    if dest == from {
-        return Ok(dest.display().to_string());
-    }
     if dest.exists() {
+        let _ = fs::remove_file(copy);
         return Err("That folder already contains a pensieve.db file".into());
     }
-
-    let temporary = dir.join("pensieve.db.writing");
-    fs::copy(&from, &temporary).map_err(|error| error.to_string())?;
-    fs::rename(&temporary, &dest).map_err(|error| {
-        let _ = fs::remove_file(&temporary);
+    disk::flush(copy);
+    fs::rename(copy, &dest).map_err(|error| {
+        let _ = fs::remove_file(copy);
         error.to_string()
     })?;
-    Ok(dest.display().to_string())
+    Ok(dest)
 }
 
 /// Path for a new book. The file is created when Pensieve opens it.
@@ -108,6 +104,41 @@ pub fn write_prefs(app: AppHandle, contents: String) -> Result<(), String> {
     let dir = path.parent().ok_or("The settings folder is missing")?;
     fs::create_dir_all(dir).map_err(|error| error.to_string())?;
     disk::replace(&path, &dir.join("prefs.json.writing"), contents.as_bytes()).map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn folder(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("pensieve-settle-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_copy_goes_in_place_and_never_over_another_project() {
+        let dir = folder("place").join("Zgodbe ob reki");
+        fs::create_dir_all(&dir).unwrap();
+        let copy = dir.join("pensieve.db.writing");
+        fs::write(&copy, "SQLite format 3, čšž").unwrap();
+        assert_eq!(settle_copy(&copy, &dir).unwrap(), dir.join("pensieve.db"));
+        assert_eq!(fs::read_to_string(dir.join("pensieve.db")).unwrap(), "SQLite format 3, čšž");
+        assert!(!copy.exists());
+        // Another project there already: refused, and the copy goes.
+        fs::write(&copy, "druga").unwrap();
+        assert!(settle_copy(&copy, &dir).is_err());
+        assert_eq!(fs::read_to_string(dir.join("pensieve.db")).unwrap(), "SQLite format 3, čšž");
+        assert!(!copy.exists());
+        // Only the copy SQLite wrote, in that folder.
+        let elsewhere = folder("elsewhere");
+        fs::write(elsewhere.join("pensieve.db.writing"), "x").unwrap();
+        assert!(settle_copy(&elsewhere.join("pensieve.db.writing"), &dir).is_err());
+        assert!(settle_copy(&dir.join("prefs.json"), &dir).is_err());
+        fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+        fs::remove_dir_all(&elsewhere).unwrap();
+    }
 }
 
 /// Read an image the writer just chose. Only common image extensions are accepted.

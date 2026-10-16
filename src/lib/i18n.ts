@@ -737,6 +737,8 @@ const en = {
   rescueOfferBeside:
     "Last time, Pensieve couldn't save “{title}” to this project, so it kept your words in a rescue copy ({date}). “{title}” has changed since, so they come back beside it, as a writing of their own.",
   rescuedTitle: "{title} (rescue copy)",
+  // What Windows shows while it waits to shut down, as Pensieve saves (ARCH-23).
+  shutdownSaving: "Pensieve is saving your words",
   notNow: "Not now",
   bringThemBack: "Bring them back",
   rescueBack: "Your words from the rescue copy are back.",
@@ -1470,6 +1472,7 @@ const sl: Record<UiKey, string> = {
   rescueOfferBeside:
     "Zadnjič Pensieve ni mogel shraniti »{title}« v ta projekt, zato je vaše besede shranil v reševalno kopijo ({date}). Besedilo »{title}« se je od takrat spremenilo, zato se vrnejo poleg njega, kot samostojno besedilo.",
   rescuedTitle: "{title} (reševalna kopija)",
+  shutdownSaving: "Pensieve shranjuje vaše besede",
   notNow: "Ne zdaj",
   bringThemBack: "Vrni jih",
   rescueBack: "Besede iz reševalne kopije so spet tu.",

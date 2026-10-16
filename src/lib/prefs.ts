@@ -83,8 +83,8 @@ export type Prefs = {
   knownProjects: KnownProject[];
   lastBackupAt: string;
   lastBackupError: string;
-  /** Fingerprint of the book in the newest automatic backup, to skip identical copies. */
-  lastBackupSignature: string;
+  /** Each project's fingerprint in its newest backup, by project, to skip identical copies (ARCH-18). */
+  backupSignatures: Record<string, string>;
   /** Folder where Pensieve keeps an up-to-date Word copy of the open book; empty means none. */
   wordCopyFolder: string;
   /**
@@ -189,7 +189,7 @@ export const defaultPrefs = (): Prefs => ({
   knownProjects: [],
   lastBackupAt: "",
   lastBackupError: "",
-  lastBackupSignature: "",
+  backupSignatures: {},
   wordCopyFolder: "",
   wordCopies: {},
   wordCopyAt: "",
@@ -205,10 +205,13 @@ function fromStored(raw: string): Prefs {
     manuscriptSize?: number;
     panelTodos?: boolean;
     panelNotes?: boolean;
+    lastBackupSignature?: string;
   };
   // The streak went first. On 6 October the panel's two switches became one choice, and the text size
   // went from pixels to points, as Word counts them; the old default of 17 px becomes the new 12 pt.
-  const { streak: _streak, lastWriteDay: _lastWriteDay, manuscriptSize, panelTodos, panelNotes, ...rest } = stored;
+  const { streak: _streak, lastWriteDay: _lastWriteDay, manuscriptSize, panelTodos, panelNotes, lastBackupSignature, ...rest } = stored;
+  // Before 16 October one fingerprint was kept, the open project's; it begins with that project's id.
+  const oldSignature = typeof lastBackupSignature === "string" && lastBackupSignature ? { [lastBackupSignature.split(":")[0]]: lastBackupSignature } : {};
   const panel =
     rest.panel !== undefined && ["", "todos", "notes", "goals"].includes(rest.panel)
       ? rest.panel
@@ -247,6 +250,7 @@ function fromStored(raw: string): Prefs {
     lastOpened: lastOpenedFrom(rest.lastOpened),
     samples: stringsFrom(rest.samples),
     knownProjects: Array.isArray(rest.knownProjects) ? rest.knownProjects.flatMap(knownFrom) : [],
+    backupSignatures: { ...oldSignature, ...stringsFrom(rest.backupSignatures) },
   };
 }
 

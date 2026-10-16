@@ -13,6 +13,13 @@ pub fn write_synced(path: &Path, contents: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
+/// Asks Windows to put a file someone else wrote (SQLite, say) on the disk; one that won't flush keeps what it has.
+pub fn flush(path: &Path) {
+    if let Ok(file) = fs::OpenOptions::new().write(true).open(path) {
+        let _ = file.sync_all();
+    }
+}
+
 /// Replaces `path` in one step: the contents go to `temporary`, on the disk, which then takes its place.
 /// Until then the old file stays whole; on a failure the temporary file goes.
 pub fn replace(path: &Path, temporary: &Path, contents: &[u8]) -> io::Result<()> {

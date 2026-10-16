@@ -239,6 +239,8 @@
     }
     switch (cmd) {
       case "plugin:sql|load": {
+        // failOpen: files whose path holds these words won't open, as a broken copy wouldn't.
+        if (window.__PV_HARNESS__.failOpen && args.db.includes(window.__PV_HARNESS__.failOpen)) throw UNREACHABLE;
         const SQL = await sqlReady;
         addFolder(parentOf(args.db.replace(/^sqlite:/, "")));
         if (!books.has(args.db)) books.set(args.db, opened(SQL, args.db));
@@ -291,17 +293,24 @@
         const path = `${HOME}\\examples\\${args.name}.db`;
         return { path, exists: fileExists(path) };
       }
-      case "relocate_project": {
-        const SQL = await sqlReady;
-        const source = books.get(`sqlite:${args.source}`);
-        if (!source) throw "The project file was not found";
-        if (!folders.has(lower(args.folder))) throw "Choose a folder that exists";
-        const dest = `${args.folder}\\pensieve.db`;
+      case "settle_project_copy": {
+        // project.rs settle_project_copy: the copy VACUUM INTO wrote, in place as the folder's pensieve.db.
+        const copy = books.get(`sqlite:${args.copy}`);
+        if (!copy || lower(parentOf(args.copy)) !== lower(String(args.folder).replace(/[\\/]+$/, ""))) throw "The project file was not found";
+        const dest = `${String(args.folder).replace(/[\\/]+$/, "")}\\pensieve.db`;
+        books.delete(`sqlite:${args.copy}`);
         if (fileExists(dest)) throw "That folder already contains a pensieve.db file";
-        books.set(`sqlite:${dest}`, new SQL.Database(source.export()));
+        books.set(`sqlite:${dest}`, copy);
         if (window.__PV_KEEP__) dirty.add(`sqlite:${dest}`);
         return dest;
       }
+      // session.rs: what Windows shows while Pensieve saves at a shutdown, and that the page has saved.
+      case "session_reason":
+        window.__PV_HARNESS__.sessionReason = args.text;
+        return null;
+      case "session_saved":
+        window.__PV_HARNESS__.sessionSaved = (window.__PV_HARNESS__.sessionSaved ?? 0) + 1;
+        return null;
       case "library_places":
         return { documents: DOCS, home: USER };
       case "list_library":

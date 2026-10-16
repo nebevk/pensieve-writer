@@ -74,17 +74,20 @@ export type BackupResult = {
   /** Where the backup was written, or null when it was skipped because nothing changed. */
   path: string | null;
   signature: string;
+  /** The project it is of. */
+  projectId: string;
 };
 
 /**
- * Writes a backup of the open project as it is saved: every writing, its notes and its to-dos. Pass the
- * previous backup's signature to skip writing an identical copy.
+ * Writes a backup of the open project as it is saved: every writing, its notes and its to-dos. `lastOf` gives the
+ * project's last backup's signature, to skip writing an identical copy.
  */
-export async function writeBackup(folder: string, skipIfSignature = ""): Promise<BackupResult> {
+export async function writeBackup(folder: string, lastOf: (projectId: string) => string = () => ""): Promise<BackupResult> {
   const { shelf, writings, notes, tasks } = await readWholeProject();
   const project = { id: shelf.projectId, title: shelf.title, folders: shelf.folders };
   const signature = backupSignature(project.id, { project, writings, notes, tasks });
-  if (skipIfSignature && signature === skipIfSignature) return { path: null, signature };
+  const last = lastOf(project.id);
+  if (last && signature === last) return { path: null, signature, projectId: project.id };
   const savedAt = new Date().toISOString();
   const contents = JSON.stringify(backupFile(project, writings, notes, tasks, savedAt));
   const path = await invoke<string>("write_backup", {
@@ -93,5 +96,5 @@ export async function writeBackup(folder: string, skipIfSignature = ""): Promise
     contents,
     book: backupBookKey(project.id),
   });
-  return { path, signature };
+  return { path, signature, projectId: project.id };
 }

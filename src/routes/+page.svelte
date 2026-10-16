@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick, untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Sidebar from "$lib/chapters/Sidebar.svelte";
   import Ribbon from "$lib/editor/Ribbon.svelte";
@@ -52,7 +53,7 @@
   import type { ProjectRequest } from "$lib/views/NewProjectWindow.svelte";
   import type { SearchHit, SearchSource } from "$lib/views/searchAll";
   import { otherCards, type IdeaCard } from "$lib/views/ideas";
-  import { addWriting, checkpointDatabase, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, moveProjectFile, rememberPersonalWord, restoreFromBackup, setShelf, setWritingFields, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
+  import { addWriting, copyOpenProject, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, moveProjectFile, rememberPersonalWord, restoreFromBackup, setShelf, setWritingFields, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
   import type { Editor as TiptapEditor } from "@tiptap/core";
   import type { NodeSelection } from "@tiptap/pm/state";
   import { lazy } from "$lib/lazy.svelte";
@@ -398,6 +399,7 @@
     onPomodoroTurn((phase) => notice(phase === "break" ? t("pomodoroBreakNow", { rest: pomodoro.rest }) : t("pomodoroBackNow")));
     let unlistenClose: (() => void) | undefined;
     let unlistenFocus: (() => void) | undefined;
+    let unlistenSession: (() => void) | undefined;
     let closing = false;
     // Her words and settings are saved: only the backup and the Word copy are left to do.
     let wordsSaved = false;
@@ -489,9 +491,13 @@
               .catch(() => undefined);
           }
         });
+        // Windows shutting down or signing out (ARCH-23): it waits, saying why, while her words are saved; then
+        // Pensieve closes.
+        unlistenSession = await listen("pensieve://session-ending", () => void saveForSessionEnd());
         if (disposed) {
           unlistenClose();
           unlistenFocus();
+          unlistenSession();
         }
       } catch {
         // The page is open in a browser, outside the Pensieve window.
@@ -515,6 +521,7 @@
       ambience.stop();
       unlistenClose?.();
       unlistenFocus?.();
+      unlistenSession?.();
     };
   });
 
@@ -1548,6 +1555,22 @@
     }
   }
 
+  /** Windows is ending the session: her words saved, or kept in a rescue copy, then Pensieve may close (ARCH-23). */
+  async function saveForSessionEnd() {
+    let failure: unknown = null;
+    await flushNoteSave().catch((error: unknown) => (failure ??= error));
+    await autosave.flush().catch((error: unknown) => (failure ??= error));
+    if (failure) await rescue.keep();
+    await flushPrefs().catch(() => undefined);
+    await invoke("session_saved").catch(() => undefined);
+  }
+
+  // What Windows shows while it waits for that, in her language.
+  $effect(() => {
+    const text = t("shutdownSaving");
+    untrack(() => void invoke("session_reason", { text }).catch(() => undefined));
+  });
+
   /** When saving failed, closes Pensieve once her words are safe: the settings first, then the window. */
   async function closeAfterTrouble() {
     saveTrouble = null;
@@ -1734,6 +1757,9 @@
       // The project being left keeps its row on Home, with today's numbers and the page just closed.
       rememberProject();
       await wordCopy.update();
+      // Backed up as she leaves it, when it changed since its last backup (ARCH-18): the hourly backup covers
+      // only the project open. A failure is said, and the switch goes on.
+      await driveBackup.run(false).catch(() => undefined);
       const written = wordsToday;
       const previous = projectLocation || prefs.projectPath || (await invoke<string>("default_project_path"));
       switchingBooks = true;
@@ -2783,10 +2809,18 @@
         switchingBooks = true;
         let destination: string;
         try {
-          await checkpointDatabase();
           const folder = await freeProjectFolder(libraryRoot, name);
-          destination = await invoke<string>("relocate_project", { source, folder });
-          await switchProjectFile(destination);
+          // A whole copy from SQLite itself, in the save queue: nothing written meanwhile is left behind (ARCH-6).
+          destination = await copyOpenProject(folder);
+          try {
+            await switchProjectFile(destination);
+          } catch (error) {
+            // The copy won't open: the project stays where it was, and opens there again; the copy goes to the
+            // Recycle Bin rather than stay in the library as a project that won't open.
+            await switchProjectFile(source).catch(() => undefined);
+            await invoke("trash_project_folder", { path: folder, library: libraryRoot }).catch(() => undefined);
+            throw error;
+          }
         } finally {
           switchingBooks = false;
         }

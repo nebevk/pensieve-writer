@@ -5,6 +5,7 @@ mod kept;
 mod library;
 mod links;
 mod project;
+mod session;
 mod spellcheck;
 
 use tauri::Manager;
@@ -55,11 +56,13 @@ pub fn run() {
             project::default_project_path,
             project::project_file_exists,
             project::example_book_path,
-            project::relocate_project,
+            project::settle_project_copy,
             project::reserve_project_path,
             project::read_image_file,
             project::read_prefs,
             project::write_prefs,
+            session::session_reason,
+            session::session_saved,
             spellcheck::probe_spellcheck,
             spellcheck::add_personal_word,
             spellcheck::remove_personal_word
@@ -68,6 +71,8 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/128x128.png"))?;
                 window.set_icon(icon)?;
+                // Windows shutting down waits while her words are saved (ARCH-23).
+                session::watch(&window);
             }
             Ok(())
         })

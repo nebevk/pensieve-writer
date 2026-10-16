@@ -27,8 +27,8 @@ until the owner asks for them.
 A review of the whole app on 14 October 2026, in three read-only passes: data safety, the typing path and
 the code's structure. Each finding was then checked in the code. Nothing was profiled or run. The plan made
 from it, with the fixes in order, is [review-plan.md](review-plan.md). ARCH-2, 3, 10, 16 and 17 are done
-(15 October, in 0.5.1), ARCH-1 and ARCH-5 later that day, and ARCH-15, 20, 21 and 22 on 16 October (0.5.2); they
-are in the git history.
+(15 October, in 0.5.1), ARCH-1 and ARCH-5 later that day, ARCH-15, 20, 21 and 22 on 16 October (0.5.2), and ARCH-6,
+18 and 23 after it; they are in the git history.
 
 **Verdict:** the architecture stays. A thin Rust side, one SQLite file per project, the editor loaded after
 Home and one queue for every database call suit one writer on an older laptop; nothing in the stack needs
@@ -50,7 +50,6 @@ replacing. What needs work is a few paths, listed below.
 | ID | What | Status | Pri |
 |----|------|--------|-----|
 | **ARCH-4** Saves and restores in one transaction | These are many statements, each committed on its own: a writing's save, a restore from a backup, a writing deleted for good and a sample project. JavaScript can't wrap them in a transaction: plugin-sql runs each call on any connection of its pool, so a `BEGIN` doesn't hold. A crash mid-restore leaves the writing half restored. A crash mid-save only doubles text, because of the order chapters are written in. Add Rust commands that save and restore a writing in one transaction, with one disk sync per save instead of one per chapter | Open | P2 |
-| **ARCH-6** Move into library copies safely | `relocate_project` (`project.rs`) copies the live file with `fs::copy`, after a checkpoint whose result is never read, so the copy can miss her latest text. Make the copy with `VACUUM INTO`, as `keepCopyBeforeUpgrade` does | Open | P2 |
 | **ARCH-7** Save only what changed | Every 2-second pause sends the whole book to the file again. `writeWriting` turns every chapter into JSON, changed or not, and walks each one for pictures through Svelte's proxies (`writing` in `+page.svelte` is deep `$state`). On the long test book this is the likeliest hitch on the first key after a pause. Write only the chapters that changed, and make `writing` `$state.raw` (its updates already replace objects). Measure with ARCH-11 first | Open | P2 |
 | **ARCH-8** Typing in the Notes tab | Each key in a note replaces the notes list, and "Appears in" (`Notes.svelte`) walks every chapter's JSON and text again. Keep a copy of the open note while she types, as the panel's note does. ARCH-13 does this for every view | Open | P2 |
 | **ARCH-9** Work at each pause | The comment rail reads the whole chapter 150 ms after every key, whether there are comments or not (`CommentRail.svelte`). At 400 ms the chapter's text is read, one search per note runs over it, and the footnotes are walked. With Pages on, a pagination pass measures the page at 300 ms. Skip the comment read when the chapter has no comments, and move the 400 ms work to when the window is idle | Open | P2 |
@@ -58,12 +57,10 @@ replacing. What needs work is a few paths, listed below.
 | **ARCH-12** One place for the open project | The open project is kept in five places: `projectLocation` and `prefs.projectPath` in the page (read together 19 times), the plain `switchingBooks` flag, and `openPath` and `openProjectId` in `sqlite.ts`, which also reads `prefs` itself. No bug today, but a save into the wrong file would start here. A session module owns it, and storage is given the path. This is the first step of what is left of IMP-28 | Open | P2 |
 | **ARCH-13** One copy of the notes | The page (`bookNotes`, `paneNote`) and Notes, To-dos, Ideas and Home each load and save their own notes, kept in step by reading them again. An old copy did get saved over newer words, from Home's tree; since 15 October the page reads a note again before it renames, copies or shows it. Left: one notes store that every view reads and writes. With a prefs store as well, it also shortens the lists of callbacks the page hands each module (IMP-28) | Partial | P2 |
 | **ARCH-14** Tests where her text is kept | `sqlite.ts` (1,318 lines) has no unit tests; `autosave.ts` has a few since 15 October. CI runs on master and pull requests only, so `feat/…` branches aren't checked; it runs `cargo check`, not `cargo test`, and no browser checks. Add Vitest tests for `sqlite.ts` on sql.js (already a dev dependency), and run CI on every push with `cargo test`. Do this before IMP-28 goes on | Open | P2 |
-| **ARCH-18** Back up the project she leaves | The hourly backup covers only the open project; switching doesn't back up the one she leaves | Open | P3 |
 | **ARCH-19** The Rust side's edges | Commands that move or delete folders accept any path. Rust's errors are matched by their English text, not by a code. `csp` is `null` in `tauri.conf.json` | Open | P3 |
-| **ARCH-23** Windows shutting down | Shutting Windows down (or a restart for an update) skips Pensieve's close: the windowing layer ends the process when the session ends (`tao` on WM_ENDSESSION, checked 15 October), so the last words typed since the save before (up to ten seconds), the backup at close and the Word copy are skipped. Saving first when Windows asks to end the session would close the gap | Open | P2 |
 
-**Order:** as [review-plan.md](review-plan.md) has it: ARCH-6 and ARCH-18 next, then ARCH-14, then ARCH-11
-and the typing fixes it measures (ARCH-7 to 9).
+**Order:** as [review-plan.md](review-plan.md) has it: ARCH-14 next, then ARCH-11 and the typing fixes it
+measures (ARCH-7 to 9).
 
 **For the owner to decide:**
 

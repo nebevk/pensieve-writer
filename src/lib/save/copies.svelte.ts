@@ -70,9 +70,14 @@ export class DriveBackup {
       try {
         await host.flush();
         if (!host.writing()) return;
-        // Automatic backups skip identical copies, so idle hours don't push older versions out of the folder.
-        const result = await writeBackup(folder, announce ? "" : host.prefs().lastBackupSignature);
-        host.setPrefs({ lastBackupAt: new Date().toISOString(), lastBackupError: "", lastBackupSignature: result.signature });
+        // Automatic backups skip identical copies, so idle hours, or switching back and forth, don't push older
+        // versions out of the folder: each project's last one is remembered on its own (ARCH-18).
+        const result = await writeBackup(folder, (project) => (announce ? "" : (host.prefs().backupSignatures[project] ?? "")));
+        host.setPrefs({
+          lastBackupAt: new Date().toISOString(),
+          lastBackupError: "",
+          backupSignatures: { ...host.prefs().backupSignatures, [result.projectId]: result.signature },
+        });
         if (announce) host.say(result.path ? t("savedTo", { path: result.path }) : t("saved"));
       } catch (error) {
         const message = errorMessage(error);

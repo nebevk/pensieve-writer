@@ -1001,6 +1001,20 @@ export function checkpointDatabase(): Promise<void> {
   });
 }
 
+/**
+ * A whole copy of the open project's file, as `folder`'s `pensieve.db` (ARCH-6). SQLite writes it (`VACUUM INTO`)
+ * inside the queue, so no save lands between and words still in the write-ahead log come along; it is then put on
+ * the disk and in place, never over another project's file. Returns where it is.
+ */
+export function copyOpenProject(folder: string): Promise<string> {
+  return enqueue(async () => {
+    const db = await database();
+    const copy = `${folder.replace(/[\\/]+$/, "")}\\pensieve.db.writing`;
+    await db.execute("VACUUM INTO $1", [copy]);
+    return invoke<string>("settle_project_copy", { copy, folder });
+  });
+}
+
 /** Runs after every write already queued, so a pending save can't land in the next project's file. */
 export function switchProjectFile(absolutePath: string, remember = true): Promise<void> {
   return enqueue(async () => {

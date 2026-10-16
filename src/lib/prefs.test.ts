@@ -24,6 +24,14 @@ describe("settings", () => {
     expect(prefs.sidebarView).toBe("chapters");
   });
 
+  it("remember each project's last backup on its own, the one kept before included (ARCH-18)", () => {
+    const old = "0f6c2a8e-1b2c-4d5e-9f00-aa11bb22cc33:1200:abc";
+    expect(loadSaved({ lastBackupSignature: old }).backupSignatures).toEqual({ "0f6c2a8e-1b2c-4d5e-9f00-aa11bb22cc33": old });
+    expect(loadSaved({ backupSignatures: { a: "a:1:x", b: 7 } }).backupSignatures).toEqual({ a: "a:1:x" });
+    expect(loadSaved(null).backupSignatures).toEqual({});
+    expect("lastBackupSignature" in loadSaved({ lastBackupSignature: old })).toBe(false);
+  });
+
   it("remember whether the list beside the page shows chapters or the library", () => {
     expect(loadSaved({ sidebarView: "library" }).sidebarView).toBe("library");
     expect(loadSaved({ sidebarView: "tree" }).sidebarView).toBe("chapters");
