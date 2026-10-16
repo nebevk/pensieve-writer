@@ -50,9 +50,57 @@
     }
   };
 
+  // With window.__PV_SQL_WORKER__ set (the speed checks), sql.js runs in a worker, as the real database runs in
+  // Rust: a save then costs the page what the app's own calls cost it (its JSON, the messages), not the stand-in's
+  // SQL. `books` holds a handle for each file instead of its database; books aren't kept between page loads.
+  const worker = window.__PV_SQL_WORKER__ ? startWorker() : null;
+  function startWorker() {
+    const main = () => {
+      const ready = initSqlJs();
+      const dbs = new Map();
+      let next = 1;
+      onmessage = async ({ data: { id, op, wid, query, values, bytes } }) => {
+        try {
+          const SQL = await ready;
+          let result = null;
+          if (op === "open" || op === "copy") {
+            dbs.set(next, new SQL.Database(op === "copy" ? dbs.get(wid).export() : (bytes ?? undefined)));
+            result = next++;
+          } else if (op === "execute") {
+            const db = dbs.get(wid);
+            db.run(query, bindOf(query, values));
+            result = [db.getRowsModified(), db.exec("SELECT last_insert_rowid()")[0]?.values?.[0]?.[0] ?? 0];
+          } else if (op === "select") {
+            result = rowsOf(dbs.get(wid), query, values);
+          }
+          postMessage({ id, result });
+        } catch (error) {
+          postMessage({ id, error: String(error?.message ?? error) });
+        }
+      };
+    };
+    const source = `${window.__PV_SQL_SOURCE__}\n;const clean = ${clean};\nconst bindOf = ${bindOf};\nconst rowsOf = ${rowsOf};\n(${main})();`;
+    const thread = new Worker(URL.createObjectURL(new Blob([source], { type: "text/javascript" })));
+    const waiting = new Map();
+    let nextId = 1;
+    thread.onmessage = ({ data }) => {
+      const { resolve, reject } = waiting.get(data.id);
+      waiting.delete(data.id);
+      if ("error" in data) reject(new Error(data.error));
+      else resolve(data.result);
+    };
+    return (message) =>
+      new Promise((resolve, reject) => {
+        const id = nextId++;
+        waiting.set(id, { resolve, reject });
+        thread.postMessage({ ...message, id });
+      });
+  }
+
   // With window.__PV_KEEP__ set, books outlive a page load (in localStorage), like files on disk.
   const kept = (path) => `pv-db:${path}`;
   const keep = (path) => {
+    if (worker) return;
     const bytes = books.get(path).export();
     let text = "";
     for (let at = 0; at < bytes.length; at += 0x8000) text += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
@@ -78,10 +126,16 @@
   const keepFolders = () => {
     if (window.__PV_KEEP__) localStorage.setItem("pv-folders", JSON.stringify([...folders.values()]));
   };
-  const opened = (SQL, path) => {
-    if (seeds.has(path)) return new SQL.Database(seeds.get(path));
+  /** A file's bytes when it is already on the pretend disk (seeded, or kept from an earlier page), else null. */
+  const bytesFor = (path) => {
+    if (seeds.has(path)) return seeds.get(path);
     const saved = window.__PV_KEEP__ ? localStorage.getItem(kept(path)) : null;
-    return saved ? new SQL.Database(bytesOf(saved)) : new SQL.Database();
+    return saved ? bytesOf(saved) : null;
+  };
+  const opened = async (path) => {
+    if (worker) return { wid: await worker({ op: "open", bytes: bytesFor(path) }) };
+    const SQL = await sqlReady;
+    return new SQL.Database(bytesFor(path) ?? undefined);
   };
   /** Whether a file is on the pretend disk: loaded in this page, seeded, or kept from an earlier one. */
   const fileExists = (path) => {
@@ -241,9 +295,12 @@
       case "plugin:sql|load": {
         // failOpen: files whose path holds these words won't open, as a broken copy wouldn't.
         if (window.__PV_HARNESS__.failOpen && args.db.includes(window.__PV_HARNESS__.failOpen)) throw UNREACHABLE;
-        const SQL = await sqlReady;
         addFolder(parentOf(args.db.replace(/^sqlite:/, "")));
-        if (!books.has(args.db)) books.set(args.db, opened(SQL, args.db));
+        if (!books.has(args.db)) {
+          const db = await opened(args.db);
+          // Two loads of one file at once: the first one opened is the file.
+          if (!books.has(args.db)) books.set(args.db, db);
+        }
         openPools.add(args.db);
         return args.db;
       }
@@ -253,12 +310,12 @@
         // VACUUM INTO writes a copy of the database file beside it; here it is one more pretend file.
         const into = /^\s*VACUUM\s+INTO\s+\$1\s*$/i.exec(args.query);
         if (into) {
-          const SQL = await sqlReady;
           const target = String((args.values ?? [])[0]);
-          books.set(`sqlite:${target}`, new SQL.Database(db.export()));
+          books.set(`sqlite:${target}`, worker ? { wid: await worker({ op: "copy", wid: db.wid }) } : new (await sqlReady).Database(db.export()));
           window.__PV_HARNESS__.copies.push(target);
           return [0, 0];
         }
+        if (worker) return worker({ op: "execute", wid: db.wid, query: args.query, values: args.values });
         db.run(args.query, bindOf(args.query, args.values));
         const changes = db.getRowsModified();
         const last = db.exec("SELECT last_insert_rowid()")[0]?.values?.[0]?.[0] ?? 0;
@@ -268,6 +325,7 @@
       }
       case "plugin:sql|select":
         if (window.__PV_HARNESS__.failSaves) throw UNREACHABLE;
+        if (worker) return worker({ op: "select", wid: books.get(args.db).wid, query: args.query, values: args.values });
         return rowsOf(books.get(args.db), args.query, args.values);
       case "plugin:sql|close":
         if (args.db) openPools.delete(args.db);

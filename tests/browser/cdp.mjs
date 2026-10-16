@@ -62,14 +62,17 @@ export async function connect({ width = 1366, height = 820 } = {}) {
      * `keep` keeps books between page loads, as files on disk would be; `stacks` is a regex source:
      * calls whose query matches it record where in the app they came from. `tips`: the tutorial tips
      * (since 8 October) show as for a new user; off by default, so the other checks click the window as
-     * before: prefs written without `tips` get `tips: false`, and so does a first start.
+     * before: prefs written without `tips` get `tips: false`, and so does a first start. `worker`: sql.js runs
+     * in a worker, off the page's thread, as the real database does (the speed checks); books aren't kept then,
+     * and `books` holds handles, not databases to read.
      */
-    async harness({ keep = false, stacks = "", seed = null, tips = false } = {}) {
+    async harness({ keep = false, stacks = "", seed = null, tips = false, worker = false } = {}) {
       const sql = readFileSync(join(here, "..", "..", "node_modules", "sql.js", "dist", "sql-asm.js"), "utf8");
       const fake = readFileSync(join(here, "fake-tauri.js"), "utf8");
       const flags =
         `window.__PV_KEEP__ = ${keep}; window.__PV_STACKS__ = ${stacks ? `new RegExp(${JSON.stringify(stacks)})` : "null"};` +
-        `window.__PV_SEED__ = ${seed ? JSON.stringify(seed) : "null"};`;
+        `window.__PV_SEED__ = ${seed ? JSON.stringify(seed) : "null"};` +
+        (worker ? `window.__PV_SQL_WORKER__ = true; window.__PV_SQL_SOURCE__ = ${JSON.stringify(sql)};` : "");
       const quiet = tips
         ? ""
         : `(() => {

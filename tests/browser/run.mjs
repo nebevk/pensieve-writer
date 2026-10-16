@@ -117,13 +117,13 @@ for (const name of checks) {
   const verdict = out.split("\n").reverse().find((line) => /ALL PASSED|\d+ FAILED/.test(line))?.trim() ?? "";
   if (verdict === "ALL PASSED") {
     console.log(`ok    ${name}`);
-    if (verbose) for (const line of out.split("\n").filter((line) => /^(ok  |FAIL)/.test(line))) console.log(`        ${line.trim()}`);
   } else {
     failed.push(name);
     console.log(`FAIL  ${name}${verdict ? ` (${verdict})` : ""}`);
     const lines = out.split("\n").filter((line) => line.startsWith("FAIL"));
-    for (const line of (lines.length > 0 ? lines : out.trim().split("\n").slice(-5)).slice(0, 8)) console.log(`        ${line.trim()}`);
+    if (!verbose) for (const line of (lines.length > 0 ? lines : out.trim().split("\n").slice(-5)).slice(0, 8)) console.log(`        ${line.trim()}`);
   }
+  if (verbose) for (const line of out.split("\n").filter((line) => line.trim() && line.trim() !== verdict)) console.log(`        ${line.trimEnd()}`);
 }
 stop();
 try {

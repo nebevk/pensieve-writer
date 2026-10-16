@@ -179,7 +179,7 @@ Coziness is the top product priority, within the performance budget in Section 5
 - **Speed:** the target is Eva's laptop, an HP ProBook 650 G2 (2016, a 6th-generation Core i5) with
   Windows 10 and 8 GB of memory, at 1366×768 or about 1536×864. Layouts are checked at 1366 and 1536 pixels wide and speed with the processor slowed
   four times. Typing feels instant, also in a 10,000-word chapter of a 150,000-word book: about 40 ms a key
-  there, the same with a panel open, a note pinned, key sounds or smooth typing. Home appears before the
+  there, from the key to the page showing it (the typing check times it, ARCH-11), the same with a panel open, a note pinned, key sounds or smooth typing. Home appears before the
   editor's code is read. Only `opacity` and `transform` are animated, and nothing decorative runs on the
   typing path.
 - **Reliability:** no lost text after a crash, a power cut or a forced close; a failed save or backup says so.

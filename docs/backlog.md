@@ -12,7 +12,7 @@ Each item keeps its ID so it can be asked for by name; a new one gets the next f
 
 | ID | What | Status | Pri |
 |----|------|--------|-----|
-| **IMP-10** Speed on the real laptop | Time typing in a chapter of the long test book on her laptop, in Candlelit with the sparks on, with the panel open and a note pinned; time the start with that book open. The browser checks (processor slowed four times) give about 40 ms a key; this confirms it on the hardware that matters (Windows 10, 8 GB of memory) | Open | P2 |
+| **IMP-10** Speed on the real laptop | Time typing in a chapter of the long test book on her laptop, in Candlelit with the sparks on, with the panel open and a note pinned; time the start with that book open. The typing check (processor slowed four times) gives 48 ms from key to paint, the median, and 72 ms for 19 keys in 20 (ARCH-11, 16 October); this confirms it on the hardware that matters (Windows 10, 8 GB of memory) | Open | P2 |
 | **WIN-1** One window bar | The app draws its own window bar (Windows' is off). Check it in the desktop window: dragging, a double-click to maximise, the three buttons, and resizing from the edges | Check | P2 |
 | **WIN-3** Language badge | The design's badge shows the project's writing language; the app's marks the selected text, or the open chapter, as EN or SL. Decide which | Differs | P3 |
 | **IMP-28** Split `+page.svelte` | Find and replace, earlier versions, updates, the folder backup, the Word copy and a project's writings (`writingActions`: made, renamed, deleted and put back, split or joined, put in order, a file brought in as one) have their own modules, and what a folder's move or a project's leaving does to the settings is a tested function: 4,354 lines down to about 3,700. Left: the library's folders and projects on disk (renamed, moved, deleted) and notes from the tree, which change several pieces of the page's state at once; then the windows and Zen | Partial | P3 |
@@ -28,7 +28,7 @@ A review of the whole app on 14 October 2026, in three read-only passes: data sa
 the code's structure. Each finding was then checked in the code. Nothing was profiled or run. The plan made
 from it, with the fixes in order, is [review-plan.md](review-plan.md). ARCH-2, 3, 10, 16 and 17 are done
 (15 October, in 0.5.1), ARCH-1 and ARCH-5 later that day, ARCH-15, 20, 21 and 22 on 16 October (0.5.2), and ARCH-6,
-18, 23 and 14 after it; they are in the git history.
+18, 23, 14 and 11 after it; they are in the git history.
 
 **Verdict:** the architecture stays. A thin Rust side, one SQLite file per project, the editor loaded after
 Home and one queue for every database call suit one writer on an older laptop; nothing in the stack needs
@@ -53,13 +53,13 @@ replacing. What needs work is a few paths, listed below.
 | **ARCH-7** Save only what changed | Every 2-second pause sends the whole book to the file again. `writeWriting` turns every chapter into JSON, changed or not, and walks each one for pictures through Svelte's proxies (`writing` in `+page.svelte` is deep `$state`). On the long test book this is the likeliest hitch on the first key after a pause. Write only the chapters that changed, and make `writing` `$state.raw` (its updates already replace objects). Measure with ARCH-11 first | Open | P2 |
 | **ARCH-8** Typing in the Notes tab | Each key in a note replaces the notes list, and "Appears in" (`Notes.svelte`) walks every chapter's JSON and text again. Keep a copy of the open note while she types, as the panel's note does. ARCH-13 does this for every view | Open | P2 |
 | **ARCH-9** Work at each pause | The comment rail reads the whole chapter 150 ms after every key, whether there are comments or not (`CommentRail.svelte`). At 400 ms the chapter's text is read, one search per note runs over it, and the footnotes are walked. With Pages on, a pagination pass measures the page at 300 ms. Skip the comment read when the chapter has no comments, and move the 400 ms work to when the window is idle | Open | P2 |
-| **ARCH-11** Speed checks that see the real case | The browser checks time a key until it is sent, not until it shows. They type in a small book with no pauses and with Pages and comments off, and they compare two runs instead of checking against a budget, so ARCH-7 to ARCH-10 never show. Use the long test book with Pages and comments on, and pauses of 0.5 to 2.5 seconds between bursts of keys. Measure the time from key to paint (the browser's Event Timing) against the 40 ms of the speed requirement. This comes before ARCH-7 and ARCH-9; IMP-10 then confirms it on the laptop | Open | P2 |
 | **ARCH-12** One place for the open project | The open project is kept in five places: `projectLocation` and `prefs.projectPath` in the page (read together 19 times), the plain `switchingBooks` flag, and `openPath` and `openProjectId` in `sqlite.ts`, which also reads `prefs` itself. No bug today, but a save into the wrong file would start here. A session module owns it, and storage is given the path. This is the first step of what is left of IMP-28 | Open | P2 |
 | **ARCH-13** One copy of the notes | The page (`bookNotes`, `paneNote`) and Notes, To-dos, Ideas and Home each load and save their own notes, kept in step by reading them again. An old copy did get saved over newer words, from Home's tree; since 15 October the page reads a note again before it renames, copies or shows it. Left: one notes store that every view reads and writes. With a prefs store as well, it also shortens the lists of callbacks the page hands each module (IMP-28) | Partial | P2 |
 | **ARCH-19** The Rust side's edges | Commands that move or delete folders accept any path. Rust's errors are matched by their English text, not by a code. `csp` is `null` in `tauri.conf.json` | Open | P3 |
+| **ARCH-24** Every key's own work | The typing check (ARCH-11) shows a key typed in a burst in 48 ms, the median, with the processor slowed four times, where a bare editable box shows one in 16 ms. The short welcome page takes the same 48 ms as the long book, with Pages on or off and with or without comments, so this is work done for every key, not for the book's size. A profile puts about 13 ms of code on each key at that speed: ProseMirror reading the letter and applying it (about 6 ms, scrolling the cursor into view among it), Svelte updating the page after it (2.5 ms, the Ribbon's `can()` and summary among it), and the smooth-typing caret measuring where it is with `getClientRects` (4 ms, most of it a forced layout). Work that misses a frame waits for the next one, so a little less of it could bring a key from 48 ms to 32. Start with the caret, and `writing` as `$state.raw` (ARCH-7) | Open | P2 |
 
-**Order:** as [review-plan.md](review-plan.md) has it: ARCH-11 next, then the typing fixes it measures
-(ARCH-7 to 9).
+**Order:** as [review-plan.md](review-plan.md) has it: the typing fixes, by what ARCH-11 measured: every
+key's own work first (ARCH-24), then the work at a pause (ARCH-9), then the save (ARCH-7).
 
 **For the owner to decide:**
 
@@ -67,7 +67,7 @@ replacing. What needs work is a few paths, listed below.
 
 **Not checked:**
 
-- No timings were taken, so what makes up today's 40 ms a key, and the laptop's real numbers, are unknown.
+- The laptop's real numbers: the typing check's are with the processor slowed four times (IMP-10).
 - How Drive for desktop locks files.
 - One pass found that a failed note save says nothing unless Notes or Ideas was opened that session; this
   wasn't checked again.

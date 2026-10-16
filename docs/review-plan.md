@@ -45,8 +45,8 @@ Every other finding holds as written.
 | **8** | **ARCH-6, move into the library** with `VACUUM INTO` inside the save queue, and back to the old file if the new one won't open | S–M | **Done** 16 Oct |
 | **9** | **ARCH-18, back up the project she leaves**, with a backup signature per project so switching back and forth makes no duplicates | S–M | **Done** 16 Oct |
 | **10** | **ARCH-14, tests where her text is kept:** a stand-in for the SQL plugin on sql.js so `sqlite.ts` and autosave run under Vitest, about eight cases (a save round trip with č, š, ž and a picture; never touching another writing's chapters; a failed split leaves text in both chapters; snapshots taken and pruned; restore; a save queued before a switch; the move's failure paths; an upgrade). CI on every push, with `cargo test` | M | **Done** 16 Oct: 11 cases; each fails when the rule it guards is broken |
-| **11** | **ARCH-11, speed checks that see her case:** the long book with Pages and comments on, bursts and pauses, key-to-paint timed with the browser's Event Timing against 40 ms; the stand-in database fixed first | M | — |
-| **12** | **Typing, by what 11 shows:** `writing` as `$state.raw` and the Notes tab not searching the book on every key (ARCH-8), both S and certain; then mentions counted per paragraph (ARCH-9, M) and only changed chapters written (ARCH-7, M) | S–M | — |
+| **11** | **ARCH-11, speed checks that see her case:** the long book with Pages and comments on, bursts and pauses, key-to-paint timed with the browser's Event Timing against 40 ms; the stand-in database fixed first | M | **Done** 16 Oct: `typing-speed-check`, the stand-in database in a worker. A key shows in 48 ms (median), 19 in 20 within 72 ms, against 16 ms for a bare editable box. Keys in a burst cost the most, not pauses or saves: the welcome page takes the same 48 ms (ARCH-24). The Pages pass takes 80–200 ms at each pause, 60% of it forced layout. A save of the whole long book takes 250–610 ms, yet keys meeting one are 48 ms at the median too |
+| **12** | **Typing, by what 11 shows:** every key's own work first (ARCH-24): the smooth-typing caret measuring itself without forcing a layout, `writing` as `$state.raw`, less for Svelte to update per key; then the Pages pass at a pause (ARCH-9), the Notes tab (ARCH-8), and only changed chapters written (ARCH-7, least urgent: keys meeting a save were no slower at the median). Each step timed with the typing check | S–M | — |
 | **13** | **ARCH-12, one place for the open project:** storage stops reading and writing prefs (S), then a session module owns switching (M). Takes ARCH-15 with it | S, then M | — |
 | **14** | **ARCH-13's store:** one copy of the notes for every view, keystrokes kept in a draft so typing doesn't redraw the list | M–L | — |
 | **15** | **ARCH-4, one transaction per save:** one call holding `BEGIN IMMEDIATE … COMMIT` (no dependency), or a Rust command with `sqlx` | M | your choice of the two |
@@ -69,7 +69,7 @@ same day, after it.
 
 ## Not checked
 
-- No timings: what makes up a key's 40 ms on her laptop is still unknown (IMP-10, then fix 11).
+- The laptop's own timings (IMP-10): the typing check's 48 ms is with the processor slowed four times in headless Edge.
 - Two copies of the app, Drive's file locks and a shutdown during a save can only be tried on Windows itself.
   By hand, on the installed 0.5.1: with Pensieve minimised, start it again from its icon; the open window
   comes back and no second one opens. In the Book view, a link opens in the browser and the window stays.
