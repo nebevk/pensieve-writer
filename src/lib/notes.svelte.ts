@@ -18,6 +18,8 @@ export class NotesStore {
   tasks = $state.raw<Task[]>([]);
   /** The note open beside the page, as she types it; `fresh` for one just made, to be named. */
   draft = $state.raw<{ note: Note; fresh: boolean } | null>(null);
+  /** Why they couldn't be read the last time, for Home to say; empty once they were. */
+  error = $state("");
   #host: NotesHost;
 
   constructor(host: NotesHost) {
@@ -38,8 +40,10 @@ export class NotesStore {
       if (project !== this.#host.projectId()) return;
       this.notes = notes;
       this.tasks = tasks;
-    } catch {
-      // The lists keep what they had; the Notes and To-dos views report the problem.
+      this.error = "";
+    } catch (error) {
+      // The lists keep what they had, and say why.
+      this.error = error instanceof Error ? error.message : String(error);
     }
   }
 

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { pageAt } from "$lib/views/pageOf";
   import { summarize, type ProjectSummary } from "$lib/chapters/progress";
   import { compactWords, wordsFor } from "$lib/editor/counts";
@@ -15,7 +14,7 @@
   import { WRITER } from "$lib/writer";
   import { randomVerse, verse } from "$lib/quotes";
   import { encouragementFor } from "$lib/encouragement";
-  import { listTasks, saveTask, type Task } from "$lib/storage/organize";
+  import type { Task } from "$lib/storage/organize";
   import ChecklistItem from "./ChecklistItem.svelte";
   import BrandMark from "$lib/editor/BrandMark.svelte";
   import EmptyState from "./EmptyState.svelte";
@@ -39,7 +38,9 @@
     onOpenBook,
     onOpenTodos,
     onAmbience,
-    onSaveError,
+    tasks = [],
+    onToggleTask,
+    loadError = "",
     currentPath = "",
     books = [],
     appearance = "daylight",
@@ -70,7 +71,11 @@
     onOpenTodos: () => void;
     /** Opens Settings at the ambience. */
     onAmbience: () => void;
-    onSaveError?: (message: string) => void;
+    /** The project's to-dos, the store's (notes.svelte.ts), and a to-do ticked on to its next state. */
+    tasks?: Task[];
+    onToggleTask: (task: Task) => void;
+    /** Why the project's notes and to-dos couldn't be read. */
+    loadError?: string;
     currentPath?: string;
     books?: KnownProject[];
     /** The look on now, for the large mark's colours. */
@@ -88,12 +93,9 @@
     cafe: { key: "soundCafe", icon: "coffee" },
     piano: { key: "soundPiano", icon: "music" },
   };
-  const NEXT_STATE: Record<Task["todoState"], Task["todoState"]> = { todo: "doing", doing: "done", done: "todo" };
   // A short list on Home; the rest are a link away.
   const TODOS_SHOWN = 5;
 
-  let tasks = $state<Task[]>([]);
-  let message = $state("");
 
   const chapters = $derived([...writing.chapters].sort((a, b) => a.position - b.position));
   const summary = $derived(summarize(writing));
@@ -196,28 +198,6 @@
     return `${plural("writings", project.writings.length)} · ${plural("words", project.words)}`;
   }
 
-  async function toggle(task: Task) {
-    const next = { ...task, todoState: NEXT_STATE[task.todoState], updatedAt: new Date().toISOString() };
-    tasks = tasks.map((item) => (item.id === task.id ? next : item));
-    try {
-      await saveTask(next);
-    } catch (error) {
-      onSaveError?.(error instanceof Error ? error.message : t("todoUpdateFailed"));
-      void refresh();
-    }
-  }
-
-  onMount(() => {
-    void refresh();
-  });
-
-  async function refresh() {
-    try {
-      tasks = await listTasks();
-    } catch (error) {
-      message = error instanceof Error ? error.message : t("homeLoadFailed");
-    }
-  }
 </script>
 
 <!-- A project as a little title page: its name, its writings, their words, when it was last written in. -->
@@ -336,7 +316,7 @@
         <button type="button" class="link" onclick={onOpenTodos}>{t("allTodos")}</button>
       </div>
       {#each openTasks.slice(0, TODOS_SHOWN) as task (task.id)}
-        <ChecklistItem text={task.title} state={task.todoState} truncate flush onToggle={() => void toggle(task)} />
+        <ChecklistItem text={task.title} state={task.todoState} truncate flush onToggle={() => onToggleTask(task)} />
       {:else}
         <EmptyState kind="tasks" size="row" text={t("noOpenTodos")} />
       {/each}
@@ -386,8 +366,8 @@
     {/if}
   </div>
 
-  {#if message}
-    <p class="error load" role="alert">{message}</p>
+  {#if loadError}
+    <p class="error load" role="alert">{loadError}</p>
   {/if}
 </section>
 

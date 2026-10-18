@@ -3214,7 +3214,9 @@
             settingsReturn = document.activeElement instanceof HTMLElement ? document.activeElement : null;
             settingsOpen = true;
           }}
-          onSaveError={reportSaveError}
+          tasks={notesStore.tasks}
+          onToggleTask={(task) => void toggleChapterTodo(task)}
+          loadError={notesStore.error}
           onStartProject={() => startProject()}
           books={homeProjects}
           currentPath={session.path}
