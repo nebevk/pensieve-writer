@@ -3262,6 +3262,7 @@
         {#key projectId}
         <Todos
           {projectId}
+          store={notesStore}
           {chapters}
           onSaveError={reportSaveError}
           onShowNotes={() => (view = "notes")}

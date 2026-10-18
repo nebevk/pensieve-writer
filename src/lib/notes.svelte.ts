@@ -1,4 +1,4 @@
-import { listNotes, listTasks, saveNote, saveTask, scheduleNoteSave, type Note, type Task } from "$lib/storage/organize";
+import { deleteTask, listNotes, listTasks, saveNote, saveTask, scheduleNoteSave, type Note, type Task } from "$lib/storage/organize";
 
 /** What the open project's notes need from the page around it (+page.svelte). */
 export type NotesHost = {
@@ -87,6 +87,30 @@ export class NotesStore {
   /** A to-do changed. */
   replacedTask(task: Task) {
     this.tasks = this.tasks.map((item) => (item.id === task.id ? task : item));
+  }
+
+  /** A note changed, in the lists at once and saved now (a click: a to-do's state, a new name). */
+  async setNote(note: Note) {
+    this.replaced(note);
+    await saveNote(note);
+  }
+
+  /** A to-do changed, in the lists at once and saved now. */
+  async setTask(task: Task) {
+    this.replacedTask(task);
+    await saveTask(task);
+  }
+
+  /** A to-do made, in the lists at once (`first` for the top) and saved now. */
+  async addTask(task: Task, first = false) {
+    this.addedTask(task, first);
+    await saveTask(task);
+  }
+
+  /** A to-do deleted. */
+  async deleteTask(id: string) {
+    this.tasks = this.tasks.filter((task) => task.id !== id);
+    await deleteTask(id);
   }
 
   /** Opens a note beside the page to write in; one open before goes back into the list. */

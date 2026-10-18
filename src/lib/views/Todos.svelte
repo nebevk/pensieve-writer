@@ -1,34 +1,29 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { Chapter } from "$lib/model";
-  import {
-    listNotes,
-    listTasks,
-    saveNote,
-    saveTask,
-    deleteTask,
-    type Note,
-    type Task,
-    type TodoState,
-  } from "$lib/storage/organize";
+  import type { Task, TodoState } from "$lib/storage/organize";
+  import type { NotesStore } from "$lib/notes.svelte";
   import type { UiKey } from "$lib/i18n";
   import { t } from "$lib/ui.svelte";
   import EmptyState from "./EmptyState.svelte";
 
   let {
     projectId,
+    store,
     chapters = [],
     onShowNotes,
     onSaveError,
   }: {
     projectId: string;
+    /** The open project's notes and to-dos, one copy for every view (notes.svelte.ts). */
+    store: NotesStore;
     chapters?: Chapter[];
     onShowNotes?: () => void;
     onSaveError?: (message: string) => void;
   } = $props();
 
-  let notes = $state<Note[]>([]);
-  let tasks = $state<Task[]>([]);
+  const notes = $derived(store.notes);
+  const tasks = $derived(store.tasks);
   let draft = $state("");
   let message = $state("");
   let filter = $state<string>("open");
@@ -85,17 +80,10 @@
     return card.chapterId === filter;
   }
 
+  // Read again on the way in, as they may have changed elsewhere since.
   onMount(() => {
-    void refresh();
+    void store.reload();
   });
-
-  async function refresh() {
-    try {
-      [notes, tasks] = await Promise.all([listNotes(), listTasks()]);
-    } catch (error) {
-      message = error instanceof Error ? error.message : t("todosLoadFailed");
-    }
-  }
 
   function nextState(state: TodoState): TodoState {
     if (state === "todo") return "doing";
@@ -107,17 +95,13 @@
     const updatedAt = new Date().toISOString();
     try {
       if (kind === "note") {
-        const note = notes.find((item) => item.id === id);
+        const note = store.find(id);
         if (!note?.todoState) return;
-        const next = { ...note, todoState: nextState(note.todoState), updatedAt };
-        notes = notes.map((item) => (item.id === id ? next : item));
-        await saveNote(next);
+        await store.setNote({ ...note, todoState: nextState(note.todoState), updatedAt });
       } else {
         const task = tasks.find((item) => item.id === id);
         if (!task) return;
-        const next = { ...task, todoState: nextState(task.todoState), updatedAt };
-        tasks = tasks.map((item) => (item.id === id ? next : item));
-        await saveTask(next);
+        await store.setTask({ ...task, todoState: nextState(task.todoState), updatedAt });
       }
     } catch (error) {
       message = error instanceof Error ? error.message : t("todoUpdateFailed");
@@ -139,17 +123,13 @@
     const updatedAt = new Date().toISOString();
     try {
       if (card.kind === "note") {
-        const note = notes.find((item) => item.id === card.id);
+        const note = store.find(card.id);
         if (!note) return;
-        const next = { ...note, title, updatedAt };
-        notes = notes.map((item) => (item.id === card.id ? next : item));
-        await saveNote(next);
+        await store.setNote({ ...note, title, updatedAt });
       } else {
         const task = tasks.find((item) => item.id === card.id);
         if (!task) return;
-        const next = { ...task, title, chapterId: editChapter, noteId: editNote, updatedAt };
-        tasks = tasks.map((item) => (item.id === card.id ? next : item));
-        await saveTask(next);
+        await store.setTask({ ...task, title, chapterId: editChapter, noteId: editNote, updatedAt });
       }
       editing = null;
     } catch (error) {
@@ -161,14 +141,11 @@
   async function removeCard(card: (typeof cards)[number]) {
     try {
       if (card.kind === "note") {
-        const note = notes.find((item) => item.id === card.id);
+        const note = store.find(card.id);
         if (!note) return;
-        const next = { ...note, todoState: null, updatedAt: new Date().toISOString() };
-        notes = notes.map((item) => (item.id === card.id ? next : item));
-        await saveNote(next);
+        await store.setNote({ ...note, todoState: null, updatedAt: new Date().toISOString() });
       } else {
-        tasks = tasks.filter((item) => item.id !== card.id);
-        await deleteTask(card.id);
+        await store.deleteTask(card.id);
       }
       editing = null;
     } catch (error) {
@@ -190,9 +167,8 @@
       noteId: "",
     };
     draft = "";
-    tasks = [task, ...tasks];
     try {
-      await saveTask(task);
+      await store.addTask(task, true);
     } catch (error) {
       message = error instanceof Error ? error.message : t("todoAddFailed");
       onSaveError?.(message);
@@ -298,8 +274,8 @@
       {/each}
     </div>
     {/if}
-    {#if message}
-      <p class="error" role="alert">{message}</p>
+    {#if message || store.error}
+      <p class="error" role="alert">{message || store.error}</p>
     {/if}
   </div>
 </section>

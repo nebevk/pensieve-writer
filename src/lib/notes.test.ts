@@ -10,6 +10,7 @@ vi.mock("$lib/storage/organize", () => ({
   saveNote: async (note: Note) => void saved.push(`note ${note.id} ${note.plainText} [${note.chapterIds.join(",")}]`),
   saveTask: async (task: Task) => void saved.push(`task ${task.id} ${task.chapterId}`),
   scheduleNoteSave: (note: Note) => void saved.push(`later ${note.id} ${note.plainText} [${note.chapterIds.join(",")}]`),
+  deleteTask: async (id: string) => void saved.push(`deleted ${id}`),
 }));
 
 const { NotesStore } = await import("./notes.svelte");
@@ -94,6 +95,16 @@ describe("the open project's notes, one copy (ARCH-13)", () => {
     store.open(store.notes[0]);
     store.removed("ana");
     expect([store.draft, store.notes.map((item) => item.id), store.tasks.map((item) => item.id)]).toEqual([null, ["bor"], ["t1", "t2"]]);
+  });
+
+  it("a view's change is in the lists at once, then saved", async () => {
+    await store.setTask({ ...store.tasks[0], todoState: "done" });
+    await store.addTask(task("t3", ""), true);
+    await store.deleteTask("t2");
+    await store.setNote({ ...store.notes[1], todoState: "todo" });
+    expect(store.tasks.map((item) => `${item.id} ${item.todoState}`)).toEqual(["t3 todo", "t1 done"]);
+    expect(store.notes[1].todoState).toBe("todo");
+    expect(saved).toEqual(["task t1 drugo", "task t3 ", "deleted t2", "note bor Brod. []"]);
   });
 
   it("renamed from a tree: the list's copy and the draft's", () => {
