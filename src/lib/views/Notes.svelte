@@ -99,12 +99,19 @@
     return t("editedAgo", { ago: ago(iso) });
   }
 
+  // What "Appears in" depends on: the note's names and the chapters linked to it, not its text, so typing in
+  // its body doesn't search the whole book again on every key (ARCH-8). Equal keys stop here.
+  const appearsOf = $derived(
+    active ? JSON.stringify({ id: active.id, title: active.title, category: active.category, aliases: active.aliases, chapterIds: active.chapterIds }) : "",
+  );
+
   const appears = $derived.by(() => {
-    if (!active) return [];
+    if (!appearsOf) return [];
+    const note = JSON.parse(appearsOf) as Pick<Note, "id" | "title" | "category" | "aliases" | "chapterIds">;
     return orderedChapters.flatMap((chapter, index) => {
-      const links = linksTo(chapter.contentJson, active.id);
-      const count = Math.max(noteMentions(chapter.plainText, active), links);
-      const linked = active.chapterIds.includes(chapter.id) || links > 0;
+      const links = linksTo(chapter.contentJson, note.id);
+      const count = Math.max(noteMentions(chapter.plainText, note), links);
+      const linked = note.chapterIds.includes(chapter.id) || links > 0;
       if (!linked && count === 0) return [];
       return [{ id: chapter.id, label: `${index + 1} · ${chapter.title}`, count }];
     });
