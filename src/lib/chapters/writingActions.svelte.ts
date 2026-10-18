@@ -7,7 +7,7 @@ import { createChapter, emptyDocument, type Shelf, type Writing } from "$lib/mod
 import { errorMessage } from "$lib/save/autosave";
 import { deletedName, writeKeptCopy } from "$lib/save/kept";
 import { backupFile } from "$lib/storage/backupFile";
-import { flushNoteSave, listNotes, listTasks, saveNote, saveTask } from "$lib/storage/organize";
+import { flushNoteSave } from "$lib/storage/organize";
 import {
   addWriting,
   duplicateWriting,
@@ -68,6 +68,8 @@ export type WritingsHost = {
   rememberProject: () => void;
   /** Reads the project's notes and to-dos again. */
   loadOrganizer: () => Promise<void>;
+  /** To-dos and note links on chapters joined into one page now point at that page (notes.svelte.ts). */
+  moveChapterLinks: (removed: string[], kept: string) => Promise<void>;
   notice: (message: string) => void;
   fail: (message: string) => void;
 };
@@ -321,7 +323,7 @@ export class WritingActions {
       const now = new Date().toISOString();
       if (split) return splitWriting(target, now, t("untitled"));
       const joined = joinWriting(target, now);
-      await this.#movePageLinks(joined.removed, joined.kept);
+      await host.moveChapterLinks(joined.removed, joined.kept);
       return joined.writing;
     };
     try {
@@ -438,21 +440,6 @@ export class WritingActions {
       });
     } catch (error) {
       host.fail(errorMessage(error));
-    }
-  }
-
-  /** To-dos and note links on chapters that were joined into one page now point at that page. */
-  async #movePageLinks(removed: string[], kept: string) {
-    if (removed.length === 0 || !kept) return;
-    const gone = new Set(removed);
-    const [notes, tasks] = await Promise.all([listNotes(), listTasks()]);
-    for (const task of tasks) {
-      if (gone.has(task.chapterId)) await saveTask({ ...task, chapterId: kept });
-    }
-    for (const note of notes) {
-      if (!note.chapterIds.some((id) => gone.has(id))) continue;
-      const chapterIds = [...new Set(note.chapterIds.map((id) => (gone.has(id) ? kept : id)))];
-      await saveNote({ ...note, chapterIds });
     }
   }
 }

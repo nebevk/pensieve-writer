@@ -46,7 +46,7 @@
   import { panelNotes, panelOrder } from "$lib/views/panelNotes";
   import { isUntitled } from "$lib/i18n";
   import { locale, snapshotName, t, ui } from "$lib/ui.svelte";
-  import { deleteNote, flushNoteSave, listNotes, listTasks, saveNote, saveTask, scheduleNoteSave, watchNoteSaving, type Note, type NoteCategory, type Task } from "$lib/storage/organize";
+  import { deleteNote, flushNoteSave, listNotes, saveNote, saveTask, watchNoteSaving, type Note, type NoteCategory, type Task } from "$lib/storage/organize";
   import { ideaNote, namesANote, noteFromComment, noteFromWords, todoFromComment } from "$lib/storage/fromComment";
   import type { NoteTarget } from "$lib/editor/noteLinks";
   import type { CommentInfo } from "$lib/editor/comments";
@@ -54,6 +54,7 @@
   import type { SearchHit, SearchSource } from "$lib/views/searchAll";
   import { otherCards, type IdeaCard } from "$lib/views/ideas";
   import { addWriting, copyOpenProject, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, moveProjectFile, rememberPersonalWord, restoreFromBackup, setShelf, setWritingFields, snapshotSavedWriting, sqliteStorage, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
+  import { NotesStore } from "$lib/notes.svelte";
   import { Session } from "$lib/session.svelte";
   import type { Editor as TiptapEditor } from "@tiptap/core";
   import type { NodeSelection } from "@tiptap/pm/state";
@@ -142,9 +143,9 @@
       }),
     fail: (message) => (saveStatus = { state: "error", message }),
   });
-  // The note shown in the panel beside the page, to read and write (owner, 12 October); `fresh` for one
-  // just made, to be named. The panel has its own copy of it while she types (see editPaneNote).
-  let paneNote = $state<{ note: Note; fresh: boolean } | null>(null);
+  // The project's notes and to-dos, one copy for the page, the panel and the library, with the note shown in
+  // the panel beside the page (owner, 12 October) as a draft while she types it (ARCH-13, notes.svelte.ts).
+  const notesStore = new NotesStore({ projectId: () => projectId });
   // The panel's search through the notes, and whether its to-dos are the chapter's or the project's.
   let noteQuery = $state("");
   let todoScope = $state<"chapter" | "all">("chapter");
@@ -175,9 +176,6 @@
   /** A comment just added, whose card takes the keyboard. */
   let commentFocus = $state("");
   let commentCount = $state(0);
-  // The project's notes and to-dos, for the panel beside the page and the library.
-  let bookNotes = $state<Note[]>([]);
-  let bookTasks = $state<Task[]>([]);
   /** A short message over the page, such as why a comment could not be added. */
   let writeNotice = $state("");
   let noticeTimer = 0;
@@ -301,12 +299,12 @@
   const projectId = $derived(shelf?.projectId ?? "");
   const writingId = $derived(writing?.id ?? "");
   // The panel follows the chapter's text as it is reported after a pause in typing, not every key.
-  const chapterTodos = $derived(bookTasks.filter((task) => task.chapterId === activeId));
-  const chapterNotes = $derived(activeChapter ? notesInChapter(bookNotes, activeChapter) : []);
+  const chapterTodos = $derived(notesStore.tasks.filter((task) => task.chapterId === activeId));
+  const chapterNotes = $derived(activeChapter ? notesInChapter(notesStore.notes, activeChapter) : []);
   // The panel's notes, as it lists them, and that order for its previous and next buttons.
-  const noteList = $derived(panelNotes(chapterNotes, bookNotes, noteQuery, locale()));
+  const noteList = $derived(panelNotes(chapterNotes, notesStore.notes, noteQuery, locale()));
   const noteOrder = $derived(panelOrder(noteList));
-  const noteIndex = $derived(paneNote ? noteOrder.indexOf(paneNote.note.id) : -1);
+  const noteIndex = $derived(notesStore.draft ? noteOrder.indexOf(notesStore.draft.note.id) : -1);
   const panelOpen = $derived(!zen && prefs.panel !== "");
   // A one-page writing has no chapter list: the library shows beside it, whichever tab was chosen.
   const libraryShown = $derived(prefs.sidebarView === "library" || (!!writing && !writing.split));
@@ -658,7 +656,7 @@
     const { removeComment } = await import("$lib/editor/comments");
     if (editor.isDestroyed) return;
     editor.view.dispatch(removeComment(editor.state, comment.id));
-    bookTasks = [...bookTasks, task];
+    notesStore.addedTask(task);
     showTodos("chapter");
   }
 
@@ -676,29 +674,20 @@
     const { removeComment } = await import("$lib/editor/comments");
     if (editor.isDestroyed) return;
     editor.view.dispatch(removeComment(editor.state, comment.id, { noteId: note.id, title: note.title }));
-    bookNotes = [note, ...bookNotes];
+    notesStore.added(note);
     showNote(note.id);
   }
 
-  /** Reads the project's notes and to-dos again for the panel, as they may have changed elsewhere. */
-  async function loadOrganizer() {
-    const id = projectId;
-    if (!id) return;
-    try {
-      const [notes, tasks] = await Promise.all([listNotes(), listTasks()]);
-      if (id !== projectId) return;
-      bookNotes = notes;
-      bookTasks = tasks;
-    } catch {
-      // The panel keeps what it had; the Notes and To-dos views report the problem.
-    }
+  /** Reads the project's notes and to-dos again for the panel and the library, as they may have changed elsewhere. */
+  function loadOrganizer(): Promise<void> {
+    return notesStore.reload();
   }
 
   const NEXT_STATE: Record<Task["todoState"], Task["todoState"]> = { todo: "doing", doing: "done", done: "todo" };
 
   async function toggleChapterTodo(task: Task) {
     const next = { ...task, todoState: NEXT_STATE[task.todoState], updatedAt: new Date().toISOString() };
-    bookTasks = bookTasks.map((item) => (item.id === task.id ? next : item));
+    notesStore.replacedTask(next);
     try {
       await saveTask(next);
     } catch (error) {
@@ -718,7 +707,7 @@
       chapterId: activeId,
       noteId: "",
     };
-    bookTasks = [...bookTasks, task];
+    notesStore.addedTask(task);
     try {
       await saveTask(task);
     } catch (error) {
@@ -748,12 +737,12 @@
         reportSaveError(errorMessage(error));
         return;
       }
-      bookNotes = [note, ...bookNotes];
+      notesStore.added(note);
       showNote(note.id, true);
       return;
     }
     const name = words.toLowerCase();
-    let note = bookNotes.find(
+    let note = notesStore.notes.find(
       (item) => item.title.trim().toLowerCase() === name || item.aliases.split(",").some((alias) => alias.trim().toLowerCase() === name),
     );
     if (!note) {
@@ -764,7 +753,7 @@
         reportSaveError(errorMessage(error));
         return;
       }
-      bookNotes = [note, ...bookNotes];
+      notesStore.added(note);
     }
     // The words link to it, unless they are a title line's (plain text) or changed meanwhile.
     const unchanged = !editor.isDestroyed && editor.state.doc.textBetween(from, to, "\n").trim() === words;
@@ -776,24 +765,14 @@
 
   /** Opens a note in the Notes view. */
   function openNoteInView(id: string) {
-    const note = bookNotes.find((item) => item.id === id);
+    const note = notesStore.notes.find((item) => item.id === id);
     view = "notes";
     noteOpenRequest = { id, title: note?.title ?? "", at: Date.now() };
   }
 
-  /**
-   * A note as it is now: the panel's copy while she writes it there, else read again from the file (after any
-   * save still waiting), as the Notes, Ideas and To-dos views keep copies of their own and may have changed
-   * it since the page last read the notes. Acting on the page's older copy would save it over her newer
-   * words (ARCH-13).
-   */
-  async function currentNote(id: string): Promise<Note | null> {
-    if (paneNote?.note.id === id) return paneNote.note;
-    const project = projectId;
-    const notes = await listNotes();
-    if (project !== projectId) return null;
-    bookNotes = notes;
-    return notes.find((item) => item.id === id) ?? null;
+  /** A note as it is now, never an older copy, which would be saved over her newer words (notes.svelte.ts). */
+  function currentNote(id: string): Promise<Note | null> {
+    return notesStore.current(id);
   }
 
   // The latest note asked for in the panel: one asked for before it, read later, doesn't take its place.
@@ -802,7 +781,7 @@
   /** Shows a note in the panel beside the page, to read and write; `fresh` for one just made, to be named. */
   async function showNote(id: string, fresh = false) {
     const asked = ++noteAsked;
-    if (paneNote) leaveNote();
+    if (notesStore.draft) notesStore.leave();
     let note: Note | null;
     try {
       note = await currentNote(id);
@@ -811,7 +790,7 @@
       return;
     }
     if (!note || asked !== noteAsked) return;
-    paneNote = { note, fresh };
+    notesStore.open(note, fresh);
     if (prefs.panel !== "notes") prefs = { ...prefs, panel: "notes" };
   }
 
@@ -836,38 +815,27 @@
   // The panel's note is for writing beside. Elsewhere (Notes, say) she may change that note, so it goes
   // back to the book's notes on the way, and its copy can't later be saved over what she changed there.
   $effect(() => {
-    if (view !== "write" && paneNote) untrack(() => leaveNote());
+    if (view !== "write" && notesStore.draft) untrack(() => notesStore.leave());
   });
 
-  /**
-   * A change to the panel's note. The panel has its own copy while she types, so the lists and the library,
-   * which read every note, aren't worked out again at each key; they have it when she leaves the note.
-   */
+  /** A change to the panel's note: its draft while she types it, which the lists have when she leaves it. */
   function editPaneNote(id: string, patch: Partial<Note>) {
-    const current = paneNote?.note.id === id ? paneNote.note : bookNotes.find((note) => note.id === id);
-    if (!current) return;
-    const next = { ...current, ...patch, updatedAt: new Date().toISOString() };
-    // Typed into once, it is no longer new.
-    if (paneNote?.note.id === id) paneNote = { note: next, fresh: false };
-    else bookNotes = bookNotes.map((note) => (note.id === id ? next : note));
-    scheduleNoteSave(next);
+    notesStore.edit(id, patch);
   }
 
-  /** The panel's copy goes back to the book's notes, and the panel shows the list, or `then`. */
+  /** The panel's note goes back to the project's notes, and the panel shows the list, or `then`. */
   function leaveNote(then: Note | null = null) {
-    const left = paneNote?.note;
-    if (left) bookNotes = bookNotes.map((note) => (note.id === left.id ? left : note));
-    paneNote = then ? { note: then, fresh: false } : null;
+    notesStore.leave(then);
   }
 
   /** A [[link]] in the panel's note opens the linked note there; a link to no note yet makes it. */
   function openLinkedNote(target: NoteTarget) {
     const title = target.title.trim();
     const found =
-      (target.id ? bookNotes.find((note) => note.id === target.id) : undefined) ??
-      bookNotes.find((note) => note.title.trim().toLowerCase() === title.toLowerCase());
+      (target.id ? notesStore.notes.find((note) => note.id === target.id) : undefined) ??
+      notesStore.notes.find((note) => note.title.trim().toLowerCase() === title.toLowerCase());
     // A note's link to itself leaves it as it is (the book's copy is older than the panel's).
-    if (found && found.id === paneNote?.note.id) return;
+    if (found && found.id === notesStore.draft?.note.id) return;
     if (found) leaveNote(found);
     // Made, it takes the note's place, as a found one does.
     else if (title) void newNoteIn("ideas", title);
@@ -875,7 +843,7 @@
 
   /** From the panel's note to Notes, once what she typed is saved, so Notes reads it. */
   async function paneNoteToNotes() {
-    const id = paneNote?.note.id;
+    const id = notesStore.draft?.note.id;
     leaveNote();
     if (!id) return;
     await flushNoteSave().catch(() => undefined);
@@ -900,7 +868,7 @@
       chapterId: "",
       noteId: "",
     };
-    bookTasks = [task, ...bookTasks];
+    notesStore.addedTask(task, true);
     try {
       await saveTask(task);
     } catch (error) {
@@ -1916,7 +1884,7 @@
   /** Earlier versions, a split to take back and the panel's note belong to the writing that was open. */
   function resetWritingState() {
     versions.reset();
-    paneNote = null;
+    notesStore.drop();
     noteQuery = "";
     splitBack = null;
     pageSpot = null;
@@ -2070,7 +2038,7 @@
   // A note from the search opens once its project's notes are there.
   $effect(() => {
     const id = noteToShow;
-    if (!id || !bookNotes.some((note) => note.id === id)) return;
+    if (!id || !notesStore.notes.some((note) => note.id === id)) return;
     noteToShow = "";
     untrack(() => showNote(id));
   });
@@ -2136,7 +2104,7 @@
       reportSaveError(errorMessage(error));
       return false;
     }
-    bookNotes = [note, ...bookNotes];
+    notesStore.added(note);
     notice(t("ideaSaved", { project: shelf?.title ?? "" }));
     return true;
   }
@@ -2310,6 +2278,7 @@
     refreshShelf,
     rememberProject,
     loadOrganizer,
+    moveChapterLinks: (removed, kept) => notesStore.moveChapterLinks(removed, kept),
     notice,
     fail: reportSaveError,
   });
@@ -2335,7 +2304,7 @@
     };
     try {
       await saveNote(note);
-      bookNotes = [note, ...bookNotes];
+      notesStore.added(note);
       // A note named in the library has its name; one made with the panel's + is named first.
       showNote(note.id, !title.trim());
     } catch (error) {
@@ -2350,8 +2319,7 @@
       const note = await currentNote(id);
       if (!note) return;
       const next = { ...note, ...patch, updatedAt: new Date().toISOString() };
-      bookNotes = bookNotes.map((item) => (item.id === id ? next : item));
-      if (paneNote?.note.id === id) paneNote = { ...paneNote, note: next };
+      notesStore.replaced(next);
       await saveNote(next);
     } catch (error) {
       reportSaveError(errorMessage(error));
@@ -2367,7 +2335,7 @@
       // A JSON copy: the note's text must be its own, not shared with the original.
       const copy: Note = { ...(JSON.parse(JSON.stringify(note)) as Note), id: crypto.randomUUID(), title: t("copyOf", { title: note.title }), createdAt: now, updatedAt: now };
       await saveNote(copy);
-      bookNotes = [copy, ...bookNotes];
+      notesStore.added(copy);
     } catch (error) {
       reportSaveError(errorMessage(error));
     }
@@ -2376,13 +2344,12 @@
   /** Deletes a note after keeping an earlier version of the open writing, which holds every note as it was. */
   async function deleteNoteFromTree(id: string) {
     // It leaves the panel first, so nothing typed there can write it back after the delete.
-    if (paneNote?.note.id === id) paneNote = null;
+    if (notesStore.draft?.note.id === id) notesStore.drop();
     try {
       await flushNoteSave();
       if (writingId) await snapshotSavedWriting(writingId);
       await deleteNote(id);
-      bookNotes = bookNotes.filter((item) => item.id !== id);
-      bookTasks = bookTasks.filter((task) => task.noteId !== id);
+      notesStore.removed(id);
     } catch (error) {
       reportSaveError(errorMessage(error));
     }
@@ -2699,8 +2666,8 @@
     known: prefs.knownProjects,
     currentPath: session.path,
     shelf,
-    notes: bookNotes,
-    openTodos: bookTasks.filter((task) => task.todoState !== "done").length,
+    notes: notesStore.notes,
+    openTodos: notesStore.tasks.filter((task) => task.todoState !== "done").length,
   });
 
   /** The library folder from Settings: never in a synced folder, never with the backups. */
@@ -3091,7 +3058,7 @@
                   onOpenNote={(target) => {
                     // A linked name opens its note in the panel beside the page.
                     const title = target.title.trim().toLowerCase();
-                    const id = target.id || (bookNotes.find((note) => note.title.trim().toLowerCase() === title)?.id ?? "");
+                    const id = target.id || (notesStore.notes.find((note) => note.title.trim().toLowerCase() === title)?.id ?? "");
                     if (id) showNote(id);
                   }}
                 />
@@ -3163,13 +3130,13 @@
     {/if}
   </section>
   {#if panelOpen && writing && activeChapter}
-    {#if prefs.panel === "notes" && paneNote && NotePanePart.current}
+    {#if prefs.panel === "notes" && notesStore.draft && NotePanePart.current}
       {@const NotePane = NotePanePart.current}
       <!-- Each note is set out afresh, so a new one's name is ready to be typed. -->
-      {#key paneNote.note.id}
+      {#key notesStore.draft.note.id}
         <NotePane
-          note={paneNote.note}
-          fresh={paneNote.fresh}
+          note={notesStore.draft.note}
+          fresh={notesStore.draft.fresh}
           language={writing.language}
           index={noteIndex}
           total={noteOrder.length}
@@ -3185,13 +3152,13 @@
     {:else}
       <ChapterPanel
         list={prefs.panel || "notes"}
-        todos={bookTasks}
+        todos={notesStore.tasks}
         chapterId={activeChapter.id}
         {chapters}
         {todoScope}
         onTodoScope={(scope) => (todoScope = scope)}
         notes={noteList}
-        book={bookNotes}
+        book={notesStore.notes}
         bind:query={noteQuery}
         onNewNote={() => void newNoteIn("ideas", "", activeId ?? "")}
         onOpenNote={(id) => showNote(id)}
