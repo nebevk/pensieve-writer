@@ -21,7 +21,7 @@ describe("the project's file, opened again after it failed (ARCH-1)", () => {
     const { checkpointDatabase, switchProjectFile } = await import("./sqlite");
     const file = "C:\\Users\\Eva\\Documents\\Pensieve\\Zgodbe ob reki\\pensieve.db";
     load.mockRejectedValueOnce(new Error("unable to open database file"));
-    await expect(switchProjectFile(file, false)).rejects.toThrow("unable to open database file");
+    await expect(switchProjectFile(file)).rejects.toThrow("unable to open database file");
     expect(load).toHaveBeenCalledTimes(1);
 
     // Its folder renamed away: not opened, so the SQL plugin can't make an empty file where it was.
@@ -41,10 +41,38 @@ describe("the project's file, opened again after it failed (ARCH-1)", () => {
   it("a project opened on purpose may make its file: a new project's is made so", async () => {
     const { switchProjectFile } = await import("./sqlite");
     load.mockRejectedValueOnce(new Error("unable to open database file"));
-    await expect(switchProjectFile("C:\\a\\pensieve.db", false)).rejects.toThrow();
+    await expect(switchProjectFile("C:\\a\\pensieve.db")).rejects.toThrow();
     load.mockResolvedValue(unreadable());
-    await expect(switchProjectFile("C:\\Nov projekt\\pensieve.db", false)).rejects.toThrow("disk I/O error");
+    await expect(switchProjectFile("C:\\Nov projekt\\pensieve.db")).rejects.toThrow("disk I/O error");
     expect(load).toHaveBeenLastCalledWith("sqlite:C:\\Nov projekt\\pensieve.db");
     expect(existsAsked()).toBe(0);
+  });
+});
+
+describe("the open project is the one the page opened (ARCH-12)", () => {
+  const setItem = vi.fn();
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });
+    // Settings that name a project, as an older Pensieve's storage would.
+    vi.stubGlobal("localStorage", { getItem: () => JSON.stringify({ projectPath: "C:\\Stari projekt\\pensieve.db" }), setItem, removeItem: vi.fn() });
+    load.mockReset();
+    invoke.mockReset();
+    setItem.mockReset();
+  });
+
+  it("before the page opens one, nothing is opened: not the file the settings name, nor a new one", async () => {
+    const { checkpointDatabase } = await import("./sqlite");
+    await expect(checkpointDatabase()).rejects.toThrow("No project is open yet");
+    expect(load).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("opening one writes nothing to the settings: remembering it is the page's", async () => {
+    const { switchProjectFile } = await import("./sqlite");
+    load.mockResolvedValue(unreadable());
+    await expect(switchProjectFile("C:\\Nov projekt\\pensieve.db")).rejects.toThrow("disk I/O error");
+    expect(load).toHaveBeenLastCalledWith("sqlite:C:\\Nov projekt\\pensieve.db");
+    expect(setItem).not.toHaveBeenCalled();
   });
 });

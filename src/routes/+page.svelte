@@ -410,7 +410,7 @@
         try {
           const stored = await loadPrefsFile();
           if (!disposed && stored) {
-            // The database opens with the book path in browser storage, so put the file's settings there first.
+            // Browser storage holds them too, so the next start's first frame has them before the file is read.
             savePrefs(stored);
             prefs = stored;
           } else if (!disposed) savePrefs(prefs);
@@ -1804,7 +1804,7 @@
    */
   async function openAtStart() {
     libraryRoot = await libraryFolderPath();
-    const saved = loadPrefs().projectPath.trim();
+    const saved = prefs.projectPath.trim();
     let path = saved;
     if (saved && !(await invoke<boolean>("project_file_exists", { path: saved }))) {
       homeNotice = t("projectFolderMissing", { path: folderOf(saved).path });
@@ -2628,7 +2628,8 @@
             const existing = prefs.samples[sample.slug] && (await invoke<boolean>("project_file_exists", { path: prefs.samples[sample.slug] }));
             const path = existing ? prefs.samples[sample.slug] : await makeProjectFolder(parent, sample.title, true);
             const fresh = !(await invoke<boolean>("project_file_exists", { path }));
-            await switchProjectFile(path, false);
+            // Opened only to be written: it never becomes the project that opens at the next start.
+            await switchProjectFile(path);
             const opened = await openShelf("", { title: sample.title, writingTitle: sample.title, welcome: false });
             const built = sample.build(opened.shelf.projectId);
             // A file made just now starts with one empty writing, which simply goes.

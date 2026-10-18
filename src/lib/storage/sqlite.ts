@@ -10,11 +10,10 @@ import type {
   WritingLanguage,
   WritingOutline,
 } from "$lib/model";
-import { loadPrefs, savePrefs } from "$lib/prefs";
 import { firstChapters, newWritingChapters } from "$lib/chapters/welcome";
 import { wordsFor } from "$lib/editor/counts";
 import { translate } from "$lib/i18n";
-import { t } from "$lib/ui.svelte";
+import { t, ui } from "$lib/ui.svelte";
 import type { Note, Task } from "./organize";
 import { shownJson, storedJson } from "./pictures";
 import { readNotesWith, readTasksWith, writeNoteWith, writeTaskWith } from "./noteRows";
@@ -41,7 +40,6 @@ import type { BackupContent, BackupWriting } from "./backupFile";
  * so nothing in it has to move.
  */
 
-const DEFAULT_DB_URL = "sqlite:pensieve.db";
 const SCHEMA_VERSION = 4;
 const HOURLY_LIMIT = 48;
 const DAILY_LIMIT = 30;
@@ -93,14 +91,19 @@ type ShelfRow = { project_id: string; title: string; folders_json: string; creat
 type SnapshotKind = SnapshotInfo["kind"];
 
 /**
- * The open file, kept here: set when a project opens, and never read back from the settings while a switch
- * runs, where a settings save from the page could still hold the old path.
+ * The open file: the one the page last opened with switchProjectFile, and only that (ARCH-12). Storage never
+ * reads it from the settings or writes it there: remembering it for the next start is the page's.
  */
 let openPath: string | null = null;
 
+/** The open file's path; before the page has opened a project there is none, and nothing is opened instead. */
+function openFile(): string {
+  if (!openPath) throw new Error(t("errNoProject"));
+  return openPath;
+}
+
 function connectionUrl(): string {
-  const path = (openPath ?? loadPrefs().projectPath).trim();
-  return path ? `sqlite:${path}` : DEFAULT_DB_URL;
+  return `sqlite:${openFile()}`;
 }
 
 let databasePromise: Promise<Database> | null = null;
@@ -145,7 +148,7 @@ async function openDatabase(mustExist = false): Promise<Database> {
   }
   // Tried again after failing, it opens only while it is there: the plugin would make a missing file anew,
   // empty, where her project was.
-  if (mustExist && !(await invoke<boolean>("project_file_exists", { path: await databaseFilePath() }))) {
+  if (mustExist && !(await invoke<boolean>("project_file_exists", { path: openFile() }))) {
     throw new Error(t("errProjectUnreachable"));
   }
   const db = await Database.load(connectionUrl());
@@ -279,11 +282,6 @@ async function tableExists(db: Database, name: string): Promise<boolean> {
   return rows.length > 0;
 }
 
-/** Where the open file is on disk. */
-async function databaseFilePath(): Promise<string> {
-  return (openPath ?? loadPrefs().projectPath).trim() || (await invoke<string>("default_project_path"));
-}
-
 /**
  * A file from an older Pensieve, with a book in it, is copied as it was before it changes for projects
  * that hold several writings: "pensieve.db.before-projects", beside it, once. The change only adds, but
@@ -295,7 +293,7 @@ async function keepCopyBeforeUpgrade(db: Database): Promise<void> {
   if (Number(versions[0]?.version) >= SCHEMA_VERSION) return;
   const books = await db.select<{ count: number }[]>("SELECT COUNT(*) AS count FROM projects");
   if (!Number(books[0]?.count)) return;
-  const copy = `${await databaseFilePath()}.before-projects`;
+  const copy = `${openFile()}.before-projects`;
   if (await invoke<boolean>("project_file_exists", { path: copy })) return;
   // VACUUM INTO writes a whole, consistent copy, text still in the write-ahead log included.
   await db.execute("VACUUM INTO $1", [copy]);
@@ -712,7 +710,7 @@ export function openShelf(writingId: string, fresh: NewProject): Promise<OpenedP
   return enqueue(async () => {
     const db = await database();
     if (!(await readShelfRow(db))) {
-      const language = loadPrefs().uiLanguage;
+      const language = ui.language;
       const now = new Date().toISOString();
       await db.execute(
         `INSERT OR IGNORE INTO shelf (id, project_id, title, folders_json, created_at) VALUES (1, $1, $2, '[]', $3)`,
@@ -731,7 +729,7 @@ export function openShelf(writingId: string, fresh: NewProject): Promise<OpenedP
     const chosen = live.find((item) => item.id === writingId) ?? (lastOpened?.openedAt ? lastOpened : live[0]);
     if (chosen) return { shelf, writing: await readWritingWhole(db, chosen.id) };
     // Every writing is in Deleted: a new one, so there is a page to write on.
-    const language = loadPrefs().uiLanguage;
+    const language = ui.language;
     const writing = blankWriting(translate(language, "untitled"), true, language);
     await insertWritingRow(db, writing, "", await nextPosition(db));
     await writeWriting(db, writing);
@@ -798,7 +796,7 @@ async function readIdeas(db: Database): Promise<IdeaText[]> {
  */
 async function readProject<T>(path: string, read: (db: Database) => Promise<T>): Promise<T> {
   const key = (value: string) => value.trim().replace(/\//g, "\\").toLowerCase();
-  if (key(path) === key(openPath ?? loadPrefs().projectPath)) return enqueue(async () => read(await database()));
+  if (openPath && key(path) === key(openPath)) return enqueue(async () => read(await database()));
   const url = `sqlite:${path}`;
   const db = await Database.load(url);
   try {
@@ -1015,16 +1013,17 @@ export function copyOpenProject(folder: string): Promise<string> {
   });
 }
 
-/** Runs after every write already queued, so a pending save can't land in the next project's file. */
-export function switchProjectFile(absolutePath: string, remember = true): Promise<void> {
+/**
+ * Runs after every write already queued, so a pending save can't land in the next project's file. Only storage's
+ * own: which project opens at the next start is the page's to remember (ARCH-12).
+ */
+export function switchProjectFile(absolutePath: string): Promise<void> {
   return enqueue(async () => {
-    const previous = connectionUrl();
+    const previous = openPath ? `sqlite:${openPath}` : "";
     const open = databasePromise;
-    openPath = absolutePath;
-    // A sample's file, opened only to be written, never becomes the project that opens at the next start.
-    if (remember) savePrefs({ ...loadPrefs(), projectPath: absolutePath });
-    // Nothing is opened just to close it: at the start, the default file must not be made for nothing.
-    if (open) {
+    openPath = absolutePath.trim();
+    // Nothing is opened just to close it.
+    if (open && previous) {
       try {
         await (await open).close(previous);
       } catch {
@@ -1043,7 +1042,7 @@ async function closeOpen(): Promise<void> {
   const open = databasePromise;
   databasePromise = null;
   reopening = false;
-  if (!open) return;
+  if (!open || !openPath) return;
   try {
     await (await open).close(connectionUrl());
   } catch {
@@ -1060,7 +1059,7 @@ async function closeOpen(): Promise<void> {
  */
 export function moveProjectFile(move: () => Promise<string>, back: () => Promise<void>): Promise<string> {
   return enqueue(async () => {
-    const file = (openPath ?? loadPrefs().projectPath).trim();
+    const file = openFile();
     await closeOpen();
     let moved: string;
     try {
@@ -1084,7 +1083,6 @@ export function moveProjectFile(move: () => Promise<string>, back: () => Promise
       await database().catch(() => undefined);
       throw error;
     }
-    savePrefs({ ...loadPrefs(), projectPath: moved });
     return moved;
   });
 }

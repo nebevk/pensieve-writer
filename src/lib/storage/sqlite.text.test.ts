@@ -5,7 +5,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Chapter, Writing } from "$lib/model";
 import { translate } from "$lib/i18n";
-import { loadPrefs } from "$lib/prefs";
 import type { BackupContent } from "./backupFile";
 import type { Note } from "./organize";
 import { writeNoteWith } from "./noteRows";
@@ -53,7 +52,7 @@ let made = 0;
 async function openNew(title: string) {
   made += 1;
   const path = `${LIBRARY}\\${title} ${made}\\pensieve.db`;
-  await switchProjectFile(path, false);
+  await switchProjectFile(path);
   return { path, ...(await openShelf("", { title, writingTitle: title, welcome: false })) };
 }
 
@@ -125,8 +124,8 @@ describe("her text, saved and read back", () => {
     expect(textIn(path)).toEqual(["Čez šumeče žito je priletel čmrlj.", "Še enkrat ista slika, ista žaba."]);
 
     // Opened again, from the file: every word and the picture.
-    await switchProjectFile(`${LIBRARY}\\Drugje\\pensieve.db`, false);
-    await switchProjectFile(path, false);
+    await switchProjectFile(`${LIBRARY}\\Drugje\\pensieve.db`);
+    await switchProjectFile(path);
     const read = await loadWriting(writing.id);
     expect(read.chapters.map((item) => [item.id, item.title, item.plainText])).toEqual([
       ["pog-1", "Čez reko", "Čez šumeče žito je priletel čmrlj."],
@@ -265,7 +264,7 @@ describe("switching and moving projects", () => {
     const projectId = openProject();
     const second = `${LIBRARY}\\Drugi\\pensieve.db`;
     const saving = sqliteStorage.save(withText(first.writing, "Zadnje besede v prvem: čšž."));
-    const switching = switchProjectFile(second, false);
+    const switching = switchProjectFile(second);
     await Promise.all([saving, switching]);
     expect(textIn(first.path)).toEqual(["Zadnje besede v prvem: čšž."]);
     expect(textIn(second)).toEqual([]);
@@ -304,15 +303,15 @@ describe("switching and moving projects", () => {
     expect(standIn.files.has(moved)).toBe(false);
     await sqliteStorage.save(withText(writing, "Še vedno tu: čšž."));
     expect(textIn(path)).toEqual(["Še vedno tu: čšž."]);
-    expect(loadPrefs().projectPath).not.toBe(moved);
 
-    // It moves: a save asked for meanwhile lands in the file where it went, and it opens there next time.
+    // It moves: a save asked for meanwhile lands in the file where it went, which it says, for the page to
+    // remember; storage itself writes nothing to the settings (ARCH-12).
     const moving = moveProjectFile(move, back);
     const saving = sqliteStorage.save(withText(writing, "Na novem mestu."));
     expect(await moving).toBe(moved);
     await saving;
     expect(textIn(moved)).toEqual(["Na novem mestu."]);
-    expect(loadPrefs().projectPath).toBe(moved);
+    expect(stored.has("pensieve-prefs")).toBe(false);
   });
 
   it("a copy into the library takes the words typed a moment before, and one that fails leaves her saving", async () => {
@@ -363,7 +362,7 @@ describe("a file from an older Pensieve", () => {
   it("opens as a project with its book as the first writing, after a copy of it is kept as it was", async () => {
     const path = `${LIBRARY}\\Moja knjiga\\pensieve.db`;
     await standIn.make(path, VERSION_3);
-    await switchProjectFile(path, false);
+    await switchProjectFile(path);
     const { shelf, writing } = await openShelf("", { title: "Nov projekt", writingTitle: "Nov", welcome: false });
 
     expect(standIn.rows(`${path}.before-projects`, "SELECT version FROM schema_version")).toEqual([[3]]);
@@ -381,6 +380,6 @@ describe("a file from an older Pensieve", () => {
   it("a file from a newer Pensieve isn't opened", async () => {
     const path = `${LIBRARY}\\Iz prihodnosti\\pensieve.db`;
     await standIn.make(path, [...VERSION_3.slice(0, 1), "INSERT INTO schema_version (id, version) VALUES (1, 5)", ...VERSION_3.slice(2)]);
-    await expect(switchProjectFile(path, false)).rejects.toThrow(translate("en", "errSchemaVersion", { version: "5", expected: "4" }));
+    await expect(switchProjectFile(path)).rejects.toThrow(translate("en", "errSchemaVersion", { version: "5", expected: "4" }));
   });
 });
