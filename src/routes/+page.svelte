@@ -53,7 +53,8 @@
   import type { ProjectRequest } from "$lib/views/NewProjectWindow.svelte";
   import type { SearchHit, SearchSource } from "$lib/views/searchAll";
   import { otherCards, type IdeaCard } from "$lib/views/ideas";
-  import { addWriting, copyOpenProject, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, moveProjectFile, rememberPersonalWord, restoreFromBackup, setShelf, setWritingFields, snapshotSavedWriting, sqliteStorage, switchProjectFile, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
+  import { addWriting, copyOpenProject, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, moveProjectFile, rememberPersonalWord, restoreFromBackup, setShelf, setWritingFields, snapshotSavedWriting, sqliteStorage, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
+  import { Session } from "$lib/session.svelte";
   import type { Editor as TiptapEditor } from "@tiptap/core";
   import type { NodeSelection } from "@tiptap/pm/state";
   import { lazy } from "$lib/lazy.svelte";
@@ -122,7 +123,7 @@
     readProject: async () => {
       await autosave.flush().catch(() => undefined);
       await flushNoteSave().catch(() => undefined);
-      const path = projectLocation || prefs.projectPath;
+      const path = session.path;
       return { sources: [{ path, name: shelf?.title || projectName(path), text: await readProjectText(path) }], unread: [] };
     },
     readEveryProject: (progress) => readEveryProject(progress),
@@ -183,7 +184,11 @@
   // The app opens on Home, as in the design; "Continue writing" goes back to the last chapter.
   let view = $state<"write" | "home" | "notes" | "ideas" | "todos" | "outline" | "book" | "settings">("home");
   let backupMessage = $state("");
-  let projectLocation = $state("");
+  // The open project: its file, and every switch to another, with the way back when one fails (ARCH-12).
+  const session = new Session({
+    remember: (path) => (prefs = { ...prefs, projectPath: path }),
+    writingId: () => writingId,
+  });
   let dictionary = $state<{ language: WritingLanguage; word: string }[]>([]);
   let settingsOpen = $state(false);
   // Tutorial tips (owner, 8 October): the first time she reaches Home, Write, Notes or the Book, until
@@ -221,7 +226,7 @@
     shelf: () => shelf,
     prefs: () => prefs,
     setPrefs: (patch: Partial<Prefs>) => (prefs = { ...prefs, ...patch }),
-    switching: () => switchingBooks,
+    switching: () => session.switching,
     flush: async () => {
       await flushNoteSave();
       await autosave.flush();
@@ -232,8 +237,6 @@
   };
   const driveBackup = new DriveBackup(copiesHost);
   const wordCopy = new WordCopy(copiesHost);
-  // True while the database points at another book file; backups and the Word copy wait.
-  let switchingBooks = false;
   let clock = $state(Date.now());
   const ambience = createAmbience();
   // A newer Pensieve on GitHub Releases, offered in the window bar; and what Settings' check last found.
@@ -253,7 +256,7 @@
   // Notes and to-dos that fail to save keep a rescue copy too; a save waiting for a switch to finish hasn't failed.
   watchNoteSaving({
     failed: () => {
-      if (!switchingBooks) rescue.failed();
+      if (!session.switching) rescue.failed();
     },
     saved: () => rescue.saved(),
   });
@@ -273,13 +276,13 @@
       if (!writing) return;
       // Storage has another project's file open (a sample being written, a project being moved): the change
       // stays unsaved, and autosave tries again in a moment, into her own file.
-      if (switchingBooks) throw new Error(t("saveWaitsForSwitch"));
+      if (session.switching) throw new Error(t("saveWaitsForSwitch"));
       await sqliteStorage.save(writing);
     },
     onStatus: (status) => {
       saveStatus = status;
       // A copy of what couldn't be saved, and away again once saving works (ARCH-1).
-      if (status.state === "error" && !switchingBooks) rescue.failed();
+      if (status.state === "error" && !session.switching) rescue.failed();
       else if (status.state === "saved") rescue.saved();
     },
   });
@@ -330,7 +333,7 @@
   // Back in Write, the panel reads the notes and to-dos again: they may have changed in their views. Home
   // too, whose tree names them and can rename, move or open them (ARCH-13).
   $effect(() => {
-    if ((view === "write" || view === "home") && projectId && projectLocation) void loadOrganizer();
+    if ((view === "write" || view === "home") && projectId && session.path) void loadOrganizer();
   });
 
   /**
@@ -919,7 +922,7 @@
   async function openFindHit(hit: SearchHit) {
     find.scope = "chapter";
     find.notice = "";
-    const here = hit.path.toLowerCase() === (projectLocation || prefs.projectPath).toLowerCase();
+    const here = hit.path.toLowerCase() === session.path.toLowerCase();
     if (hit.kind === "note") {
       if (!here) await openFromLibrary(hit.path);
       view = "write";
@@ -1713,7 +1716,7 @@
 
   /** Puts the open project first among the remembered ones, with its writings as they are now. */
   function rememberProject() {
-    const path = (projectLocation || prefs.projectPath).trim();
+    const path = session.path.trim();
     if (!path || !shelf) return;
     // Every project she has opened, most recent first; the ceiling only guards against a runaway list.
     const knownProjects = [
@@ -1762,32 +1765,13 @@
       // only the project open. A failure is said, and the switch goes on.
       await driveBackup.run(false).catch(() => undefined);
       const written = wordsToday;
-      const previous = projectLocation || prefs.projectPath || (await invoke<string>("default_project_path"));
-      switchingBooks = true;
-      let opened: OpenedProject;
-      try {
-        await switchProjectFile(path);
-        prefs = { ...prefs, projectPath: path };
-        opened = await namedByFolder(path, await openShelf(target.writingId ?? "", fresh));
-      } catch (error) {
-        // Go back to the open project, or the next autosave would write into the other file.
-        try {
-          await switchProjectFile(previous);
-          prefs = { ...prefs, projectPath: previous };
-          await openShelf(writingId, fresh);
-        } catch {
-          // The original error below is the one worth showing.
-        }
-        throw error;
-      } finally {
-        switchingBooks = false;
-      }
+      // One that won't open leaves the project open now open, its saves going on into its own file.
+      const opened = await session.switchTo(path, async () => namedByFolder(path, await openShelf(target.writingId ?? "", fresh)));
       shelf = opened.shelf;
       writing = opened.writing;
       resetWritingState();
       prefs = { ...prefs, writingDay: dayKey(new Date(clock)), dayStartWords: writingWords - written };
       activeId = chapterToOpen(opened.writing, target.chapterId);
-      projectLocation = path;
       // She opened a project herself: what Home said at the start is done.
       homeNotice = "";
       // Its own files show in the tree.
@@ -1832,14 +1816,11 @@
         }
       }
     }
-    await switchProjectFile(path);
-    prefs = { ...prefs, projectPath: path };
     const last = prefs.lastOpened.path.toLowerCase() === path.toLowerCase() ? prefs.lastOpened : null;
-    const opened = await namedByFolder(path, await openShelf(last?.writingId ?? "", fresh));
+    const opened = await session.start(path, async () => namedByFolder(path, await openShelf(last?.writingId ?? "", fresh)));
     shelf = opened.shelf;
     writing = opened.writing;
     activeId = chapterToOpen(opened.writing, last?.chapterId);
-    projectLocation = path;
     // Today's count was kept against the writing open last; another one starts it again from here.
     if (last?.writingId !== opened.writing.id) prefs = { ...prefs, writingDay: dayKey(new Date(clock)), dayStartWords: writingWords };
     void refreshLibrary();
@@ -1863,7 +1844,7 @@
     const reading = ++libraryReading;
     try {
       // The open project's own folders and files come too, for its Files in the tree.
-      const open = folderOf(projectLocation || prefs.projectPath).path;
+      const open = folderOf(session.path).path;
       const entries = await invoke<LibraryEntry[]>("list_library", { folder: root, open });
       if (reading === libraryReading && root === libraryRoot) libraryEntries = entries;
     } catch {
@@ -1985,7 +1966,7 @@
   /** Opens a project, or a writing in one, from the library or Home. A project that isn't there any more is said so. */
   async function openFromLibrary(path: string, target: { writingId?: string; chapterId?: string } = {}) {
     try {
-      if (path.toLowerCase() === (projectLocation || prefs.projectPath).toLowerCase()) {
+      if (path.toLowerCase() === session.path.toLowerCase()) {
         if (target.writingId) await openWriting(target.writingId, target.chapterId);
         else view = "write";
         return;
@@ -2003,7 +1984,7 @@
   /** Home's Continue writing: the project, writing and chapter that were open last. */
   async function continueWriting(zenAfter = false) {
     const last = prefs.lastOpened;
-    if (last.path && last.path.toLowerCase() !== (projectLocation || prefs.projectPath).toLowerCase()) {
+    if (last.path && last.path.toLowerCase() !== session.path.toLowerCase()) {
       await openFromLibrary(last.path, { writingId: last.writingId, chapterId: last.chapterId });
     } else if (last.writingId && last.writingId !== writingId) {
       await openWriting(last.writingId, last.chapterId);
@@ -2017,7 +1998,7 @@
   // What Continue writing opens next time: the project, writing and chapter open now. Written when one of
   // them changes, never while she types.
   $effect(() => {
-    const path = projectLocation;
+    const path = session.path;
     const id = writingId;
     const chapterId = activeId ?? "";
     if (!path || !id || !chapterId || restoring) return;
@@ -2048,7 +2029,7 @@
   async function readEveryProject(progress: (done: number, total: number) => void): Promise<{ sources: SearchSource[]; unread: string[] }> {
     await autosave.flush().catch(() => undefined);
     await flushNoteSave().catch(() => undefined);
-    const open = projectLocation || prefs.projectPath;
+    const open = session.path;
     const paths: string[] = [];
     const seen = new Set<string>();
     const add = (path: string) => {
@@ -2100,7 +2081,7 @@
 
   /** Every other project's ideas, for the Ideas tab's All projects: only read, and let go at once. */
   async function readOtherIdeas(progress: (done: number, total: number) => void): Promise<{ cards: IdeaCard[]; unread: string[] }> {
-    const open = (projectLocation || prefs.projectPath).toLowerCase();
+    const open = session.path.toLowerCase();
     const paths: string[] = [];
     const seen = new Set<string>([open]);
     const add = (path: string) => {
@@ -2427,7 +2408,7 @@
     const moved = (path: string) => rebasePath(path, from, to);
     prefs = prefsAfterMove(prefs, from, to);
     wordCopy.held = moved(wordCopy.held);
-    if (projectLocation) projectLocation = moved(projectLocation);
+    session.followMove(from, to);
     moveOpen(from, to);
   }
 
@@ -2444,7 +2425,7 @@
     try {
       // After the changes before it, so the project open then is the one it looks at.
       await oneAtATime(async () => {
-        const file = projectLocation || prefs.projectPath;
+        const file = session.path;
         if (!isInside(file, from)) {
           to = await move();
           return;
@@ -2497,7 +2478,7 @@
    * one. Where there is no Recycle Bin, Windows asks her itself, and a no there leaves it all as it was.
    */
   async function deleteProject(path: string) {
-    const open = projectLocation || prefs.projectPath;
+    const open = session.path;
     if (!libraryRoot || !isInside(path, libraryRoot) || sameFolder(folderOf(path).path, folderOf(open).path)) return;
     try {
       if (await invoke<boolean>("trash_project_folder", { path: folderOf(path).path, library: libraryRoot })) forgetProject(path);
@@ -2617,45 +2598,42 @@
       let homeRewritten = false;
       await withEditorClosed(async () => {
         // The project open when this change runs, which may not be the one open when it was asked for.
-        const home = projectLocation || prefs.projectPath || (await invoke<string>("default_project_path"));
+        const home = session.path;
         const homeWriting = writingId;
         await wordCopy.update();
         rememberProject();
-        switchingBooks = true;
-        try {
-          for (const sample of samples) {
-            const parent = sample.folder ? joinPath(libraryRoot, sample.folder) : libraryRoot;
-            const existing = prefs.samples[sample.slug] && (await invoke<boolean>("project_file_exists", { path: prefs.samples[sample.slug] }));
-            const path = existing ? prefs.samples[sample.slug] : await makeProjectFolder(parent, sample.title, true);
-            const fresh = !(await invoke<boolean>("project_file_exists", { path }));
-            // Opened only to be written: it never becomes the project that opens at the next start.
-            await switchProjectFile(path);
-            const opened = await openShelf("", { title: sample.title, writingTitle: sample.title, welcome: false });
-            const built = sample.build(opened.shelf.projectId);
-            // A file made just now starts with one empty writing, which simply goes.
-            await writeSampleProject({ path, title: sample.title, placeholder: fresh ? opened.writing.id : "", ...built });
-            written[sample.slug] = path;
-            // Home and the library show it, with its writings, before it is ever opened.
-            remembered.push({ path, title: sample.title, summary: summarizeProject(built.writings.map((item) => summarize(item.writing))) });
-            if (path.toLowerCase() === home.toLowerCase()) homeRewritten = true;
-          }
-        } finally {
+        await session.elsewhere(
+          async (visit) => {
+            for (const sample of samples) {
+              const parent = sample.folder ? joinPath(libraryRoot, sample.folder) : libraryRoot;
+              const existing = prefs.samples[sample.slug] && (await invoke<boolean>("project_file_exists", { path: prefs.samples[sample.slug] }));
+              const path = existing ? prefs.samples[sample.slug] : await makeProjectFolder(parent, sample.title, true);
+              const fresh = !(await invoke<boolean>("project_file_exists", { path }));
+              // Opened only to be written: it never becomes the open project, nor the one that opens at the next start.
+              await visit(path);
+              const opened = await openShelf("", { title: sample.title, writingTitle: sample.title, welcome: false });
+              const built = sample.build(opened.shelf.projectId);
+              // A file made just now starts with one empty writing, which simply goes.
+              await writeSampleProject({ path, title: sample.title, placeholder: fresh ? opened.writing.id : "", ...built });
+              written[sample.slug] = path;
+              // Home and the library show it, with its writings, before it is ever opened.
+              remembered.push({ path, title: sample.title, summary: summarizeProject(built.writings.map((item) => summarize(item.writing))) });
+              if (path.toLowerCase() === home.toLowerCase()) homeRewritten = true;
+            }
+          },
           // Whatever happened, the open project is open again, and storage knows it, for note and to-do saves.
-          try {
-            await switchProjectFile(home);
-          } finally {
-            switchingBooks = false;
-          }
-          const reopened = await openShelf(homeRewritten ? "" : homeWriting, { title: projectName(home), writingTitle: t("untitled"), welcome: false });
-          shelf = reopened.shelf;
-          // The open project was one of them, or a reset that failed half-way already put its writing in Deleted:
-          // show what is there now, never a deleted writing (or the next save would write the old text back).
-          if (homeRewritten || reopened.writing.id !== homeWriting) {
-            writing = reopened.writing;
-            resetWritingState();
-            activeId = chapterToOpen(reopened.writing);
-          }
-        }
+          async () => {
+            const reopened = await openShelf(homeRewritten ? "" : homeWriting, { title: projectName(home), writingTitle: t("untitled"), welcome: false });
+            shelf = reopened.shelf;
+            // The open project was one of them, or a reset that failed half-way already put its writing in Deleted:
+            // show what is there now, never a deleted writing (or the next save would write the old text back).
+            if (homeRewritten || reopened.writing.id !== homeWriting) {
+              writing = reopened.writing;
+              resetWritingState();
+              activeId = chapterToOpen(reopened.writing);
+            }
+          },
+        );
       });
       const paths = new Set(remembered.map((item) => item.path.toLowerCase()));
       prefs = {
@@ -2719,7 +2697,7 @@
     root: libraryRoot,
     entries: libraryEntries,
     known: prefs.knownProjects,
-    currentPath: projectLocation || prefs.projectPath,
+    currentPath: session.path,
     shelf,
     notes: bookNotes,
     openTodos: bookTasks.filter((task) => task.todoState !== "done").length,
@@ -2804,32 +2782,25 @@
     try {
       await withEditorClosed(async () => {
         // The project open when this change runs.
-        const source = (projectLocation || prefs.projectPath || (await invoke<string>("default_project_path"))).trim();
+        const source = session.path;
         if (isInside(source, libraryRoot)) return;
         const name = shelf?.title.trim() || projectName(source) || t("untitled");
+        let folder = "";
         // Saves wait from the copy until the copy is the open file: one made in between would stay in the old one.
-        switchingBooks = true;
-        let destination: string;
-        try {
-          const folder = await freeProjectFolder(libraryRoot, name);
-          // A whole copy from SQLite itself, in the save queue: nothing written meanwhile is left behind (ARCH-6).
-          destination = await copyOpenProject(folder);
-          try {
-            await switchProjectFile(destination);
-          } catch (error) {
-            // The copy won't open: the project stays where it was, and opens there again; the copy goes to the
-            // Recycle Bin rather than stay in the library as a project that won't open.
-            await switchProjectFile(source).catch(() => undefined);
-            await invoke("trash_project_folder", { path: folder, library: libraryRoot }).catch(() => undefined);
-            throw error;
-          }
-        } finally {
-          switchingBooks = false;
-        }
-        prefs = { ...prefs, projectPath: destination, knownProjects: prefs.knownProjects.filter((book) => book.path.toLowerCase() !== source.toLowerCase()) };
-        const opened = await namedByFolder(destination, await openShelf(writingId, { title: name, writingTitle: name, welcome: false }));
+        // A copy that won't open goes to the Recycle Bin rather than stay in the library as a project that won't
+        // open, and the project stays where it was, opened there again.
+        const opened = await session.moveTo(
+          async () => {
+            folder = await freeProjectFolder(libraryRoot, name);
+            // A whole copy from SQLite itself, in the save queue: nothing written meanwhile is left behind (ARCH-6).
+            return copyOpenProject(folder);
+          },
+          async (path) => namedByFolder(path, await openShelf(writingId, { title: name, writingTitle: name, welcome: false })),
+          () => invoke("trash_project_folder", { path: folder, library: libraryRoot }),
+        );
+        const destination = session.path;
+        prefs = { ...prefs, knownProjects: prefs.knownProjects.filter((book) => book.path.toLowerCase() !== source.toLowerCase()) };
         shelf = opened.shelf;
-        projectLocation = destination;
         rememberProject();
         backupMessage = t("projectMoved", { path: destination });
         notice(t("projectMoved", { path: destination }));
@@ -3009,7 +2980,7 @@
         sources={find.sources}
         progress={find.progress}
         unread={find.unread}
-        openPath={projectLocation || prefs.projectPath}
+        openPath={session.path}
         notice={find.notice}
         onStep={(step) => find.step(step)}
         onReplace={() => find.replaceOne()}
@@ -3279,7 +3250,7 @@
           onSaveError={reportSaveError}
           onStartProject={() => startProject()}
           books={homeProjects}
-          currentPath={projectLocation}
+          currentPath={session.path}
           onOpenBook={(path) => void openFromLibrary(path)}
           appearance={resolvedTheme(prefs.theme, new Date(clock))}
         />
@@ -3303,8 +3274,8 @@
         {#key projectId}
           <IdeasView
             {projectId}
-            projectPath={projectLocation || prefs.projectPath}
-            projectTitle={projectName(projectLocation || prefs.projectPath) || shelf?.title || ""}
+            projectPath={session.path}
+            projectTitle={projectName(session.path) || shelf?.title || ""}
             {writingId}
             language={writing.language}
             loadOthers={readOtherIdeas}
@@ -3393,7 +3364,7 @@
       onChange={(patch) => (prefs = { ...prefs, ...patch })}
       onChooseFolder={() => void driveBackup.pickFolder()}
       onBackup={() => void driveBackup.now()}
-      {projectLocation}
+      projectLocation={session.path}
       projectLanguage={writing.language}
       bookGoal={writing.wordGoal}
       onBookGoal={setBookGoal}
@@ -3401,7 +3372,7 @@
       onMoveProject={() => void moveIntoLibrary()}
       libraryFolder={libraryRoot}
       onChooseLibraryFolder={() => void pickLibraryFolder()}
-      insideLibrary={!!libraryRoot && isInside(projectLocation || prefs.projectPath, libraryRoot)}
+      insideLibrary={!!libraryRoot && isInside(session.path, libraryRoot)}
       split={writing.split}
       {writingWords}
       onSplit={(split) => void writingOps.setSplit(writing?.id ?? "", split)}
@@ -3490,7 +3461,7 @@
     {@const SearchWindow = SearchPart.current}
     <SearchWindow
       initial={searchAsk.query}
-      openPath={projectLocation || prefs.projectPath}
+      openPath={session.path}
       load={readEveryProject}
       onOpen={(hit, query) => void openSearchHit(hit, query)}
       onClose={() => (searchAsk = null)}

@@ -78,6 +78,18 @@ await page.key("Escape", "Escape", 27);
 await until(`!document.querySelector(".window")`);
 await typeAtEnd("Še vedno zunaj.");
 check("she writes on, saved in the old file", await until(`JSON.stringify(window.__PV_HARNESS__.books.get(${JSON.stringify(`sqlite:${SECOND}`)}).exec("SELECT plain_text FROM chapters")[0]?.values ?? []).includes("Še vedno zunaj.")`, 60));
+// Her notes too (ARCH-12): the project opened again is read again, so storage saves its notes as its own.
+await page.click('.ribbon button[title="Notes panel"]');
+await until(`!!document.querySelector('aside.panel button[title="New note"]')`);
+await page.click('aside.panel button[title="New note"]');
+await until(`!!document.querySelector("aside.pane input.title")`);
+await sleep(300);
+await page.type("Zapisek po selitvi");
+check(
+  "and a note she makes is saved there too",
+  await until(`JSON.stringify(window.__PV_HARNESS__.books.get(${JSON.stringify(`sqlite:${SECOND}`)}).exec("SELECT title FROM notes")[0]?.values ?? []).includes("Zapisek po selitvi")`, 60),
+  await page.run(`JSON.stringify(window.__PV_HARNESS__.books.get(${JSON.stringify(`sqlite:${SECOND}`)}).exec("SELECT title FROM notes")[0]?.values ?? [])`),
+);
 
 check("no errors on the page", page.problems.length === 0, page.problems.slice(0, 3).join(" | "));
 console.log(results.every(Boolean) ? "\nALL PASSED" : `\n${results.filter((ok) => !ok).length} FAILED`);
