@@ -4,7 +4,8 @@
   import Icon from "$lib/editor/Icon.svelte";
   import type { DocumentJson } from "$lib/model";
   import type { NoteTarget } from "$lib/editor/noteLinks";
-  import { deleteNote, flushNoteSave, listNotes, saveNote, scheduleNoteSave, watchNoteSaves, type Note } from "$lib/storage/organize";
+  import { deleteNote, flushNoteSave, saveNote, watchNoteSaves, type Note } from "$lib/storage/organize";
+  import type { NotesStore } from "$lib/notes.svelte";
   import { readIdeaPlaces, saveIdeaPlaces, snapshotSavedWriting } from "$lib/storage/sqlite";
   import { ago, t } from "$lib/ui.svelte";
   import EmptyState from "./EmptyState.svelte";
@@ -13,6 +14,7 @@
 
   let {
     projectId,
+    store,
     projectPath,
     projectTitle,
     writingId = "",
@@ -28,6 +30,8 @@
   }: {
     /** The open project, whose ideas are written here. */
     projectId: string;
+    /** The open project's notes, one copy for every view (notes.svelte.ts). */
+    store: NotesStore;
     projectPath: string;
     projectTitle: string;
     /** The writing open in Write, whose earlier version keeps an idea before it's deleted. */
@@ -48,7 +52,7 @@
   } = $props();
 
   // The open project's notes, ideas and the rest, for the links between them; written here as Notes writes.
-  let notes = $state<Note[]>([]);
+  const notes = $derived(store.notes);
   let loaded = $state(false);
   let message = $state("");
   let scope = $state<"project" | "all">("project");
@@ -99,13 +103,11 @@
     };
   });
 
+  // Read again on the way in, as they may have changed elsewhere since.
   async function refresh() {
-    try {
-      notes = await listNotes();
-      loaded = true;
-    } catch (error) {
-      message = error instanceof Error ? error.message : t("notesLoadFailed");
-    }
+    await store.reload();
+    if (store.error) message = store.error;
+    else loaded = true;
   }
 
   $effect(() => {
@@ -139,11 +141,7 @@
   }
 
   function update(id: string, patch: Partial<Note>) {
-    const current = notes.find((note) => note.id === id);
-    if (!current) return;
-    const next = { ...current, ...patch, updatedAt: new Date().toISOString() };
-    notes = notes.map((note) => (note.id === id ? next : note));
-    scheduleNoteSave(next);
+    store.edit(id, patch);
   }
 
   /** The map, of this project's ideas: where she put them is read the first time it opens. */
@@ -206,7 +204,7 @@
       createdAt: now,
       updatedAt: now,
     };
-    notes = [note, ...notes];
+    store.added(note);
     if (place) move(note.id, place);
     scope = "project";
     query = "";
@@ -227,7 +225,7 @@
       await flushNoteSave();
       if (writingId) await snapshotSavedWriting(writingId);
       await deleteNote(id);
-      notes = notes.filter((note) => note.id !== id);
+      store.removed(id);
       openKey = "";
     } catch (error) {
       message = error instanceof Error ? error.message : t("noteDeleteFailed");

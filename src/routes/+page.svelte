@@ -3243,6 +3243,7 @@
         {#key projectId}
           <IdeasView
             {projectId}
+            store={notesStore}
             projectPath={session.path}
             projectTitle={projectName(session.path) || shelf?.title || ""}
             {writingId}
