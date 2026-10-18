@@ -1,6 +1,6 @@
 [package]
 name = "pensieve"
-version = "0.5.2"
+version = "0.5.3"
 description = "A cozy desktop writing app"
 edition = "2021"
 
