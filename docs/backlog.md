@@ -28,7 +28,7 @@ A review of the whole app on 14 October 2026, in three read-only passes: data sa
 the code's structure. Each finding was then checked in the code. Nothing was profiled or run. The plan made
 from it, with the fixes in order, is [review-plan.md](review-plan.md). ARCH-2, 3, 10, 16 and 17 are done
 (15 October, in 0.5.1), ARCH-1 and ARCH-5 later that day, ARCH-15, 20, 21 and 22 on 16 October (0.5.2), and ARCH-6,
-18, 23, 14 and 11 after it, and ARCH-9, 8 and 12 on 18 October; they are in the git history.
+18, 23, 14 and 11 after it, and ARCH-9, 8, 12 and 13 on 18 October; they are in the git history.
 
 **Verdict:** the architecture stays. A thin Rust side, one SQLite file per project, the editor loaded after
 Home and one queue for every database call suit one writer on an older laptop; nothing in the stack needs
@@ -51,11 +51,11 @@ replacing. What needs work is a few paths, listed below.
 |----|------|--------|-----|
 | **ARCH-4** Saves and restores in one transaction | These are many statements, each committed on its own: a writing's save, a restore from a backup, a writing deleted for good and a sample project. JavaScript can't wrap them in a transaction: plugin-sql runs each call on any connection of its pool, so a `BEGIN` doesn't hold. A crash mid-restore leaves the writing half restored. A crash mid-save only doubles text, because of the order chapters are written in. Add Rust commands that save and restore a writing in one transaction, with one disk sync per save instead of one per chapter | Open | P2 |
 | **ARCH-7** Save only what changed | Every 2-second pause sends the whole book to the file again. Since 16 October `writing` in `+page.svelte` is `$state.raw` (its updates already replaced it), so a save turns plain objects into JSON instead of walking Svelte's proxies: on the long test book, with the processor slowed four times, a save's own work went from 194 ms to 38 ms, and keys meeting a save are no slower than the rest. Left: write only the chapters that changed. Each chapter is still sent and committed on its own at every save, which costs the disk, not typing; it belongs with ARCH-4's one transaction per save, as both change `writeWriting` and the order of writes that keeps text safe | Partial | P3 |
-| **ARCH-13** One copy of the notes | The page and Notes, To-dos, Ideas and Home each loaded and saved their own notes, kept in step by reading them again. An old copy did get saved over newer words, from Home's tree; since 15 October the page reads a note again before it renames, copies or shows it. Since 18 October the page, the panel beside it and both trees share one store (`notes.svelte.ts`) whose changes everything showing them sees at once, with the note open beside the page as its draft while she types. Joining chapters moved a note's link to the joined page, but the note open in the panel kept its old link, and her next key saved it back: now the draft moves too. Left: Home's to-dos, the To-dos, Ideas and Notes views onto the store, each still reading and keeping its own copy | Partial | P2 |
 | **ARCH-19** The Rust side's edges | Commands that move or delete folders accept any path. Rust's errors are matched by their English text, not by a code. `csp` is `null` in `tauri.conf.json` | Open | P3 |
 | **ARCH-24** Every key's own work | The typing check (ARCH-11) showed a key typed in a burst in 48 ms, the median, with the processor slowed four times, where a bare editable box shows one in 16 ms, and the short welcome page as slow as the long book: work done for every key, not for the book's size. Most of it was smooth typing's ink: a veil sized to each letter and a new animation started for it on every key. Since 16 October each veil keeps one size and one animation, started again for each letter, and the caret measures before it draws: the same look, the middle key 48 → 40 ms, 19 in 20 72 → 56–64 ms. Left on each key, at that speed: ProseMirror's own handling, about 6 ms spread thin (scrolling to the cursor is the largest part, under 1 ms), and Svelte's updates, about 3 ms (the Ribbon's summary 1 ms). The work at a pause and the save were made smaller after it (ARCH-9, ARCH-7, 16 to 18 October) | Partial | P2 |
 
-**Order:** as [review-plan.md](review-plan.md) has it: next ARCH-13's store, one copy of the notes for every view.
+**Order:** as [review-plan.md](review-plan.md) has it: one transaction per save (ARCH-4) once its way is chosen, then the
+Rust side's edges (ARCH-19).
 
 **For the owner to decide:**
 

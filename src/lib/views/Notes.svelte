@@ -6,14 +6,11 @@
   import { linksTo, noteMentions } from "$lib/chapters/mentions";
   import type { Chapter, DocumentJson } from "$lib/model";
   import { emptyDocument } from "$lib/model";
+  import type { NotesStore } from "$lib/notes.svelte";
   import {
     deleteNote,
     flushNoteSave,
-    listNotes,
-    listTasks,
     saveNote,
-    saveTask,
-    scheduleNoteSave,
     watchNoteSaves,
     type Note,
     type NoteCategory,
@@ -28,6 +25,7 @@
 
   let {
     projectId,
+    store,
     writingId = "",
     chapters,
     language = "en",
@@ -41,6 +39,8 @@
   }: {
     /** The project the notes belong to. */
     projectId: string;
+    /** The open project's notes and to-dos, one copy for every view (notes.svelte.ts). */
+    store: NotesStore;
     /** The writing open in Write, whose earlier version keeps a note before it's deleted. */
     writingId?: string;
     chapters: Chapter[];
@@ -58,8 +58,8 @@
     onOpenHandled?: () => void;
   } = $props();
 
-  let notes = $state<Note[]>([]);
-  let tasks = $state<Task[]>([]);
+  const notes = $derived(store.notes);
+  const tasks = $derived(store.tasks);
   let activeId = $state<string | null>(null);
   let query = $state("");
   let message = $state("");
@@ -179,28 +179,21 @@
     else if (createMissing && title) void create(title);
   }
 
+  // Read again on the way in, as they may have changed elsewhere since.
   async function refresh() {
-    try {
-      [notes, tasks] = await Promise.all([listNotes(), listTasks()]);
-      // The note asked for opens first, so the editor doesn't open on another one on its way there.
-      const asked = openRequest?.id && openRequest.at !== seenOpen ? notes.find((note) => note.id === openRequest?.id) : undefined;
-      if (!activeId) activeId = asked?.id ?? notes[0]?.id ?? null;
-      loaded = true;
-    } catch (error) {
-      message = error instanceof Error ? error.message : t("notesLoadFailed");
+    await store.reload();
+    if (store.error) {
+      message = store.error;
+      return;
     }
-  }
-
-  function schedule(note: Note) {
-    scheduleNoteSave(note);
+    // The note asked for opens first, so the editor doesn't open on another one on its way there.
+    const asked = openRequest?.id && openRequest.at !== seenOpen ? store.notes.find((note) => note.id === openRequest?.id) : undefined;
+    if (!activeId) activeId = asked?.id ?? store.notes[0]?.id ?? null;
+    loaded = true;
   }
 
   function updateNote(id: string, patch: Partial<Note>) {
-    const current = notes.find((note) => note.id === id);
-    if (!current) return;
-    const next = { ...current, ...patch, updatedAt: new Date().toISOString() };
-    notes = notes.map((note) => (note.id === id ? next : note));
-    schedule(next);
+    store.edit(id, patch);
   }
 
   function updateActive(patch: Partial<Note>) {
@@ -230,7 +223,7 @@
       createdAt: now,
       updatedAt: now,
     };
-    notes = [note, ...notes];
+    store.added(note);
     activeId = note.id;
     try {
       await saveNote(note);
@@ -246,9 +239,8 @@
       await flushNoteSave();
       if (writingId) await snapshotSavedWriting(writingId);
       await deleteNote(id);
-      notes = notes.filter((note) => note.id !== id);
-      tasks = tasks.filter((task) => task.noteId !== id);
-      if (activeId === id) activeId = notes[0]?.id ?? null;
+      store.removed(id);
+      if (activeId === id) activeId = store.notes[0]?.id ?? null;
     } catch (error) {
       message = error instanceof Error ? error.message : t("noteDeleteFailed");
     }
@@ -270,9 +262,8 @@
 
   async function cycleTask(task: Task) {
     const next = { ...task, todoState: nextState(task.todoState), updatedAt: new Date().toISOString() };
-    tasks = tasks.map((item) => (item.id === next.id ? next : item));
     try {
-      await saveTask(next);
+      await store.setTask(next);
     } catch (error) {
       message = error instanceof Error ? error.message : t("todoUpdateFailed");
     }
@@ -295,9 +286,8 @@
       chapterId,
       noteId: active.id,
     };
-    tasks = [task, ...tasks];
     try {
-      await saveTask(task);
+      await store.addTask(task, true);
     } catch (error) {
       message = error instanceof Error ? error.message : t("todoAddFailed");
     }

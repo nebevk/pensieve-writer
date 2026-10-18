@@ -3228,6 +3228,7 @@
         {#key projectId}
         <Notes
           {projectId}
+          store={notesStore}
           {writingId}
           {chapters}
           language={writing.language}
