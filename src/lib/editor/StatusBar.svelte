@@ -187,7 +187,7 @@
         <p class="lab">{t("keySounds")}</p>
         {#each KEYS as item (item.id)}
           <button type="button" class="quiet row" class:chosen={keySounds === item.id} aria-pressed={keySounds === item.id} onclick={() => onSound({ keySounds: item.id })}>
-            {t(item.key)}
+            {t(item.key)}{#if keySounds === item.id}<Icon name="check" />{/if}
           </button>
         {/each}
         {@render volume(keySoundVolume, t("keySoundsVolume"), (value) => onSound({ keySoundVolume: value }), keySounds === "off")}
@@ -368,14 +368,27 @@
   }
 
   .quiet.row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
     padding: 5px 8px;
     border-radius: var(--pv-radius-xs);
     color: var(--pv-bar-text);
     text-align: left;
   }
 
-  .quiet.row.chosen {
+  .quiet.row :global(svg) {
+    flex: none;
+    width: 14px;
+    height: 14px;
     color: var(--pv-bar-ambient);
+  }
+
+  /* Lit with a tick, as the chosen look and sound are: in Daylight the bar's warm colour is dimmer than its
+     text, so colour alone hid which one it was. */
+  .quiet.row.chosen {
+    background: var(--pv-bar-line);
     font-weight: 600;
   }
 

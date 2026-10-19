@@ -60,6 +60,13 @@ await click(".statusbar .keys");
 await until(`!!document.querySelector(".statusbar .pop")`);
 const kinds = await page.run(`[...document.querySelectorAll(".statusbar .pop .row")].map((b) => (b.getAttribute("aria-pressed") === "true" ? "*" : "") + b.textContent.trim())`);
 check("its panel has the kinds of key sound, and their volume, which waits while they are off", JSON.stringify(kinds) === JSON.stringify(["*Izklopljeno", "Pisalni stroj", "Mehanska tipkovnica", "Mehka tipkovnica"]) && (await page.run(`document.querySelector(".statusbar .pop input[type=range]").disabled`)), JSON.stringify(kinds));
+// The chosen kind is lit and ticked: in Daylight the bar's warm colour alone hid it (owner, 19 October).
+await page.run(`document.documentElement.dataset.theme = "daylight", true`);
+const marks = await page.run(`[...document.querySelectorAll(".statusbar .pop .row")].map((b) => (b.querySelector("svg") ? "tick" : "") + (getComputedStyle(b).backgroundColor !== "rgba(0, 0, 0, 0)" ? " lit" : ""))`);
+check("in Daylight the chosen kind is lit and ticked, the others not", JSON.stringify(marks) === JSON.stringify(["tick lit", "", "", ""]), JSON.stringify(marks));
+const panel = await page.run(`(() => { const r = document.querySelector(".statusbar .pop").getBoundingClientRect(); return { x: r.left - 8, y: r.top - 8, width: r.width + 16, height: r.height + 16 }; })()`);
+await page.shoot(`${shots}bar-keys-daylight.png`, panel);
+await page.run(`document.documentElement.dataset.theme = "forest", true`);
 await page.run(`[...document.querySelectorAll(".statusbar .pop .row")].find((b) => b.textContent.trim() === "Pisalni stroj").click(), true`);
 await sleep(300);
 await page.run(`(() => { const input = document.querySelector(".statusbar .pop input[type=range]"); input.value = "0.7"; input.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`);
