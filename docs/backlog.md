@@ -28,7 +28,7 @@ A review of the whole app on 14 October 2026, in three read-only passes: data sa
 the code's structure. Each finding was then checked in the code. Nothing was profiled or run. The plan made
 from it, with the fixes in order, is [review-plan.md](review-plan.md). ARCH-2, 3, 10, 16 and 17 are done
 (15 October, in 0.5.1), ARCH-1 and ARCH-5 later that day, ARCH-15, 20, 21 and 22 on 16 October (0.5.2), and ARCH-6,
-18, 23, 14 and 11 after it, ARCH-9, 8, 12 and 13 on 18 October, and ARCH-4 on 19 October; they are in the git history.
+18, 23, 14 and 11 after it, ARCH-9, 8, 12 and 13 on 18 October, and ARCH-4 and 19 on 19 October; they are in the git history.
 
 **Verdict:** the architecture stays. A thin Rust side, one SQLite file per project, the editor loaded after
 Home and one queue for every database call suit one writer on an older laptop; nothing in the stack needs
@@ -50,15 +50,19 @@ replacing. What needs work is a few paths, listed below.
 | ID | What | Status | Pri |
 |----|------|--------|-----|
 | **ARCH-7** Save only what changed | Every 2-second pause sends the whole book to the file again. Since 16 October `writing` in `+page.svelte` is `$state.raw` (its updates already replaced it), so a save turns plain objects into JSON instead of walking Svelte's proxies: on the long test book, with the processor slowed four times, a save's own work went from 194 ms to 38 ms, and keys meeting a save are no slower than the rest. Since 19 October every chapter goes in one statement, with one sync to the disk (ARCH-4). Left: write only the chapters that changed. Each save still sends every chapter and rewrites it in the file, which costs the disk, not typing; a change there has to keep a chapter split by a heading in one statement with the chapter it came from | Partial | P3 |
-| **ARCH-19** The Rust side's edges | Commands that move or delete folders accept any path. Rust's errors are matched by their English text, not by a code. `csp` is `null` in `tauri.conf.json` | Open | P3 |
 | **ARCH-24** Every key's own work | The typing check (ARCH-11) showed a key typed in a burst in 48 ms, the median, with the processor slowed four times, where a bare editable box shows one in 16 ms, and the short welcome page as slow as the long book: work done for every key, not for the book's size. Most of it was smooth typing's ink: a veil sized to each letter and a new animation started for it on every key. Since 16 October each veil keeps one size and one animation, started again for each letter, and the caret measures before it draws: the same look, the middle key 48 → 40 ms, 19 in 20 72 → 56–64 ms. Left on each key, at that speed: ProseMirror's own handling, about 6 ms spread thin (scrolling to the cursor is the largest part, under 1 ms), and Svelte's updates, about 3 ms (the Ribbon's summary 1 ms). The work at a pause and the save were made smaller after it (ARCH-9, ARCH-7, 16 to 18 October) | Partial | P2 |
 
-**Order:** as [review-plan.md](review-plan.md) has it: the Rust side's edges (ARCH-19).
+**Order:** [review-plan.md](review-plan.md) is done. What is left of ARCH-24 and ARCH-7 waits for the laptop's
+own timings (IMP-10), as with the processor slowed four times neither costs typing.
 
 **Not checked:**
 
 - The laptop's real numbers: the typing check's are with the processor slowed four times (IMP-10).
 - How Drive for desktop locks files.
+- The window's content security policy (ARCH-19) in the installed app: the browser checks run under the same
+  policy, but only the real window has Tauri's own scripts and WebView2. By hand, once: open a project, type,
+  put in a picture, export to Word, bring a Word file in, play the ambience and key sounds, and open the Book
+  view; nothing should look or sound different.
 - One pass found that a failed note save says nothing unless Notes or Ideas was opened that session; this
   wasn't checked again.
 

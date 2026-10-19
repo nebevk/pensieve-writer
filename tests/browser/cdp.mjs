@@ -91,7 +91,9 @@ export async function connect({ width = 1366, height = 820 } = {}) {
             };
             try { if (!localStorage.getItem("pensieve-prefs")) set.call(localStorage, "pensieve-prefs", JSON.stringify({ tips: false })); } catch {}
           })();`;
-      await send("Page.addScriptToEvaluateOnNewDocument", { source: `${flags}\n${quiet}\n${sql}\n;${fake}` });
+      // What the window's content security policy (serve.mjs sends tauri.conf.json's) refuses is a problem like an error.
+      const refused = `document.addEventListener("securitypolicyviolation", (event) => console.error("CSP refused", event.effectiveDirective, event.blockedURI || "inline", event.sourceFile + ":" + event.lineNumber));`;
+      await send("Page.addScriptToEvaluateOnNewDocument", { source: `${flags}\n${refused}\n${quiet}\n${sql}\n;${fake}` });
     },
     async open(url, wait = 3500) {
       await send("Page.navigate", { url });

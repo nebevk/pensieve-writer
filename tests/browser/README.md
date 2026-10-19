@@ -44,7 +44,9 @@ Pensieve. The typing check types in the middle of a chapter.
 - `cdp.mjs` drives Edge through its debugging port: `connect()`, `page.harness()` (loads the stand-in into
   every page), `page.open()`, `page.run()` (JavaScript in the page), `page.click()`, `page.type()`,
   `page.key()`, `page.shoot()`. Errors on the page are collected in `page.problems`.
-- `serve.mjs` serves a build as the window would load it; `tree-unfold.mjs` opens the library's tree.
+- `serve.mjs` serves a build as the window would load it, with the window's content security policy from
+  `tauri.conf.json`; anything it refuses is an error on the page, so the check fails. `tree-unfold.mjs` opens
+  the library's tree.
 - `fixtures/` has a Word file and the long test book as an older Pensieve saved it.
 
 ## A new check

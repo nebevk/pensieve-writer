@@ -189,6 +189,9 @@ Coziness is the top product priority, within the performance budget in Section 5
   č, š, ž and pictures, other writings' chapters left alone, a save cut short, earlier versions and their
   limits, restores, switching and moving projects, and an older file upgraded. CI runs these and the Rust
   tests on every push (ARCH-14, 16 October).
+- **The window:** a content security policy lets in only Pensieve's own scripts (pictures from the web show as
+  before), the Windows side moves or deletes a folder only inside the library, and every problem it reports
+  reads in Slovenian too, which a test checks against the Rust code (ARCH-19, 19 October).
 - **Install:** one small installer with no prerequisites to install by hand; updates as in ST-7. The
   installer speaks Slovenian on a Slovenian Windows and English otherwise, and shows Daylight's Basin mark on
   its first and last page. The app's Windows icon is the mark alone, filling its square as Windows' own icons
