@@ -127,7 +127,7 @@ said), Not started, Dropped. IDs are fixed; code comments and the backlog refer 
 | ID | Requirement | Pri | Status |
 |----|-------------|-----|--------|
 | SV-1 | Autosave two seconds after she stops typing, and at least every 10 seconds while she types on (ARCH-3, 15 October: not while she is naming a new chapter in its heading, which waits for her pause), and on close | M | Done |
-| SV-2 | Crash-safe writes | M | Done |
+| SV-2 | Crash-safe writes: a save writes a writing's chapters in one statement, all of them or none (ARCH-4, 19 October) | M | Done |
 | SV-3 | Automatic snapshots (hourly, daily) with an easy restore | M | Done |
 | SV-4 | Earlier versions: a window listing the snapshots, showing the open chapter as it was, and restoring that chapter or the whole book (after keeping the book as it is as a "Before restore" snapshot) | S | Done |
 | SV-5 | Projects live in the library folder (CH-9), never in a cloud-synced folder | M | Done |
@@ -255,6 +255,8 @@ Coziness is the top product priority, within the performance budget in Section 5
 The owner's decisions that shaped the app, newest first. Each replaced what the original plan or the
 design system said.
 
+- **19 Oct:** Saves stay without a new dependency: a writing's chapters go to the file in one statement, all of
+  them or none, rather than in a transaction held by Rust's `sqlx`.
 - **16 Oct:** The Windows icon is the Basin mark alone, larger and without the tile, which shrank to a pale
   square on the taskbar. The installer comes in Slovenian and English and wears the mark; its uninstaller says
   that deleting Pensieve's own folder takes the copies it keeps, not her projects.

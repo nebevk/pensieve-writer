@@ -26,6 +26,8 @@ class SqlStandIn {
   readonly #sql = (initSqlJs as unknown as () => Promise<SqlJs>)();
   /** Every file, by its path. */
   readonly files = new Map<string, SqlJsDatabase>();
+  /** The first words of every statement run, in order: a test may empty it and count. */
+  readonly executed: string[] = [];
   #failure: { match: string | RegExp; skip: number } | null = null;
 
   /**
@@ -96,6 +98,7 @@ class SqlStandIn {
   }
 
   async #execute(path: string, query: string, values: unknown[]) {
+    this.executed.push(query.replace(/\s+/g, " ").trim().slice(0, 40));
     if (this.#fails(query)) throw new Error("error returned from database: (code: 13) database or disk is full");
     const db = this.#file(path);
     if (/^\s*VACUUM\s+INTO\s+\$1\s*$/i.test(query)) {

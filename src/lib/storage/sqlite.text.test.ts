@@ -152,19 +152,48 @@ describe("her text, saved and read back", () => {
     expect(textIn(path, second.id)).toEqual(["Drago pismo, čakam odgovor."]);
   });
 
-  it("a save cut short as she splits a chapter leaves the text in both chapters, never in neither", async () => {
+  it("a save writes every chapter of the writing in one statement, all of them or none (ARCH-4)", async () => {
+    const { writing } = await openNew("V enem kosu");
+    standIn.executed.length = 0;
+    await sqliteStorage.save(
+      withChapters(writing, [chapter(writing, "a", "Ena", "Prva.", 0), chapter(writing, "b", "Dve", "Druga.", 1), chapter(writing, "c", "Tri", "Tretja.", 2)]),
+    );
+    expect(standIn.executed.filter((statement) => statement.startsWith("INSERT INTO chapters"))).toHaveLength(1);
+  });
+
+  it("a writing of more chapters than one statement takes is saved whole, in several", async () => {
+    const { path, writing } = await openNew("Dolga knjiga");
+    const many = Array.from({ length: 401 }, (_, index) => chapter(writing, `p${index}`, `Poglavje ${index}`, `Besedilo št. ${index}.`, index));
+    standIn.executed.length = 0;
+    await sqliteStorage.save(withChapters(writing, many));
+    expect(standIn.executed.filter((statement) => statement.startsWith("INSERT INTO chapters"))).toHaveLength(2);
+    const text = textIn(path);
+    expect(text).toHaveLength(401);
+    expect(text[0]).toBe("Besedilo št. 0.");
+    expect(text[400]).toBe("Besedilo št. 400.");
+  });
+
+  it("a save cut short as she splits a chapter leaves the chapters as they were last saved, never half", async () => {
     const { path, writing } = await openNew("Deljeno poglavje");
     await sqliteStorage.save(withChapters(writing, [chapter(writing, "cel", "Celo", "Prvi del. Drugi del o šoli.", 0)]));
 
-    // A heading typed in the middle: the new chapter takes the second half. The disk fills between the writes.
+    // A heading typed in the middle: the new chapter takes the second half. The disk fills as the chapters are written.
     const split = withChapters(writing, [chapter(writing, "cel", "Celo", "Prvi del.", 0), chapter(writing, "nov", "Novo", "Drugi del o šoli.", 1)]);
-    standIn.failAt("INSERT INTO chapters", 1);
+    standIn.failAt("INSERT INTO chapters");
     await expect(sqliteStorage.save(split)).rejects.toThrow("disk is full");
-    expect(textIn(path)).toEqual(["Prvi del. Drugi del o šoli.", "Drugi del o šoli."]);
+    expect(textIn(path)).toEqual(["Prvi del. Drugi del o šoli."]);
 
     // The next save puts it right.
     await sqliteStorage.save(split);
     expect(textIn(path)).toEqual(["Prvi del.", "Drugi del o šoli."]);
+  });
+
+  it("a save cut short as chapters are joined, before the ones joined go, leaves their text twice, never lost", async () => {
+    const { path, writing } = await openNew("Združeno poglavje");
+    await sqliteStorage.save(withChapters(writing, [chapter(writing, "prvo", "Prvo", "Začetek.", 0), chapter(writing, "drugo", "Drugo", "Konec.", 1)]));
+    standIn.failAt("DELETE FROM chapters WHERE project_id");
+    await expect(sqliteStorage.save(withChapters(writing, [chapter(writing, "prvo", "Prvo", "Začetek. Konec.", 0)]))).rejects.toThrow("disk is full");
+    expect(textIn(path)).toEqual(["Začetek. Konec.", "Konec."]);
   });
 });
 

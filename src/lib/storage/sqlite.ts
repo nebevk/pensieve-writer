@@ -44,6 +44,8 @@ const SCHEMA_VERSION = 4;
 const HOURLY_LIMIT = 48;
 const DAILY_LIMIT = 30;
 const MANUAL_LIMIT = 20;
+// Chapters written in one statement: thirteen values each, far inside what SQLite binds to one statement.
+const CHAPTERS_PER_WRITE = 400;
 
 type WritingRow = {
   id: string;
@@ -405,9 +407,12 @@ async function writeWriting(db: Database, writing: Writing): Promise<void> {
     ],
   );
 
-  // Chapters new to the file are written first. A heading on the page moves text from a chapter into a
-  // new one, and the writes are separate: if Pensieve stops between them, the text is then in both
-  // chapters rather than in neither.
+  // Every chapter in one statement, which SQLite writes whole or not at all, with one sync to the disk (ARCH-4):
+  // a stop in the middle leaves the chapters as they were last saved. One call can't hold a transaction here
+  // (the plugin runs each call on any connection of its pool, and one left open by a failed call would stay
+  // open), but one statement needs none. A writing of more chapters than a statement takes goes in several,
+  // new chapters first: a heading on the page moves text from a chapter into a new one, so a stop between
+  // them leaves the text in both chapters rather than in neither.
   const saved = new Set(
     (await db.select<{ id: string }[]>(`SELECT id FROM chapters WHERE project_id = $1`, [writing.id])).map((row) => row.id),
   );
@@ -415,26 +420,15 @@ async function writeWriting(db: Database, writing: Writing): Promise<void> {
     ...writing.chapters.filter((chapter) => !saved.has(chapter.id)),
     ...writing.chapters.filter((chapter) => saved.has(chapter.id)),
   ];
-  for (const chapter of ordered) {
-    // Its pictures go into the pictures table first, once (IMP-6); the chapter names them.
-    const content = await storedJson(db, chapter.contentJson);
-    await db.execute(
-      `INSERT INTO chapters (
-         id, project_id, title, position, content_json, plain_text, synopsis, status, language, word_goal, part, updated_at, words
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-       ON CONFLICT(id) DO UPDATE SET
-         title = excluded.title,
-         position = excluded.position,
-         content_json = excluded.content_json,
-         plain_text = excluded.plain_text,
-         synopsis = excluded.synopsis,
-         status = excluded.status,
-         language = excluded.language,
-         word_goal = excluded.word_goal,
-         part = excluded.part,
-         updated_at = excluded.updated_at,
-         words = excluded.words`,
-      [
+  for (let first = 0; first < ordered.length; first += CHAPTERS_PER_WRITE) {
+    const rows: string[] = [];
+    const values: unknown[] = [];
+    for (const chapter of ordered.slice(first, first + CHAPTERS_PER_WRITE)) {
+      // Its pictures go into the pictures table first, once (IMP-6); the chapter names them.
+      const content = await storedJson(db, chapter.contentJson);
+      const at = values.length;
+      rows.push(`(${Array.from({ length: 13 }, (_, index) => `$${at + index + 1}`).join(", ")})`);
+      values.push(
         chapter.id,
         writing.id,
         chapter.title,
@@ -448,7 +442,25 @@ async function writeWriting(db: Database, writing: Writing): Promise<void> {
         chapter.part ?? "",
         chapter.updatedAt,
         wordsFor(chapter.id, chapter.plainText),
-      ],
+      );
+    }
+    await db.execute(
+      `INSERT INTO chapters (
+         id, project_id, title, position, content_json, plain_text, synopsis, status, language, word_goal, part, updated_at, words
+       ) VALUES ${rows.join(", ")}
+       ON CONFLICT(id) DO UPDATE SET
+         title = excluded.title,
+         position = excluded.position,
+         content_json = excluded.content_json,
+         plain_text = excluded.plain_text,
+         synopsis = excluded.synopsis,
+         status = excluded.status,
+         language = excluded.language,
+         word_goal = excluded.word_goal,
+         part = excluded.part,
+         updated_at = excluded.updated_at,
+         words = excluded.words`,
+      values,
     );
   }
 
