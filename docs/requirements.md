@@ -259,7 +259,8 @@ The owner's decisions that shaped the app, newest first. Each replaced what the 
 design system said.
 
 - **19 Oct:** Saves stay without a new dependency: a writing's chapters go to the file in one statement, all of
-  them or none, rather than in a transaction held by Rust's `sqlx`.
+  them or none, rather than in a transaction held by Rust's `sqlx`. Saving only the chapters that changed
+  (ARCH-7) waits until timings on Eva's laptop show the whole book's save costs her something.
 - **16 Oct:** The Windows icon is the Basin mark alone, larger and without the tile, which shrank to a pale
   square on the taskbar. The installer comes in Slovenian and English and wears the mark; its uninstaller says
   that deleting Pensieve's own folder takes the copies it keeps, not her projects.
