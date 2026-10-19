@@ -2387,7 +2387,7 @@
   async function relocateLibraryEntry(from: string, parent: string, name: string): Promise<string | null> {
     const problem = folderNameProblem(name);
     if (problem) return t(problem);
-    const move = () => invoke<string>("move_library_entry", { path: from, parent, name: name.trim() });
+    const move = () => invoke<string>("move_library_entry", { path: from, parent, name: name.trim(), library: libraryRoot });
     let to = "";
     try {
       // After the changes before it, so the project open then is the one it looks at.
@@ -2404,7 +2404,7 @@
           },
           // It moved but won't open there: it goes back where it was.
           async () => {
-            await invoke<string>("move_library_entry", { path: to, parent: parentFolder(from), name: lastName(from) });
+            await invoke<string>("move_library_entry", { path: to, parent: parentFolder(from), name: lastName(from), library: libraryRoot });
             to = "";
           },
         );
@@ -2433,7 +2433,7 @@
   /** Deletes an empty folder of the library; one with anything in it stays, and she is told why. */
   async function deleteLibraryFolder(path: string) {
     try {
-      await invoke("remove_library_folder", { path });
+      await invoke("remove_library_folder", { path, library: libraryRoot });
     } catch (error) {
       libraryNotice(errorMessage(error));
     }

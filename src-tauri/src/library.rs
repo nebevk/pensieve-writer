@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path};
 use tauri::{AppHandle, Manager};
 
 /// How deep the library is read, and how many folders and files at most, so a folder chosen by mistake
@@ -296,6 +296,23 @@ fn path_key(path: &Path) -> String {
     path.display().to_string().replace('/', "\\").trim_end_matches('\\').to_lowercase()
 }
 
+const NOT_LIBRARY: &str = "Only a folder of the library can be moved or deleted from here";
+
+/// A whole path, from a drive or a share, with no "." or ".." that could lead out of the folder it seems to be in.
+fn whole(path: &Path) -> bool {
+    path.is_absolute() && !path.components().any(|part| matches!(part, Component::ParentDir | Component::CurDir))
+}
+
+/// Whether `path` is inside the library folder (`library`), never the library itself.
+fn in_library(path: &Path, library: &Path) -> bool {
+    whole(path) && whole(library) && path_key(path).starts_with(&format!("{}\\", path_key(library)))
+}
+
+/// The library folder, or a folder inside it.
+fn library_or_in(path: &Path, library: &Path) -> bool {
+    (whole(path) && whole(library) && path_key(path) == path_key(library)) || in_library(path, library)
+}
+
 /// Windows refuses to move or delete a folder while a program has a file in it open.
 fn in_use(error: std::io::Error) -> String {
     if error.kind() == std::io::ErrorKind::PermissionDenied || error.raw_os_error() == Some(32) {
@@ -307,14 +324,18 @@ fn in_use(error: std::io::Error) -> String {
 
 /// Renames a folder of the library or a project's folder (`parent` stays), or moves it into another
 /// folder (`name` stays), and returns where it went. Nothing is replaced, and no folder goes inside itself.
+/// Only a folder inside the library (`library`) moves, and only within it.
 #[tauri::command]
-pub async fn move_library_entry(path: String, parent: String, name: String) -> Result<String, String> {
-    move_entry(Path::new(&path), Path::new(&parent), &name)
+pub async fn move_library_entry(path: String, parent: String, name: String, library: String) -> Result<String, String> {
+    move_entry(Path::new(&path), Path::new(&parent), &name, Path::new(&library))
 }
 
-fn move_entry(from: &Path, parent: &Path, name: &str) -> Result<String, String> {
+fn move_entry(from: &Path, parent: &Path, name: &str, library: &Path) -> Result<String, String> {
     if !from.is_dir() {
         return Err("That folder isn't there any more".into());
+    }
+    if !in_library(from, library) || !library_or_in(parent, library) {
+        return Err(NOT_LIBRARY.into());
     }
     // A bare "E:" is that drive's current folder to Windows, not its top: only a whole path will do.
     if !parent.is_absolute() || !parent.is_dir() {
@@ -340,16 +361,19 @@ fn move_entry(from: &Path, parent: &Path, name: &str) -> Result<String, String> 
     Ok(to.display().to_string())
 }
 
-/// Deletes an empty folder of the library. One with anything in it, a project above all, stays.
+/// Deletes an empty folder inside the library (`library`). One with anything in it, a project above all, stays.
 #[tauri::command]
-pub async fn remove_library_folder(path: String) -> Result<(), String> {
-    remove_folder(Path::new(&path))
+pub async fn remove_library_folder(path: String, library: String) -> Result<(), String> {
+    remove_folder(Path::new(&path), Path::new(&library))
 }
 
-fn remove_folder(dir: &Path) -> Result<(), String> {
+fn remove_folder(dir: &Path, library: &Path) -> Result<(), String> {
     // Deleted or renamed in Explorer since the tree was read, or by a Delete pressed just before.
     if !dir.is_dir() {
         return Err("That folder isn't there any more".into());
+    }
+    if !in_library(dir, library) {
+        return Err(NOT_LIBRARY.into());
     }
     let mut inside = fs::read_dir(dir).map_err(|error| error.to_string())?;
     if inside.next().is_some() {
@@ -382,8 +406,7 @@ fn trash_project(dir: &Path, library: &Path, owner: isize) -> Result<bool, Strin
         return Err("That folder isn't there any more".into());
     }
     // Never the library itself, a folder of projects, or a project kept elsewhere, in Documents say.
-    let in_library = library.is_absolute() && path_key(dir).starts_with(&format!("{}\\", path_key(library)));
-    if !dir.is_absolute() || !in_library || !dir.join("pensieve.db").is_file() {
+    if !in_library(dir, library) || !dir.join("pensieve.db").is_file() {
         return Err("Only a project's folder goes to the Recycle Bin from here".into());
     }
     if !to_recycle_bin(dir, owner)? {
@@ -525,29 +548,43 @@ mod tests {
         fs::create_dir_all(root.join("Zgodbe").join("Prva")).unwrap();
         fs::create_dir_all(root.join("Romani")).unwrap();
         // A rename, then a move into another folder, with what is inside.
-        let renamed = move_entry(&root.join("Zgodbe"), &root, "Kratke zgodbe").unwrap();
+        let renamed = move_entry(&root.join("Zgodbe"), &root, "Kratke zgodbe", &root).unwrap();
         assert!(Path::new(&renamed).join("Prva").is_dir());
-        move_entry(Path::new(&renamed), &root.join("Romani"), "Kratke zgodbe").unwrap();
+        move_entry(Path::new(&renamed), &root.join("Romani"), "Kratke zgodbe", &root).unwrap();
         assert!(root.join("Romani").join("Kratke zgodbe").join("Prva").is_dir());
         // Never inside itself, never over something already there.
-        assert!(move_entry(&root.join("Romani"), &root.join("Romani").join("Kratke zgodbe"), "Romani").is_err());
+        assert!(move_entry(&root.join("Romani"), &root.join("Romani").join("Kratke zgodbe"), "Romani", &root).is_err());
         fs::create_dir_all(root.join("Drugo")).unwrap();
-        assert!(move_entry(&root.join("Drugo"), &root, "Romani").is_err());
+        assert!(move_entry(&root.join("Drugo"), &root, "Romani", &root).is_err());
         // Only the capitals change.
-        assert!(move_entry(&root.join("Drugo"), &root, "drugo").is_ok());
+        assert!(move_entry(&root.join("Drugo"), &root, "drugo", &root).is_ok());
         // An empty folder can be deleted; one with something in it can't.
-        assert!(remove_folder(&root.join("Romani")).is_err());
-        assert!(remove_folder(&root.join("drugo")).is_ok());
+        assert!(remove_folder(&root.join("Romani"), &root).is_err());
+        assert!(remove_folder(&root.join("drugo"), &root).is_ok());
         assert!(!root.join("drugo").exists());
-        assert_eq!(remove_folder(&root.join("drugo")), Err("That folder isn't there any more".to_string()));
+        assert_eq!(remove_folder(&root.join("drugo"), &root), Err("That folder isn't there any more".to_string()));
         // A bare drive is its current folder to Windows, never the parent meant.
-        assert!(move_entry(&root.join("Romani"), Path::new("C:"), "Romani").is_err());
+        assert!(move_entry(&root.join("Romani"), Path::new("C:"), "Romani", &root).is_err());
+        // Only a folder inside the library moves or goes, and only within it; ".." leads nowhere out of it.
+        let outside = std::env::temp_dir().join(format!("pensieve-outside-{}", std::process::id()));
+        fs::create_dir_all(outside.join("Moje")).unwrap();
+        let refused = NOT_LIBRARY.to_string();
+        assert_eq!(move_entry(&outside.join("Moje"), &root, "Moje", &root).unwrap_err(), refused);
+        assert_eq!(move_entry(&root.join("Romani"), &outside, "Romani", &root).unwrap_err(), refused);
+        assert_eq!(move_entry(&root, &outside, "Knjižnica", &root).unwrap_err(), refused);
+        assert_eq!(move_entry(&root.join("Romani"), &root.join("..").join(outside.file_name().unwrap()), "Romani", &root).unwrap_err(), refused);
+        assert_eq!(remove_folder(&outside.join("Moje"), &root).unwrap_err(), refused);
+        assert_eq!(remove_folder(&root, &root).unwrap_err(), refused);
+        assert_eq!(remove_folder(&root.join("..").join(outside.file_name().unwrap()).join("Moje"), &root).unwrap_err(), refused);
+        assert_eq!(remove_folder(&outside.join("Moje"), Path::new("Knjižnica")).unwrap_err(), refused);
+        assert!(outside.join("Moje").is_dir() && root.join("Romani").is_dir());
+        let _ = fs::remove_dir_all(&outside);
         // A project whose file would pass Windows' 260 characters stays where it is.
         fs::create_dir_all(root.join("Brod")).unwrap();
         fs::write(root.join("Brod").join("pensieve.db"), b"").unwrap();
         let deep = root.join("d".repeat(120));
         fs::create_dir_all(&deep).unwrap();
-        assert!(move_entry(&root.join("Brod"), &deep, &"b".repeat(120)).is_err());
+        assert!(move_entry(&root.join("Brod"), &deep, &"b".repeat(120), &root).is_err());
         assert!(root.join("Brod").join("pensieve.db").is_file());
         assert!(too_long(Path::new(&format!("C:\\{}\\pensieve.db", "a".repeat(250)))));
         assert!(!too_long(Path::new(&format!("C:\\{}\\pensieve.db", "a".repeat(240)))));

@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { isUntitled, localizeError, pluralize, relativeTime, translate, uiKeys } from "./i18n";
 
@@ -73,6 +75,37 @@ describe("interface language", () => {
     );
     expect(localizeError("en", "Enter one word, without spaces")).toBe("Enter one word, without spaces");
     expect(localizeError("sl", "disk I/O error")).toBe("disk I/O error");
+  });
+
+  it("has Slovenian for every problem the Windows side words itself (ARCH-19)", () => {
+    // Its texts in English, out of the Rust code itself: what it returns as an error, in any of the ways it does.
+    const literal = String.raw`"((?:[^"\\]|\\.)*)"`;
+    const ways = [
+      new RegExp(String.raw`Err\(\s*${literal}`, "g"),
+      new RegExp(String.raw`ok_or\(\s*${literal}`, "g"),
+      new RegExp(String.raw`${literal}\s*\.(?:into|to_string)\(\)`, "g"),
+      new RegExp(String.raw`const [A-Z_]+: &str = ${literal}`, "g"),
+      new RegExp(String.raw`format!\(\s*${literal}`, "g"),
+    ];
+    // Not hers to read: answers the page acts on, the reason Windows shows at shutdown (the page gives it in
+    // her language), and what only another system would say.
+    const unread = new Set(["EXISTS", "CHANGED_ELSEWHERE", "absent", "Pensieve is saving your words", "Only Windows has the Recycle Bin Pensieve uses"]);
+    const folder = join(process.cwd(), "src-tauri", "src");
+    const texts = new Set<string>();
+    for (const file of readdirSync(folder).filter((name) => name.endsWith(".rs"))) {
+      // Its tests' own texts are left out.
+      const code = readFileSync(join(folder, file), "utf8").split("#[cfg(test)]")[0];
+      for (const way of ways) {
+        for (const match of code.matchAll(way)) {
+          const worded = JSON.parse(`"${match[1]}"`) as string;
+          // A name made of values ("{}.db") says nothing to her; a sentence starts with a capital or a quote.
+          const text = worded.replace(/\{\w*\}/g, "Roman.docx");
+          if (/^[A-Z“]/.test(worded) && !unread.has(text)) texts.add(text);
+        }
+      }
+    }
+    expect(texts.size).toBeGreaterThan(40);
+    expect([...texts].filter((text) => localizeError("sl", text) === text)).toEqual([]);
   });
 
   it("knows an untitled book in either language", () => {

@@ -240,11 +240,17 @@
   const openPools = new Set();
   window.__PV_HARNESS__.openPools = openPools;
   const within = (path, folder) => lower(path) === lower(folder) || lower(path).startsWith(`${lower(folder)}\\`);
+  // library.rs in_library: a folder inside the library, never the library itself.
+  const inLibrary = (path, library) => Boolean(library) && lower(path).startsWith(`${lower(library)}\\`);
   /** library.rs move_entry on the pretend disk: folders, files kept or loaded, all follow. */
-  const moveFolder = (from, parent, name) => {
+  const moveFolder = (from, parent, name, library) => {
     from = String(from).replace(/[\\/]+$/, "");
     parent = String(parent).replace(/[\\/]+$/, "");
+    library = String(library ?? "").replace(/[\\/]+$/, "");
     if (!folders.has(lower(from))) throw "That folder isn't there any more";
+    if (!inLibrary(from, library) || !(lower(parent) === lower(library) || inLibrary(parent, library))) {
+      throw "Only a folder of the library can be moved or deleted from here";
+    }
     if (!folders.has(lower(parent))) throw "Choose a folder that exists";
     const to = `${parent}\\${folderName(name)}`;
     if (lower(to).startsWith(`${lower(from)}\\`)) throw "A folder can't go inside itself";
@@ -388,7 +394,7 @@
         window.__PV_HARNESS__.installed = (window.__PV_HARNESS__.installed ?? 0) + 1;
         return null;
       case "move_library_entry":
-        return moveFolder(args.path, args.parent, args.name);
+        return moveFolder(args.path, args.parent, args.name, args.library);
       case "open_library_file": {
         if (!files.has(lower(args.path))) throw "That file isn't there any more";
         if (PROGRAMS.test(args.path)) throw "Pensieve doesn't start programs; open it from Explorer if you trust it";
@@ -482,6 +488,7 @@
       case "remove_library_folder": {
         const path = String(args.path).replace(/[\\/]+$/, "");
         if (!folders.has(lower(path))) throw "That folder isn't there any more";
+        if (!inLibrary(path, String(args.library ?? "").replace(/[\\/]+$/, ""))) throw "Only a folder of the library can be moved or deleted from here";
         const inside =
           [...folders.values()].some((spelled) => lower(spelled).startsWith(`${lower(path)}\\`)) ||
           [...books.keys()].some((key) => within(key.replace(/^sqlite:/, ""), path)) ||
