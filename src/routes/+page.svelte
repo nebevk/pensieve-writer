@@ -302,6 +302,11 @@
     const id = projectId;
     if (id) untrack(() => void rescue.check(id));
   });
+  // Her own words are the open project's: read again, and taught to Windows, whenever another one opens; else
+  // Settings went on listing the words of the project Pensieve started with.
+  $effect(() => {
+    if (projectId) untrack(() => void personalWords.refresh());
+  });
 
   const chapters = $derived(
     writing ? [...writing.chapters].sort((a, b) => a.position - b.position) : [],
@@ -433,7 +438,6 @@
         await openAtStart();
         if (disposed) return;
         saveStatus = { state: "saved" };
-        await personalWords.refresh();
         rememberProject();
       } catch (error) {
         if (disposed) return;

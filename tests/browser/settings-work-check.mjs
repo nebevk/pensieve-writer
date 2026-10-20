@@ -98,6 +98,43 @@ check("and kept in the project", JSON.stringify(await query("SELECT language, wo
 await page.run(`(document.querySelector('.window ul.words li button[aria-label="Remove: Mlinarjevka"]')?.click(), true)`);
 check("taken out, it goes from the list and the project", (await until(`${listed}.length === 0`)) && (await query("SELECT word FROM personal_words")).length === 0);
 
+// Her words are the open project's: another project shows its own, and hers come back with hers.
+const addWord = (word) =>
+  page.run(`(() => {
+    const form = document.querySelector(".window form.actions");
+    const input = form.querySelector("input");
+    input.value = ${JSON.stringify(word)};
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    form.requestSubmit();
+    return true;
+  })()`);
+await addWord("Žerjavček");
+await until(`JSON.stringify(${listed}) === JSON.stringify(["Žerjavček:SL"])`);
+const PROJECT = `(document.querySelector(".titlebar .project")?.textContent.trim() ?? "")`;
+await page.key("Escape", "Escape", 27);
+await until(`!document.querySelector(".window")`);
+await page.click(".titlebar .mark");
+await until(`!!document.querySelector(".home .continue")`);
+await page.clickText(".home .head button.new", "New project");
+await until(`!!document.activeElement?.matches(".window .field input")`);
+await page.type("Drugi projekt");
+await page.key("Enter", "Enter", 13);
+await until(`${PROJECT} === "Drugi projekt"`);
+await page.click(".gear");
+await until(`!!document.querySelector(".window nav")`);
+await section("Language");
+check("another project lists its own words, not hers from the first", await until(`${listed}.length === 0`, 30), JSON.stringify(await page.run(listed)));
+await page.key("Escape", "Escape", 27);
+await until(`!document.querySelector(".window")`);
+await page.click(".titlebar .mark");
+await until(`!!document.querySelector(".home button.card.project")`);
+await page.clickText(".home button.card.project", "My first project");
+await until(`${PROJECT} === "Untitled"`);
+await page.click(".gear");
+await until(`!!document.querySelector(".window nav")`);
+await section("Language");
+check("and back in hers, her word is listed again", await until(`JSON.stringify(${listed}) === JSON.stringify(["Žerjavček:SL"])`, 30), JSON.stringify(await page.run(listed)));
+
 check("no errors on the page", page.problems.length === 0, page.problems.slice(0, 3).join(" | "));
 console.log(results.every(Boolean) ? "\nALL PASSED" : `\n${results.filter((ok) => !ok).length} FAILED`);
 page.close();
