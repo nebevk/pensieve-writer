@@ -98,3 +98,11 @@ export async function writeBackup(folder: string, lastOf: (projectId: string) =>
   });
   return { path, signature, projectId: project.id };
 }
+
+/** One project's backups in the backup folder: how many, and the room they take (SV-15). */
+export type BackupUsage = { key: string; title: string; count: number; bytes: number };
+
+/** Pensieve's backups in a folder, for each project, the one backed up last first; none when the folder isn't there. */
+export function backupUsage(folder: string): Promise<BackupUsage[]> {
+  return invoke<BackupUsage[]>("backup_usage", { folder });
+}

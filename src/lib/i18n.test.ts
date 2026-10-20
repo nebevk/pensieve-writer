@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { isUntitled, localizeError, pluralize, relativeTime, translate, uiKeys } from "./i18n";
+import { fileSize, isUntitled, localizeError, pluralize, relativeTime, translate, uiKeys } from "./i18n";
 
 const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
 
@@ -106,6 +106,19 @@ describe("interface language", () => {
     }
     expect(texts.size).toBeGreaterThan(40);
     expect([...texts].filter((text) => localizeError("sl", text) === text)).toEqual([]);
+  });
+
+  it("gives the backups' room as Explorer does, in either language (SV-15)", () => {
+    expect(fileSize("en", 300)).toBe("1 KB");
+    expect(fileSize("en", 13 * 1024 - 5)).toBe("13 KB");
+    expect(fileSize("sl", 18.44 * 1024 * 1024)).toBe("18,4 MB");
+    expect(fileSize("en", 1.5 * 1024 ** 3)).toBe("1.5 GB");
+    expect(pluralize("sl", "backupCount", 2)).toBe("2 varnostni kopiji");
+    expect(pluralize("sl", "backupCount", 102)).toBe("102 varnostni kopiji");
+    expect(pluralize("sl", "backupCount", 45)).toBe("45 varnostnih kopij");
+    expect(translate("sl", "backupsInFolder", { count: pluralize("sl", "backupCount", 3), size: fileSize("sl", 2.5 * 1024 * 1024) })).toBe(
+      "V tej mapi: 3 varnostne kopije, 2,5 MB. Pensieve hrani zadnjih 20 kopij vsakega projekta.",
+    );
   });
 
   it("knows an untitled book in either language", () => {

@@ -421,6 +421,33 @@
         (window.__PV_HARNESS__.backups ??= []).push(path);
         return path;
       }
+      case "backup_usage": {
+        // backup.rs backup_usage: Pensieve's backups in the folder, by project, the one backed up last first.
+        const folder = lower(String(args.folder).replace(/[\\/]+$/, ""));
+        const projects = new Map();
+        for (const file of files.values()) {
+          const at = file.path.lastIndexOf("\\");
+          if (lower(file.path.slice(0, at)) !== folder) continue;
+          const match = /^pensieve-(?:([A-Za-z0-9]{1,32})-)?(\d{4}-\d{2}-\d{2}T.*)\.json$/.exec(file.path.slice(at + 1));
+          if (!match) continue;
+          const key = match[1] ?? "";
+          const project = projects.get(key) ?? { key, title: "", count: 0, bytes: 0, saved: "" };
+          const binary = atob(file.base64);
+          project.count += 1;
+          project.bytes += binary.length;
+          if (match[2] > project.saved) {
+            project.saved = match[2];
+            try {
+              const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(binary, (c) => c.charCodeAt(0))));
+              project.title = data.project?.title ?? data.book?.title ?? "";
+            } catch {
+              project.title = "";
+            }
+          }
+          projects.set(key, project);
+        }
+        return [...projects.values()].sort((a, b) => (a.saved < b.saved ? 1 : -1)).map(({ saved, ...rest }) => rest);
+      }
       case "kept_copies_folder":
         return keptFolder(args.kind);
       case "write_kept_copy": {

@@ -1,5 +1,6 @@
 import {
   dateLocale,
+  fileSize,
   formatNumber,
   pluralize,
   relativeTime,
@@ -18,6 +19,9 @@ export const t = (key: UiKey, values?: Record<string, string | number>) => trans
 export const plural = (key: PluralKey, count: number) => pluralize(ui.language, key, count);
 
 export const num = (value: number) => formatNumber(ui.language, value);
+
+/** "18.4 MB", "18,4 MB". */
+export const size = (bytes: number) => fileSize(ui.language, bytes);
 
 export const ago = (iso: string) => relativeTime(ui.language, iso);
 

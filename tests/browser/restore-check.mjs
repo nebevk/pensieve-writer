@@ -6,6 +6,7 @@
 import { connect, sleep } from "./cdp.mjs";
 
 const port = Number(process.argv[2] ?? 4176);
+const shots = new URL("./shots/", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 const page = await connect({ width: 1366, height: 768 });
 await page.harness({ keep: true });
 const results = [];
@@ -148,11 +149,36 @@ await openSettingsAt("Backup & export");
 await answer(BACKUPS);
 await press(".window button", "Choose folder");
 await until(`[...document.querySelectorAll(".window .path")].some((el) => el.textContent.includes("Google Drive"))`);
+// What Pensieve's backups take in the folder (SV-15), under it; each project's when there are several.
+const usage = () => page.run(`[...document.querySelectorAll(".window .usage-total, .window .usage li")].map((el) => el.textContent.trim())`);
+check("a folder without backups says so", await until(`document.querySelector(".window .usage-total")?.textContent.trim() === "No backups in this folder yet"`), JSON.stringify(await usage()));
 await press(".window button", "Back up now");
 await until(`(window.__PV_HARNESS__.backups ?? []).length === 1`);
 const backupPath = await page.run(`window.__PV_HARNESS__.backups[0]`);
 const backupText = await page.run(`new TextDecoder().decode(Uint8Array.from(atob(window.__PV_HARNESS__.files.get(window.__PV_HARNESS__.backups[0].toLowerCase()).base64), (c) => c.charCodeAt(0)))`);
 check("Back up now writes the book to the Drive folder, its picture inside", backupPath?.startsWith(`${BACKUPS}\\pensieve-`) && backupText.includes("šepetal je žerjav") && backupText.includes(kept.pictures[0]), backupPath);
+check(
+  "then the folder says how many backups Pensieve keeps there, and their size",
+  await until(`/^In this folder: 1 backup, [\\d.,]+ (KB|MB)\\. Pensieve keeps the newest 20 of each project\\.$/.test(document.querySelector(".window .usage-total")?.textContent.trim() ?? "")`),
+  JSON.stringify(await usage()),
+);
+await page.run(`(() => {
+  const path = ${JSON.stringify(`${BACKUPS}\\pensieve-zz99yy88-2026-10-19T08-00-00.000Z.json`)};
+  const bytes = new TextEncoder().encode(JSON.stringify({ kind: "pensieve-backup", format: 2, project: { id: "zz99yy88", title: "Vrt in čaša" } }));
+  window.__PV_HARNESS__.files.set(path.toLowerCase(), { path, base64: btoa(String.fromCharCode(...bytes)) });
+  return true;
+})()`);
+await closeWindow();
+await openSettingsAt("Backup & export");
+await until(`document.querySelectorAll(".window .usage li").length === 2`);
+const listed = await usage();
+check(
+  "with another project's backup there too, each project is listed by name, the one backed up last first",
+  /^In this folder: 2 backups, /.test(listed[0] ?? "") && /^.+: 1 backup, [\d.,]+ (KB|MB)$/.test(listed[1] ?? "") && listed[2] === "Vrt in čaša: 1 backup, 1 KB",
+  JSON.stringify(listed),
+);
+const row = await page.run(`(() => { const r = document.querySelector(".window .usage").closest(".row").getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; })()`);
+await page.shoot(`${shots}backup-meter.png`, row);
 await closeWindow();
 await wipe("Spet vse izginilo.");
 await openSettingsAt("Backup & export");

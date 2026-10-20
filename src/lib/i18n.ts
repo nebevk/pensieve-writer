@@ -461,6 +461,10 @@ const en = {
   theWordCopy: "The Word copy",
   backups: "Backups",
   noBackupFolder: "No backup folder chosen",
+  // What Pensieve's backups take in that folder (SV-15): {count} is "42 backups", {size} "18.4 MB".
+  backupsInFolder: "In this folder: {count}, {size}. Pensieve keeps the newest 20 of each project.",
+  backupsOfProject: "{title}: {count}, {size}",
+  backupsNone: "No backups in this folder yet",
   chooseFolder: "Choose folder",
   backUpNow: "Back up now",
   restoreFromBackup: "Restore from a backup…",
@@ -1214,6 +1218,9 @@ const sl: Record<UiKey, string> = {
   theWordCopy: "Kopija za Word",
   backups: "Varnostne kopije",
   noBackupFolder: "Mapa za varnostne kopije ni izbrana",
+  backupsInFolder: "V tej mapi: {count}, {size}. Pensieve hrani zadnjih 20 kopij vsakega projekta.",
+  backupsOfProject: "{title}: {count}, {size}",
+  backupsNone: "V tej mapi še ni varnostnih kopij",
   chooseFolder: "Izberi mapo",
   backUpNow: "Varnostno kopiraj zdaj",
   restoreFromBackup: "Obnovi iz varnostne kopije …",
@@ -1544,6 +1551,8 @@ const PLURALS = {
   noteCount: { en: ["{n} note", "{n} notes"], sl: ["{n} zapisek", "{n} zapiska", "{n} zapiski", "{n} zapiskov"] },
   /** "In 3 projects": Slovenian "v" takes the locative. */
   inProjects: { en: ["in {n} project", "in {n} projects"], sl: ["v {n} projektu", "v {n} projektih", "v {n} projektih", "v {n} projektih"] },
+  /** Settings' backup folder: "42 backups". */
+  backupCount: { en: ["{n} backup", "{n} backups"], sl: ["{n} varnostna kopija", "{n} varnostni kopiji", "{n} varnostne kopije", "{n} varnostnih kopij"] },
   /** Settings' kept copies: "3 kept copies". */
   keptCount: { en: ["{n} kept copy", "{n} kept copies"], sl: ["{n} shranjena kopija", "{n} shranjeni kopiji", "{n} shranjene kopije", "{n} shranjenih kopij"] },
   /** Asked before they go; Slovenian "odstranim" takes the accusative, and the pronoun follows the number. */
@@ -1581,6 +1590,19 @@ export function dateLocale(language: UiLanguage): string {
 /** 1,240 in English, 1.240 in Slovenian. */
 export function formatNumber(language: UiLanguage, value: number): string {
   return value.toLocaleString(language === "sl" ? "sl-SI" : "en");
+}
+
+/** A file's size as Explorer shows it: whole KB, rounded up, then MB and GB with one decimal ("18.4 MB", "18,4 MB"). */
+export function fileSize(language: UiLanguage, bytes: number): string {
+  const units = ["KB", "MB", "GB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const shown = unit === 0 ? Math.max(1, Math.ceil(value)) : Math.round(value * 10) / 10;
+  return `${shown.toLocaleString(language === "sl" ? "sl-SI" : "en", { maximumFractionDigits: 1 })} ${units[unit]}`;
 }
 
 /** "just now", "5 min ago", "yesterday", "3 d ago". */

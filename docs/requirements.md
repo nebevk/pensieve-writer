@@ -140,6 +140,7 @@ said), Not started, Dropped. IDs are fixed; code comments and the backlog refer 
 | SV-12 | Backups straight to Google Drive through its API | C | Not started |
 | SV-13 | When saving fails (the project's folder renamed in Explorer, a full disk), a rescue copy of the page's words, with the notes and to-dos not saved yet, goes to Pensieve's own folder at once, and again every ten seconds while it keeps failing and the words change; a save that works takes it away. Closing asks once, says the words are safe, and closes; a second close while saving waits for it. The next time the project opens, the copy is offered back: over the writing, after what is there now is kept in Earlier versions, or beside it, as a writing of its own, when the writing has been saved since. A copy put off is never written over or taken away by a later one. With no rescue copy either, the window stays open until the words are copied or saved as a Word file elsewhere. Export and copying work from the page while saving fails, and a file that failed to open is tried again at the next save, never made again empty (ARCH-1, 15 October) | M | Done |
 | SV-14 | Delete for good keeps one copy of the writing as it was in Pensieve's own folder, with no time limit, and nothing is deleted if that copy can't be written. Settings → Backup & export counts these copies, brings one back as a backup is restored, and removes them after asking; rescue copies, which may hold words in no project, go only once brought back (ARCH-5, 15 October) | S | Done |
+| SV-15 | Under the backup folder, Settings → Backup & export says what Pensieve's backups take there: how many and how much room, in all and for each project by its name (from its newest backup), the one backed up last first. Only Pensieve's own backup files are counted; Drive's own free space isn't shown (owner, 20 October) | S | Done |
 
 ### 4.7 Atmosphere
 
@@ -258,6 +259,9 @@ Coziness is the top product priority, within the performance budget in Section 5
 The owner's decisions that shaped the app, newest first. Each replaced what the original plan or the
 design system said.
 
+- **20 Oct:** Settings shows what Pensieve's backups take in the backup folder, in all and for each project, and
+  not Drive's free space. Smooth typing's ink stays as it is: it costs only the slowest keys (with the processor
+  slowed four times, 19 in 20 within 40 ms instead of 32), and is checked on Eva's laptop (IMP-10) first.
 - **19 Oct:** Saves stay without a new dependency: a writing's chapters go to the file in one statement, all of
   them or none, rather than in a transaction held by Rust's `sqlx`. Saving only the chapters that changed
   (ARCH-7) waits until timings on Eva's laptop show the whole book's save costs her something.

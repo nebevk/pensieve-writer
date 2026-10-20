@@ -3,7 +3,8 @@
   import type { WritingLanguage } from "$lib/model";
   import type { UiKey } from "$lib/i18n";
   import type { KeySoundStyle } from "$lib/keySounds";
-  import { ago, num, plural, t } from "$lib/ui.svelte";
+  import { ago, num, plural, size, t } from "$lib/ui.svelte";
+  import { backupUsage, type BackupUsage } from "$lib/storage/backup";
   import { LONG_PAGE_WORDS } from "$lib/chapters/page";
   import { goalFrom } from "$lib/editor/counts";
   import Modal from "./Modal.svelte";
@@ -236,6 +237,29 @@
 
   $effect(() => {
     section = startSection;
+  });
+
+  // Pensieve's backups in the backup folder (SV-15): read when the section shows, and again after a backup.
+  let usage = $state<BackupUsage[] | null>(null);
+  const usageTotal = $derived({
+    count: (usage ?? []).reduce((sum, item) => sum + item.count, 0),
+    bytes: (usage ?? []).reduce((sum, item) => sum + item.bytes, 0),
+  });
+  $effect(() => {
+    const folder = prefs.backupFolder;
+    void backupMessage;
+    if (section !== "Backup & export" || !folder) {
+      usage = null;
+      return;
+    }
+    let current = true;
+    backupUsage(folder).then(
+      (found) => current && (usage = found),
+      () => current && (usage = null),
+    );
+    return () => {
+      current = false;
+    };
   });
 </script>
 
@@ -618,6 +642,20 @@
               <span class="what">
                 <span>{t("backups")}</span>
                 <span class="path" class:none={!prefs.backupFolder}>{prefs.backupFolder || t("noBackupFolder")}</span>
+                {#if prefs.backupFolder && usage}
+                  <span class="note usage-total">
+                    {usage.length > 0
+                      ? t("backupsInFolder", { count: plural("backupCount", usageTotal.count), size: size(usageTotal.bytes) })
+                      : t("backupsNone")}
+                  </span>
+                  {#if usage.length > 1}
+                    <ul class="usage">
+                      {#each usage as item (item.key)}
+                        <li>{t("backupsOfProject", { title: item.title || t("untitled"), count: plural("backupCount", item.count), size: size(item.bytes) })}</li>
+                      {/each}
+                    </ul>
+                  {/if}
+                {/if}
               </span>
               <div class="actions">
                 <button type="button" onclick={onChooseFolder}>{t("chooseFolder")}</button>
@@ -1371,6 +1409,15 @@
     color: var(--pv-text-muted);
     font-size: var(--pv-text-sm);
     overflow-wrap: anywhere;
+  }
+
+  /* Each project's backups, under the folder's total (SV-15). */
+  .usage {
+    margin: 0;
+    padding-left: 1.2em;
+    color: var(--pv-text-subtle);
+    font-size: var(--pv-text-sm);
+    line-height: 1.45;
   }
 
   .path.none {

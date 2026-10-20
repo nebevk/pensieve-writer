@@ -37,6 +37,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             backup::write_backup,
             backup::read_backup_file,
+            backup::backup_usage,
             export::write_document,
             kept::kept_copies_folder,
             kept::write_kept_copy,
