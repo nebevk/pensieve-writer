@@ -15,8 +15,8 @@
   import { PersonalWords } from "$lib/editor/personalWords.svelte";
   import { Updates } from "$lib/updates.svelte";
   import { DriveBackup, WordCopy, copyPathFor } from "$lib/save/copies.svelte";
-  import { keptCopiesFolder, listKeptCopies, removeKeptCopy } from "$lib/save/kept";
   import { Rescue, besideItsWriting, type RescueOffer } from "$lib/save/rescue.svelte";
+  import { Restores } from "$lib/save/restores.svelte";
   import { WritingActions } from "$lib/chapters/writingActions.svelte";
   import { LibraryDisk } from "$lib/chapters/libraryDisk";
   import { EarlierVersions } from "$lib/views/earlierVersions.svelte";
@@ -28,7 +28,7 @@
   import { byFileName, documentKind, documentName, draftChapters, type DocumentSource } from "$lib/export/importWriting";
   import { createAmbience } from "$lib/ambience";
   import { onPomodoroTurn, pomodoro } from "$lib/pomodoro.svelte";
-  import { chooseBackupFile, chooseBackupFolder, chooseDocumentFiles, chooseProjectFile, readBackupFile } from "$lib/storage/backup";
+  import { chooseBackupFolder, chooseDocumentFiles, chooseProjectFile } from "$lib/storage/backup";
   import type { BackupContent } from "$lib/storage/backupFile";
   import Particles from "$lib/views/Particles.svelte";
   import Tour from "$lib/views/Tour.svelte";
@@ -217,9 +217,6 @@
   let restoring = $state(false);
   // How many closings of the editor are under way; it opens again when the last one is done.
   let closings = 0;
-  let pendingBackup = $state<BackupContent | null>(null);
-  // Where it was picked, for a rescue copy restored that way.
-  let pendingBackupPath = "";
   // Her copies outside Pensieve: the backup in a folder she chose, and the Word copy (see copies.svelte.ts).
   const copiesHost = {
     writing: () => writing,
@@ -272,8 +269,6 @@
   const shownSave = $derived<SaveStatus>(saveStatus.state !== "error" && noteSaveError ? { state: "error", message: noteSaveError } : saveStatus);
   // Closing while saving fails: whether a rescue copy holds her words, and why the save failed.
   let saveTrouble = $state<{ kept: boolean; message: string } | null>(null);
-  // How many copies Pensieve keeps in its own folder, for Settings.
-  let keptCount = $state(0);
 
   const autosave = createAutosave({
     delayMs: 2000,
@@ -1468,35 +1463,17 @@
     return run;
   }
 
-  async function pickBackup() {
-    try {
-      const path = await chooseBackupFile();
-      if (path) pendingBackup = await readBackupFile(path);
-      pendingBackupPath = path ?? "";
-    } catch (error) {
-      backupMessage = errorMessage(error);
-    }
-  }
-
-  async function restoreBackup() {
-    const backup = pendingBackup;
-    const path = pendingBackupPath;
-    if (!backup) return;
-    pendingBackup = null;
-    try {
-      await restoreContent(backup);
-      // A rescue copy from Pensieve's own folder, back in its project now: it isn't offered again.
-      if (backup.rescue && path) {
-        const folder = (await keptCopiesFolder("rescue").catch(() => "")).toLowerCase();
-        const name = path.split(/[\\/]/).pop() ?? "";
-        if (folder && path.toLowerCase().startsWith(folder)) await removeKeptCopy("rescue", name).catch(() => undefined);
-      }
+  // Settings' backups and kept copies (restores.svelte.ts, IMP-28).
+  const restores = new Restores({
+    shelf: () => shelf,
+    writing: () => writing,
+    restore: (backup) => restoreContent(backup),
+    restored: () => {
       settingsOpen = false;
       view = "write";
-    } catch (error) {
-      backupMessage = errorMessage(error);
-    }
-  }
+    },
+    say: (message) => (backupMessage = message),
+  });
 
   /** A rescue copy brought back (ARCH-1): into its project, after what is there now is kept in Earlier versions. */
   async function bringBackRescue(offer: RescueOffer) {
@@ -1549,39 +1526,10 @@
     }
   }
 
-  /** Counts the copies of writings deleted for good, for Settings; rescue copies go only once brought back. */
-  async function refreshKept() {
-    try {
-      keptCount = (await listKeptCopies("deleted")).length;
-    } catch {
-      keptCount = 0;
-    }
-  }
+  // Settings counts the copies of writings deleted for good each time it opens.
   $effect(() => {
-    if (settingsOpen) untrack(() => void refreshKept());
+    if (settingsOpen) untrack(() => void restores.refreshKept());
   });
-
-  /** Settings' Bring one back: a kept copy, picked in their folder, restored as a backup is. */
-  async function bringBackKept() {
-    try {
-      const path = await chooseBackupFile(await keptCopiesFolder("deleted"), t("dialogKeptCopy"));
-      if (path) pendingBackup = await readBackupFile(path);
-      pendingBackupPath = path ?? "";
-    } catch (error) {
-      backupMessage = errorMessage(error);
-    }
-  }
-
-  /** Settings' Remove them: the copies of writings deleted for good go. */
-  async function removeKept() {
-    try {
-      for (const copy of await listKeptCopies("deleted")) await removeKeptCopy("deleted", copy.name);
-      backupMessage = t("keptRemoved");
-    } catch (error) {
-      backupMessage = errorMessage(error);
-    }
-    await refreshKept();
-  }
 
   /** Puts a backup, or a rescue copy, back into the open project and opens what came back. */
   async function restoreContent(backup: BackupContent) {
@@ -1602,19 +1550,6 @@
       activeId = restored.chapters[0]?.id ?? null;
       rememberProject();
     });
-  }
-
-  function backupOffer(backup: BackupContent | null) {
-    if (!backup || !writing) return null;
-    const saved = new Date(backup.savedAt);
-    const ids = new Set(shelf?.writings.map((item) => item.id) ?? []);
-    return {
-      // One writing (a copy of a writing deleted for good, say) is named as itself; a whole project by its name.
-      title: (backup.format === 2 && backup.writings.length > 1 ? backup.title : backup.writings[0]?.title) || t("untitled"),
-      savedAt: Number.isNaN(saved.getTime()) ? t("unknownDate") : saved.toLocaleString(locale()),
-      // A backup of this project, or of a writing it has, puts things back; any other comes in beside them.
-      otherBook: backup.format === 2 ? backup.projectId !== projectId : !backup.writings.some((item) => ids.has(item.id)),
-    };
   }
 
   function reportSaveError(message: string) {
@@ -3150,13 +3085,13 @@
       onExportText={(kind) => void exporter.text(kind)}
       onCopyHtml={() => void exporter.copyHtml()}
       onPrint={() => void printBook()}
-      backupOffer={backupOffer(pendingBackup)}
-      onPickBackup={() => void pickBackup()}
-      onRestoreBackup={() => void restoreBackup()}
-      onCancelBackup={() => (pendingBackup = null)}
-      {keptCount}
-      onBringBackKept={() => void bringBackKept()}
-      onRemoveKept={() => void removeKept()}
+      backupOffer={restores.offer()}
+      onPickBackup={() => void restores.pick()}
+      onRestoreBackup={() => void restores.restore()}
+      onCancelBackup={() => restores.cancel()}
+      keptCount={restores.keptCount}
+      onBringBackKept={() => void restores.bringBackKept()}
+      onRemoveKept={() => void restores.removeKept()}
       bookTitle={writing.title}
       onAddExamples={() => void addExampleBooks()}
       examplesAdded={sampleNames.some((name) => name !== "long-test-book")}
