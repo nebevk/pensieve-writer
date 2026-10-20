@@ -4,6 +4,8 @@ type SaveQueueOptions<T> = {
   key: (item: T) => string;
   save: (item: T) => Promise<void>;
   onError?: (error: unknown) => void;
+  /** After a save that failed, how long until it is tried again by itself; without it, it waits for the next change or flush. */
+  retryMs?: number;
   /** After a round of saves that all worked. */
   onSaved?: () => void;
 };
@@ -52,6 +54,13 @@ export function createSaveQueue<T>(options: SaveQueueOptions<T>): SaveQueue<T> {
     }
     if (failure) {
       options.onError?.(failure.error);
+      // Tried again in a moment, so what waits is saved once the file is back, without another change to it.
+      if (options.retryMs !== undefined && !timer) {
+        timer = setTimeout(() => {
+          timer = null;
+          void flush().catch(() => undefined);
+        }, options.retryMs);
+      }
       throw failure.error;
     }
     if (items.length > 0) options.onSaved?.();

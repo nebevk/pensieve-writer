@@ -252,12 +252,22 @@
     savedAt: (id) => shelf?.writings.find((item) => item.id === id)?.updatedAt ?? "",
   });
   // Notes and to-dos that fail to save keep a rescue copy too; a save waiting for a switch to finish hasn't failed.
+  // A note or to-do that couldn't be saved is said where the page's own save is, until notes save again: else the
+  // window bar said Saved while she typed in a note beside the page, or on Home, and it wasn't.
+  let noteSaveError = $state("");
   watchNoteSaving({
-    failed: () => {
+    failed: (error) => {
+      noteSaveError = errorMessage(error);
       if (!session.switching) rescue.failed();
     },
-    saved: () => rescue.saved(),
+    saved: () => {
+      noteSaveError = "";
+      rescue.saved();
+    },
+    lost: (message) => notice(message),
   });
+  // What the window bar, the bar under the page and Home say: the page's save, or else a note's that failed.
+  const shownSave = $derived<SaveStatus>(saveStatus.state !== "error" && noteSaveError ? { state: "error", message: noteSaveError } : saveStatus);
   // Closing while saving fails: whether a rescue copy holds her words, and why the save failed.
   let saveTrouble = $state<{ kept: boolean; message: string } | null>(null);
   // How many copies Pensieve keeps in its own folder, for Settings.
@@ -2813,7 +2823,7 @@
     onUpdate={() => void updates.install()}
     {prefs}
     now={clock}
-    error={saveStatus.state === "error" ? saveStatus.message : homeNotice}
+    error={shownSave.state === "error" ? shownSave.message : homeNotice}
     appearance={resolvedTheme(prefs.theme, new Date(clock))}
     {settingsOpen}
     onLanguage={() => (prefs = { ...prefs, uiLanguage: prefs.uiLanguage === "sl" ? "en" : "sl" })}
@@ -2834,10 +2844,10 @@
     onUpdate={() => void updates.install()}
     project={writing?.title ?? t("untitled")}
     {view}
-    saveLabel={statusText(saveStatus)}
-    saveState={saveStatus.state}
+    saveLabel={statusText(shownSave)}
+    saveState={shownSave.state}
     language={writing && activeChapter ? (effectiveLanguage(writing, activeChapter) === "sl" ? "SL" : "EN") : "EN"}
-    error={saveStatus.state === "error" ? saveStatus.message : ""}
+    error={shownSave.state === "error" ? shownSave.message : ""}
     onView={(next) => {
       if (zen) void setZen(false);
       view = next;
@@ -3109,7 +3119,7 @@
     <div class="float-wrap">
       <StatusBar
         words={chapterWords}
-        error={saveStatus.state === "error" ? saveStatus.message : ""}
+        error={shownSave.state === "error" ? shownSave.message : ""}
         {zen}
         onZen={() => void setZen(!zen)}
         today={wordsToday}

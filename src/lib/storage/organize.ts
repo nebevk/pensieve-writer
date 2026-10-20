@@ -41,17 +41,27 @@ export type Task = {
 type Change = { kind: "note"; note: Note } | { kind: "task"; task: Task } | { kind: "deleteTask"; id: string };
 
 let saveError: ((message: string) => void) | null = null;
-// The page's, apart from the views' saveError: it keeps a rescue copy while saves fail (ARCH-1).
-let savingWatch: { failed: () => void; saved: () => void } | null = null;
+
+/** The page's, apart from the views' saveError: it says so where a failed save of the page is, and keeps a rescue copy (ARCH-1). */
+export type NoteSavingWatch = {
+  /** A save failed, and why; it is tried again in a moment. */
+  failed: (error: unknown) => void;
+  /** Every change waiting was saved. */
+  saved: () => void;
+  /** A change for a project that isn't open any more was let go: said once. */
+  lost: (message: string) => void;
+};
+let savingWatch: NoteSavingWatch | null = null;
 
 /**
  * Every note and to-do write goes through this one queue, one at a time, and the latest change to
  * each note or to-do replaces any older one still waiting, so an old copy can never land on top of
- * a newer one. Typing waits a moment; clicks save at once. A failed write stays queued for the
- * next attempt.
+ * a newer one. Typing waits a moment; clicks save at once. A failed write stays queued, and is tried
+ * again two seconds later, as the page's own save is.
  */
 const saves = createSaveQueue<Change>({
   delayMs: 800,
+  retryMs: 2000,
   key: (change) =>
     change.kind === "note" ? `note:${change.note.id}` : `task:${change.kind === "task" ? change.task.id : change.id}`,
   save: async (change) => {
@@ -64,6 +74,7 @@ const saves = createSaveQueue<Change>({
       // forever and hold up every switch, backup and close behind it.
       if (error instanceof Error && error.message === t("errOtherProject")) {
         saveError?.(error.message);
+        savingWatch?.lost(error.message);
         return;
       }
       throw error;
@@ -71,7 +82,7 @@ const saves = createSaveQueue<Change>({
   },
   onError: (error) => {
     saveError?.(error instanceof Error ? error.message : t("notesSaveFailed"));
-    savingWatch?.failed();
+    savingWatch?.failed(error);
   },
   onSaved: () => savingWatch?.saved(),
 });
@@ -126,7 +137,7 @@ export function watchNoteSaves(onError: (message: string) => void): void {
 }
 
 /** Hears every note and to-do save fail, and work again. */
-export function watchNoteSaving(watch: { failed: () => void; saved: () => void }): void {
+export function watchNoteSaving(watch: NoteSavingWatch): void {
   savingWatch = watch;
 }
 

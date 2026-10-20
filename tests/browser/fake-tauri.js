@@ -311,7 +311,9 @@
         return args.db;
       }
       case "plugin:sql|execute": {
+        // failSaves: every statement fails, as when the file is out of reach; failQuery: only those holding these words.
         if (window.__PV_HARNESS__.failSaves) throw UNREACHABLE;
+        if (window.__PV_HARNESS__.failQuery && args.query.includes(window.__PV_HARNESS__.failQuery)) throw UNREACHABLE;
         const db = books.get(args.db);
         // VACUUM INTO writes a copy of the database file beside it; here it is one more pretend file.
         const into = /^\s*VACUUM\s+INTO\s+\$1\s*$/i.exec(args.query);

@@ -83,6 +83,52 @@ describe("note save queue", () => {
     expect(saved).toEqual(["a"]);
   });
 
+  it("tries a failed save again by itself, until it works", async () => {
+    let fail = true;
+    const saved: string[] = [];
+    const events: string[] = [];
+    const queue = createSaveQueue<Note>({
+      delayMs: 800,
+      retryMs: 2000,
+      key: byId,
+      save: async (item) => {
+        if (fail) throw new Error("unable to open database file");
+        saved.push(item.plainText);
+      },
+      onError: () => events.push("failed"),
+      onSaved: () => events.push("saved"),
+    });
+    queue.schedule(note("a", "Ana, čšž"));
+    await vi.advanceTimersByTimeAsync(800);
+    expect(events).toEqual(["failed"]);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(events).toEqual(["failed", "failed"]);
+    // The folder is back: the next try saves it, with no change made meanwhile.
+    fail = false;
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(saved).toEqual(["Ana, čšž"]);
+    expect(events).toEqual(["failed", "failed", "saved"]);
+    // Nothing waits, so nothing is tried again.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(events).toEqual(["failed", "failed", "saved"]);
+  });
+
+  it("without a retry, a failed save waits for the next change or flush", async () => {
+    const events: string[] = [];
+    const queue = createSaveQueue<Note>({
+      delayMs: 800,
+      key: byId,
+      save: async () => {
+        throw new Error("disk full");
+      },
+      onError: () => events.push("failed"),
+    });
+    queue.schedule(note("a", "x"));
+    await vi.advanceTimersByTimeAsync(800);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(events).toEqual(["failed"]);
+  });
+
   it("makes a second flush wait for a save that is already running", async () => {
     let release = () => {};
     const gate = new Promise<void>((resolve) => (release = resolve));
