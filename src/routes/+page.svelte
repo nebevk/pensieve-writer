@@ -19,6 +19,7 @@
   import { Restores } from "$lib/save/restores.svelte";
   import { WritingActions } from "$lib/chapters/writingActions.svelte";
   import { LibraryDisk } from "$lib/chapters/libraryDisk";
+  import { SampleProjects } from "$lib/samples/sampleProjects";
   import { EarlierVersions } from "$lib/views/earlierVersions.svelte";
   import { createChapter, createWriting, effectiveLanguage, type Chapter, type DocumentJson, type Shelf, type Writing, type WritingLanguage } from "$lib/model";
   import { createAutosave, errorMessage, type SaveStatus } from "$lib/save/autosave";
@@ -36,12 +37,12 @@
   import Dashboard from "$lib/views/Dashboard.svelte";
   import HomeHeader from "$lib/views/HomeHeader.svelte";
   import ChapterPanel from "$lib/views/ChapterPanel.svelte";
-  import { PAPER, SHEET_GAP, flushPrefs, loadPrefs, loadPrefsFile, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs, type KnownProject, type Prefs } from "$lib/prefs";
+  import { PAPER, SHEET_GAP, flushPrefs, loadPrefs, loadPrefsFile, manuscriptFamily, pageWidthValue, resolvedTheme, savePrefs, type Prefs } from "$lib/prefs";
   import { duplicateChapterIn, insertChapterAfter, patchChapter, removeChapter, renameChapterIn, reorderChapterList, setChapterText } from "$lib/chapters/mutate";
   import { chapterTitle } from "$lib/chapters/welcome";
   import { applyPage, chapterBreak, composePage, heldHeading, isLeadLine, leadLines, opensChapter, readPage, startsPart, withoutBreaks } from "$lib/chapters/page";
   import { summarize, summarizeOutline, summarizeProject } from "$lib/chapters/progress";
-  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, joinPath, lastName, parentFolder, prefsAfterMove, prefsWithoutProject, projectFiles, projectFolders, projectName, rebasePath, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "$lib/chapters/library";
+  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, lastName, parentFolder, prefsAfterMove, prefsWithoutProject, projectFiles, projectFolders, projectName, rebasePath, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "$lib/chapters/library";
   import { moveOpen } from "$lib/chapters/treeState.svelte";
   import { notesInChapter } from "$lib/chapters/mentions";
   import { panelNotes, panelOrder } from "$lib/views/panelNotes";
@@ -54,7 +55,7 @@
   import type { ProjectRequest } from "$lib/views/NewProjectWindow.svelte";
   import type { SearchHit, SearchSource } from "$lib/views/searchAll";
   import { otherCards, type IdeaCard } from "$lib/views/ideas";
-  import { addWriting, keepSnapshot, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, restoreFromBackup, setShelf, setWritingFields, sqliteStorage, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
+  import { addWriting, keepSnapshot, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, restoreFromBackup, setShelf, setWritingFields, sqliteStorage, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
   import { NotesStore } from "$lib/notes.svelte";
   import { Session } from "$lib/session.svelte";
   import type { Editor as TiptapEditor } from "@tiptap/core";
@@ -2280,109 +2281,29 @@
     },
   };
 
-  type SampleProject = {
-    slug: string;
-    /** Where it goes in the library: "" for the library itself, or a folder in it. */
-    folder: string;
-    title: string;
-    build: (projectId: string) => { writings: { writing: Writing; folder: string }[]; notes: Note[]; tasks: Task[] };
-  };
-
-  /**
-   * Writes sample projects into folders of their own in the library and lists them in it. A sample that
-   * is there already is put back as it was written: its writings go to Deleted, where whatever was written
-   * in them can still be put back, and its notes and to-dos go. The writer's own projects are never touched.
-   */
-  async function writeSampleProjects(samples: SampleProject[], done: string) {
-    if (!writing) return;
-    try {
-      const written: Record<string, string> = {};
-      const remembered: KnownProject[] = [];
-      let homeRewritten = false;
-      await withEditorClosed(async () => {
-        // The project open when this change runs, which may not be the one open when it was asked for.
-        const home = session.path;
-        const homeWriting = writingId;
-        await wordCopy.update();
-        rememberProject();
-        await session.elsewhere(
-          async (visit) => {
-            for (const sample of samples) {
-              const parent = sample.folder ? joinPath(libraryRoot, sample.folder) : libraryRoot;
-              const existing = prefs.samples[sample.slug] && (await invoke<boolean>("project_file_exists", { path: prefs.samples[sample.slug] }));
-              const path = existing ? prefs.samples[sample.slug] : await libraryDisk.makeProjectFolder(parent, sample.title, true);
-              const fresh = !(await invoke<boolean>("project_file_exists", { path }));
-              // Opened only to be written: it never becomes the open project, nor the one that opens at the next start.
-              await visit(path);
-              const opened = await openShelf("", { title: sample.title, writingTitle: sample.title, welcome: false });
-              const built = sample.build(opened.shelf.projectId);
-              // A file made just now starts with one empty writing, which simply goes.
-              await writeSampleProject({ path, title: sample.title, placeholder: fresh ? opened.writing.id : "", ...built });
-              written[sample.slug] = path;
-              // Home and the library show it, with its writings, before it is ever opened.
-              remembered.push({ path, title: sample.title, summary: summarizeProject(built.writings.map((item) => summarize(item.writing))) });
-              if (path.toLowerCase() === home.toLowerCase()) homeRewritten = true;
-            }
-          },
-          // Whatever happened, the open project is open again, and storage knows it, for note and to-do saves.
-          async () => {
-            const reopened = await openShelf(homeRewritten ? "" : homeWriting, { title: projectName(home), writingTitle: t("untitled"), welcome: false });
-            shelf = reopened.shelf;
-            // The open project was one of them, or a reset that failed half-way already put its writing in Deleted:
-            // show what is there now, never a deleted writing (or the next save would write the old text back).
-            if (homeRewritten || reopened.writing.id !== homeWriting) {
-              writing = reopened.writing;
-              resetWritingState();
-              activeId = chapterToOpen(reopened.writing);
-            }
-          },
-        );
-      });
-      const paths = new Set(remembered.map((item) => item.path.toLowerCase()));
-      prefs = {
-        ...prefs,
-        samples: { ...prefs.samples, ...written },
-        knownProjects: [...remembered, ...prefs.knownProjects.filter((item) => !paths.has(item.path.toLowerCase()))].slice(0, 50),
-      };
-      await refreshLibrary();
-      backupMessage = done;
-    } catch (error) {
-      backupMessage = errorMessage(error);
-    }
-  }
-
-  async function addExampleBooks() {
-    const { EXAMPLE_PROJECTS, buildExample } = await import("$lib/samples/examples");
-    await writeSampleProjects(
-      EXAMPLE_PROJECTS.map((example) => ({
-        slug: example.slug,
-        folder: t("examplesFolder"),
-        title: example.title,
-        build: (projectId: string) => buildExample(example, projectId),
-      })),
-      t("examplesAdded"),
-    );
-  }
-
-  /** About 150,000 words, for timing typing in a big book on the writer's laptop. */
-  async function addLongBook() {
-    const { LONG_BOOK_SLUG, buildLongBook } = await import("$lib/samples/longBook");
-    const language = ui.language;
-    await writeSampleProjects(
-      [
-        {
-          slug: LONG_BOOK_SLUG,
-          folder: "",
-          title: t("longBookTitle"),
-          build: (projectId: string) => {
-            const built = buildLongBook(projectId, t("longBookTitle"), (n) => chapterTitle(language, n));
-            return { writings: [{ writing: built.writing, folder: "" }], notes: built.notes, tasks: built.tasks };
-          },
-        },
-      ],
-      t("longBookAdded"),
-    );
-  }
+  // The example projects and the long test book, from Settings (samples/sampleProjects.ts, IMP-28).
+  const samples = new SampleProjects({
+    writingOpen: () => !!writing,
+    writingId: () => writingId,
+    libraryRoot: () => libraryRoot,
+    prefs: () => prefs,
+    remember: (patch) => (prefs = { ...prefs, ...patch }),
+    session,
+    withEditorClosed,
+    updateWordCopy: () => wordCopy.update(),
+    rememberProject,
+    makeProjectFolder: (parent, name, reuse) => libraryDisk.makeProjectFolder(parent, name, reuse),
+    reopened: (opened, show) => {
+      shelf = opened.shelf;
+      if (show) {
+        writing = opened.writing;
+        resetWritingState();
+        activeId = chapterToOpen(opened.writing);
+      }
+    },
+    refreshLibrary,
+    say: (message) => (backupMessage = message),
+  });
 
   /** Opens a project file from anywhere on the computer; one outside the library is listed under Elsewhere. */
   async function openAnotherProject() {
@@ -3003,11 +2924,11 @@
       onBringBackKept={() => void restores.bringBackKept()}
       onRemoveKept={() => void restores.removeKept()}
       bookTitle={writing.title}
-      onAddExamples={() => void addExampleBooks()}
+      onAddExamples={() => void samples.addExamples()}
       examplesAdded={sampleNames.some((name) => name !== "long-test-book")}
       projectTitle={shelf?.title ?? ""}
       wordCopyName={wordCopy.fileName(writing)}
-      onAddLongBook={() => void addLongBook()}
+      onAddLongBook={() => void samples.addLongBook()}
       longBookAdded={sampleNames.includes("long-test-book")}
       onChooseWordFolder={() => void wordCopy.pickFolder()}
       onUpdateWordCopy={() => {
