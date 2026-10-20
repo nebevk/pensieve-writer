@@ -4,13 +4,24 @@ import type { Note, Task } from "$lib/storage/organize";
 // The file, and what was saved to it, in order.
 let file: { notes: Note[]; tasks: Task[] } = { notes: [], tasks: [] };
 const saved: string[] = [];
+let saveFails = false;
 vi.mock("$lib/storage/organize", () => ({
   listNotes: async () => file.notes,
   listTasks: async () => file.tasks,
-  saveNote: async (note: Note) => void saved.push(`note ${note.id} ${note.plainText} [${note.chapterIds.join(",")}]`),
+  saveNote: async (note: Note) => {
+    if (saveFails) throw new Error("unable to open database file");
+    // Its title too, when it isn't the id the notes here start with.
+    const title = note.title === note.id ? "" : ` ${note.title}:`;
+    saved.push(`note ${note.id}${title} ${note.plainText} [${note.chapterIds.join(",")}]`);
+  },
   saveTask: async (task: Task) => void saved.push(`task ${task.id} ${task.chapterId}`),
   scheduleNoteSave: (note: Note) => void saved.push(`later ${note.id} ${note.plainText} [${note.chapterIds.join(",")}]`),
   deleteTask: async (id: string) => void saved.push(`deleted ${id}`),
+  deleteNote: async (id: string) => void saved.push(`deleted note ${id}`),
+  flushNoteSave: async () => void saved.push("flushed"),
+}));
+vi.mock("$lib/storage/sqlite", () => ({
+  snapshotSavedWriting: async (id: string) => void saved.push(`earlier version of ${id}`),
 }));
 
 const { NotesStore } = await import("./notes.svelte");
@@ -36,12 +47,64 @@ describe("the open project's notes, one copy (ARCH-13)", () => {
   let project: string;
   let store: InstanceType<typeof NotesStore>;
 
+  let writing: string;
+
   beforeEach(async () => {
     project = "projekt";
+    writing = "pisanje";
     saved.length = 0;
+    saveFails = false;
     file = { notes: [note("ana", "Hči mlinarja.", ["drugo"]), note("bor", "Brod.")], tasks: [task("t1", "drugo"), task("t2", "prvo")] };
-    store = new NotesStore({ projectId: () => project });
+    store = new NotesStore({ projectId: () => project, writingId: () => writing });
     await store.reload();
+  });
+
+  it("from a tree: a new note, saved and first in the list, named or not (IMP-28)", async () => {
+    const named = await store.create("places", "Mlin", "prvo");
+    const unnamed = await store.create("ideas", "  ");
+    expect([named?.title, named?.category, named?.chapterIds, named?.projectId]).toEqual(["Mlin", "places", ["prvo"], "projekt"]);
+    expect(unnamed?.title).toBe("New note");
+    expect(store.notes.map((item) => item.title)).toEqual(["New note", "Mlin", "ana", "bor"]);
+    expect(saved).toEqual(["note " + named?.id + " Mlin:  [prvo]", "note " + unnamed?.id + " New note:  []"]);
+    project = "";
+    expect(await store.create("ideas", "Brez projekta")).toBeNull();
+  });
+
+  it("from a tree: renamed from the note as it is now, the draft too, so her next word keeps the name", async () => {
+    store.open(store.notes[0]);
+    store.edit("ana", { plainText: "V osnutku, čšž." });
+    await store.change("ana", { title: "Ana Novak" });
+    expect(saved.at(-1)).toBe("note ana Ana Novak: V osnutku, čšž. [drugo]");
+    expect([store.draft?.note.title, store.notes[0].title]).toEqual(["Ana Novak", "Ana Novak"]);
+    store.edit("ana", { plainText: "Še ena beseda." });
+    expect(store.draft?.note.title).toBe("Ana Novak");
+  });
+
+  it("from a tree: a change that can't be saved reads the lists again and says why", async () => {
+    saveFails = true;
+    file.notes = [note("ana", "Iz datoteke."), note("bor", "Brod.")];
+    await expect(store.change("bor", { category: "places" })).rejects.toThrow("unable to open database file");
+    await vi.waitFor(() => expect(store.notes[0].plainText).toBe("Iz datoteke."));
+  });
+
+  it("from a tree: a copy with text of its own, first in the list", async () => {
+    await store.duplicate("ana");
+    const copy = store.notes[0];
+    expect([copy.title, copy.plainText, copy.id === "ana"]).toEqual(["ana (copy)", "Hči mlinarja.", false]);
+    copy.chapterIds.push("tretje");
+    expect(store.notes.find((item) => item.id === "ana")?.chapterIds).toEqual(["drugo"]);
+  });
+
+  it("from a tree: deleted after what waits is saved and an earlier version of the writing is kept; the draft goes first", async () => {
+    store.open(store.notes[0]);
+    await store.delete("ana");
+    expect(saved).toEqual(["flushed", "earlier version of pisanje", "deleted note ana"]);
+    expect([store.draft, store.notes.map((item) => item.id), store.tasks.map((item) => item.id)]).toEqual([null, ["bor"], ["t1", "t2"]]);
+    // With no writing open, there is no earlier version to keep.
+    writing = "";
+    saved.length = 0;
+    await store.delete("bor");
+    expect(saved).toEqual(["flushed", "deleted note bor"]);
   });
 
   it("a note typed beside the page changes its draft, not the lists, until she leaves it", () => {

@@ -17,6 +17,7 @@
   import { keptCopiesFolder, listKeptCopies, removeKeptCopy } from "$lib/save/kept";
   import { Rescue, besideItsWriting, type RescueOffer } from "$lib/save/rescue.svelte";
   import { WritingActions } from "$lib/chapters/writingActions.svelte";
+  import { LibraryDisk } from "$lib/chapters/libraryDisk";
   import { EarlierVersions } from "$lib/views/earlierVersions.svelte";
   import { createChapter, createWriting, effectiveLanguage, type Chapter, type DocumentJson, type Shelf, type Writing, type WritingLanguage } from "$lib/model";
   import { createAutosave, errorMessage, type SaveStatus } from "$lib/save/autosave";
@@ -40,20 +41,20 @@
   import { chapterTitle } from "$lib/chapters/welcome";
   import { applyPage, chapterBreak, composePage, heldHeading, isLeadLine, leadLines, opensChapter, readPage, startsPart, withoutBreaks } from "$lib/chapters/page";
   import { summarize, summarizeOutline, summarizeProject } from "$lib/chapters/progress";
-  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, joinPath, lastName, looksSynced, parentFolder, prefsAfterMove, prefsWithoutProject, projectFile, projectFiles, projectFolders, projectName, rebasePath, sameFolder, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "$lib/chapters/library";
+  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, joinPath, lastName, looksSynced, parentFolder, prefsAfterMove, prefsWithoutProject, projectFile, projectFiles, projectFolders, projectName, rebasePath, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "$lib/chapters/library";
   import { moveOpen } from "$lib/chapters/treeState.svelte";
   import { notesInChapter } from "$lib/chapters/mentions";
   import { panelNotes, panelOrder } from "$lib/views/panelNotes";
   import { isUntitled } from "$lib/i18n";
   import { locale, snapshotName, t, ui } from "$lib/ui.svelte";
-  import { deleteNote, flushNoteSave, listNotes, saveNote, saveTask, watchNoteSaving, type Note, type NoteCategory, type Task } from "$lib/storage/organize";
+  import { flushNoteSave, listNotes, saveNote, saveTask, watchNoteSaving, type Note, type NoteCategory, type Task } from "$lib/storage/organize";
   import { ideaNote, namesANote, noteFromComment, noteFromWords, todoFromComment } from "$lib/storage/fromComment";
   import type { NoteTarget } from "$lib/editor/noteLinks";
   import type { CommentInfo } from "$lib/editor/comments";
   import type { ProjectRequest } from "$lib/views/NewProjectWindow.svelte";
   import type { SearchHit, SearchSource } from "$lib/views/searchAll";
   import { otherCards, type IdeaCard } from "$lib/views/ideas";
-  import { addWriting, copyOpenProject, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, moveProjectFile, rememberPersonalWord, restoreFromBackup, setShelf, setWritingFields, snapshotSavedWriting, sqliteStorage, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
+  import { addWriting, copyOpenProject, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, rememberPersonalWord, restoreFromBackup, setShelf, setWritingFields, sqliteStorage, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
   import { NotesStore } from "$lib/notes.svelte";
   import { Session } from "$lib/session.svelte";
   import type { Editor as TiptapEditor } from "@tiptap/core";
@@ -145,7 +146,7 @@
   });
   // The project's notes and to-dos, one copy for the page, the panel and the library, with the note shown in
   // the panel beside the page (owner, 12 October) as a draft while she types it (ARCH-13, notes.svelte.ts).
-  const notesStore = new NotesStore({ projectId: () => projectId });
+  const notesStore = new NotesStore({ projectId: () => projectId, writingId: () => writingId });
   // The panel's search through the notes, and whether its to-dos are the chapter's or the project's.
   let noteQuery = $state("");
   let todoScope = $state<"chapter" | "all">("chapter");
@@ -2253,19 +2254,6 @@
     void refreshLibrary();
   }
 
-  /** A new folder in the library, on disk, to keep projects in. */
-  async function newLibraryFolder(parent: string, name: string): Promise<string | null> {
-    const problem = folderNameProblem(name);
-    if (problem) return t(problem);
-    try {
-      await invoke<string>("create_library_folder", { parent: parent || libraryRoot, name: name.trim() });
-      await refreshLibrary();
-      return null;
-    } catch (error) {
-      return errorMessage(error);
-    }
-  }
-
   // A project's writings and writing folders, from the library (writingActions.svelte.ts, IMP-28).
   const writingOps = new WritingActions({
     shelf: () => shelf,
@@ -2295,71 +2283,19 @@
 
   /** A new note in a group of the project's notes (or tied to a chapter), opened over the page to write it. */
   async function newNoteIn(category: NoteCategory, title: string, chapterId = "") {
-    if (!projectId) return;
-    const now = new Date().toISOString();
-    const note: Note = {
-      id: crypto.randomUUID(),
-      projectId,
-      title: title.trim() || t("newNoteTitle"),
-      contentJson: { type: "doc", content: [{ type: "paragraph" }] },
-      plainText: "",
-      category,
-      tags: "",
-      aliases: "",
-      fields: [],
-      todoState: null,
-      chapterIds: chapterId ? [chapterId] : [],
-      createdAt: now,
-      updatedAt: now,
-    };
     try {
-      await saveNote(note);
-      notesStore.added(note);
+      const note = await notesStore.create(category, title, chapterId);
       // A note named in the library has its name; one made with the panel's + is named first.
-      showNote(note.id, !title.trim());
+      if (note) showNote(note.id, !title.trim());
     } catch (error) {
       reportSaveError(errorMessage(error));
     }
   }
 
-  async function changeNote(id: string, patch: Partial<Note>) {
+  /** A change to the notes from a tree (notes.svelte.ts); one that fails is said where a failed save is. */
+  async function fromTree(change: Promise<void>) {
     try {
-      // As it is now, never the page's older copy; a note open in the panel is changed there too, or its
-      // next word would save the old name back.
-      const note = await currentNote(id);
-      if (!note) return;
-      const next = { ...note, ...patch, updatedAt: new Date().toISOString() };
-      notesStore.replaced(next);
-      await saveNote(next);
-    } catch (error) {
-      reportSaveError(errorMessage(error));
-      void loadOrganizer();
-    }
-  }
-
-  async function duplicateNote(id: string) {
-    try {
-      const note = await currentNote(id);
-      if (!note) return;
-      const now = new Date().toISOString();
-      // A JSON copy: the note's text must be its own, not shared with the original.
-      const copy: Note = { ...(JSON.parse(JSON.stringify(note)) as Note), id: crypto.randomUUID(), title: t("copyOf", { title: note.title }), createdAt: now, updatedAt: now };
-      await saveNote(copy);
-      notesStore.added(copy);
-    } catch (error) {
-      reportSaveError(errorMessage(error));
-    }
-  }
-
-  /** Deletes a note after keeping an earlier version of the open writing, which holds every note as it was. */
-  async function deleteNoteFromTree(id: string) {
-    // It leaves the panel first, so nothing typed there can write it back after the delete.
-    if (notesStore.draft?.note.id === id) notesStore.drop();
-    try {
-      await flushNoteSave();
-      if (writingId) await snapshotSavedWriting(writingId);
-      await deleteNote(id);
-      notesStore.removed(id);
+      await change;
     } catch (error) {
       reportSaveError(errorMessage(error));
     }
@@ -2389,103 +2325,26 @@
     moveOpen(from, to);
   }
 
-  /**
-   * Renames a folder of the library or a project's folder, or moves it into another folder, on disk. When the
-   * open project is in it, storage lets go of its file for the move and opens it where it went, in one step:
-   * the page stays open, and saves made meanwhile wait and go into the file there. Returns what is wrong, or null.
-   */
-  async function relocateLibraryEntry(from: string, parent: string, name: string): Promise<string | null> {
-    const problem = folderNameProblem(name);
-    if (problem) return t(problem);
-    const move = () => invoke<string>("move_library_entry", { path: from, parent, name: name.trim(), library: libraryRoot });
-    let to = "";
-    try {
-      // After the changes before it, so the project open then is the one it looks at.
-      await oneAtATime(async () => {
-        const file = session.path;
-        if (!isInside(file, from)) {
-          to = await move();
-          return;
-        }
-        const reopened = await moveProjectFile(
-          async () => {
-            to = await move();
-            return rebasePath(file, from, to);
-          },
-          // It moved but won't open there: it goes back where it was.
-          async () => {
-            await invoke<string>("move_library_entry", { path: to, parent: parentFolder(from), name: lastName(from), library: libraryRoot });
-            to = "";
-          },
-        );
-        if (shelf) shelf = await shelfNamedByFolder(reopened, shelf);
-      });
-      return null;
-    } catch (error) {
-      return errorMessage(error);
-    } finally {
-      // Whatever failed after the move, what Pensieve remembers follows the folder to where it is now.
-      if (to) {
-        followMove(from, to);
-        rememberProject();
-      }
-      await refreshLibrary();
-    }
-  }
-
-  /** Moves a folder or a project into another folder of the library, keeping its name. */
-  async function moveLibraryEntry(path: string, into: string) {
-    if (!into || sameFolder(parentFolder(path), into) || isInside(into, path)) return;
-    const problem = await relocateLibraryEntry(path, into, lastName(path));
-    if (problem) libraryNotice(problem);
-  }
-
-  /** Deletes an empty folder of the library; one with anything in it stays, and she is told why. */
-  async function deleteLibraryFolder(path: string) {
-    try {
-      await invoke("remove_library_folder", { path, library: libraryRoot });
-    } catch (error) {
-      libraryNotice(errorMessage(error));
-    }
-    await refreshLibrary();
-  }
-
-  /**
-   * Moves a project of the library to the Recycle Bin, with everything in its folder (HOME-15); never the open
-   * one. Where there is no Recycle Bin, Windows asks her itself, and a no there leaves it all as it was.
-   */
-  async function deleteProject(path: string) {
-    const open = session.path;
-    if (!libraryRoot || !isInside(path, libraryRoot) || sameFolder(folderOf(path).path, folderOf(open).path)) return;
-    try {
-      if (await invoke<boolean>("trash_project_folder", { path: folderOf(path).path, library: libraryRoot })) forgetProject(path);
-    } catch (error) {
-      libraryNotice(errorMessage(error));
-    }
-    await refreshLibrary();
-  }
-
   /** Takes a project off Pensieve's lists; its files stay where they are. */
   function forgetProject(path: string) {
     prefs = prefsWithoutProject(prefs, path);
   }
 
-  /** One of her files, opened in its own program: a Word file in Word, a picture in Photos. */
-  async function openLibraryFile(path: string) {
-    try {
-      await invoke("open_library_file", { path });
-    } catch (error) {
-      notice(errorMessage(error));
-    }
-  }
-
-  async function showInExplorer(path: string) {
-    try {
-      await invoke("show_in_explorer", { path });
-    } catch (error) {
-      notice(errorMessage(error));
-    }
-  }
+  // The library's folders and projects on disk (libraryDisk.ts, IMP-28).
+  const libraryDisk = new LibraryDisk({
+    libraryRoot: () => libraryRoot,
+    openFile: () => session.path,
+    oneAtATime,
+    renamedByFolder: async (file) => {
+      if (shelf) shelf = await shelfNamedByFolder(file, shelf);
+    },
+    followMove,
+    rememberProject,
+    forgetProject,
+    refreshLibrary,
+    libraryNotice,
+    notice,
+  });
 
   /** A web or e-mail link in her text, opened in her browser or mail program. */
   async function openLink(href: string) {
@@ -2504,15 +2363,15 @@
     openNote: (id) => void showNote(id),
     openTodos: () => showTodos("all"),
     startProject,
-    newLibraryFolder,
-    renameLibraryEntry: (path, name) => relocateLibraryEntry(path, parentFolder(path), name),
-    moveLibraryEntry: (path, into) => void moveLibraryEntry(path, into),
-    deleteLibraryFolder: (path) => void deleteLibraryFolder(path),
-    deleteProject: (path) => void deleteProject(path),
+    newLibraryFolder: (parent, name) => libraryDisk.newFolder(parent, name),
+    renameLibraryEntry: (path, name) => libraryDisk.relocate(path, parentFolder(path), name),
+    moveLibraryEntry: (path, into) => void libraryDisk.move(path, into),
+    deleteLibraryFolder: (path) => void libraryDisk.deleteFolder(path),
+    deleteProject: (path) => void libraryDisk.deleteProject(path),
     forgetProject,
     placeWriting: (id, beforeId) => void writingOps.place(id, beforeId),
-    openFile: (path) => void openLibraryFile(path),
-    showInExplorer: (path) => void showInExplorer(path),
+    openFile: (path) => void libraryDisk.openFile(path),
+    showInExplorer: (path) => void libraryDisk.showInExplorer(path),
     importAsWriting: (path) => bringIn("add", [documentAt(path)]),
     newWritingFromWord: () => void newWritingFromWord(),
     bringBackFromWord: (id) => void bringBackFromWord(id),
@@ -2529,10 +2388,10 @@
     setSplit: (id, split) => void writingOps.setSplit(id, split),
     newNote: (category, title) => void newNoteIn(category, title),
     newChapter: () => void addChapter(),
-    renameNote: (id, title) => void changeNote(id, { title: title.trim() || t("untitled") }),
-    duplicateNote: (id) => void duplicateNote(id),
-    deleteNote: (id) => void deleteNoteFromTree(id),
-    moveNote: (id, category) => void changeNote(id, { category }),
+    renameNote: (id, title) => void fromTree(notesStore.change(id, { title: title.trim() || t("untitled") })),
+    duplicateNote: (id) => void fromTree(notesStore.duplicate(id)),
+    deleteNote: (id) => void fromTree(notesStore.delete(id)),
+    moveNote: (id, category) => void fromTree(notesStore.change(id, { category })),
     moveIntoLibrary: () => void moveIntoLibrary(),
     openAnother: () => void openAnotherProject(),
   };

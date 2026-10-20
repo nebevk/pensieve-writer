@@ -1,9 +1,25 @@
-import { deleteTask, listNotes, listTasks, saveNote, saveTask, scheduleNoteSave, type Note, type Task } from "$lib/storage/organize";
+import {
+  deleteNote,
+  deleteTask,
+  flushNoteSave,
+  listNotes,
+  listTasks,
+  saveNote,
+  saveTask,
+  scheduleNoteSave,
+  type Note,
+  type NoteCategory,
+  type Task,
+} from "$lib/storage/organize";
+import { snapshotSavedWriting } from "$lib/storage/sqlite";
+import { t } from "$lib/ui.svelte";
 
 /** What the open project's notes need from the page around it (+page.svelte). */
 export type NotesHost = {
   /** The open project's id, the key its notes and to-dos are saved under. */
   projectId: () => string;
+  /** The open writing's id: an earlier version of it keeps every note before one is deleted. */
+  writingId: () => string;
 };
 
 /**
@@ -77,6 +93,67 @@ export class NotesStore {
     if (this.draft?.note.id === id) this.draft = null;
     this.notes = this.notes.filter((note) => note.id !== id);
     this.tasks = this.tasks.filter((task) => task.noteId !== id);
+  }
+
+  /** A new note in a group, or tied to a chapter, saved and first in the list; null while no project is open. */
+  async create(category: NoteCategory, title: string, chapterId = ""): Promise<Note | null> {
+    const projectId = this.#host.projectId();
+    if (!projectId) return null;
+    const now = new Date().toISOString();
+    const note: Note = {
+      id: crypto.randomUUID(),
+      projectId,
+      title: title.trim() || t("newNoteTitle"),
+      contentJson: { type: "doc", content: [{ type: "paragraph" }] },
+      plainText: "",
+      category,
+      tags: "",
+      aliases: "",
+      fields: [],
+      todoState: null,
+      chapterIds: chapterId ? [chapterId] : [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    await saveNote(note);
+    this.added(note);
+    return note;
+  }
+
+  /**
+   * A note renamed or moved to another group, from a tree: as it is now, never an older copy, and the draft too, or
+   * her next word there would save the old name back. One that can't be saved is read again with the others.
+   */
+  async change(id: string, patch: Partial<Note>) {
+    try {
+      const note = await this.current(id);
+      if (!note) return;
+      await this.setNote({ ...note, ...patch, updatedAt: new Date().toISOString() });
+    } catch (error) {
+      void this.reload();
+      throw error;
+    }
+  }
+
+  /** A copy of a note, its text its own, saved and first in the list. */
+  async duplicate(id: string) {
+    const note = await this.current(id);
+    if (!note) return;
+    const now = new Date().toISOString();
+    const copy: Note = { ...(JSON.parse(JSON.stringify(note)) as Note), id: crypto.randomUUID(), title: t("copyOf", { title: note.title }), createdAt: now, updatedAt: now };
+    await saveNote(copy);
+    this.added(copy);
+  }
+
+  /** Deletes a note, with its to-dos, after keeping an earlier version of the open writing, which holds every note as it was. */
+  async delete(id: string) {
+    // It leaves the panel first, so nothing typed there can write it back after the delete.
+    if (this.draft?.note.id === id) this.drop();
+    await flushNoteSave();
+    const writing = this.#host.writingId();
+    if (writing) await snapshotSavedWriting(writing);
+    await deleteNote(id);
+    this.removed(id);
   }
 
   /** A to-do made, last in the list (`first` for the top). */
