@@ -10,7 +10,6 @@
   import TitleBar from "$lib/editor/TitleBar.svelte";
   import ZenBar from "$lib/editor/ZenBar.svelte";
   import { wordsFor } from "$lib/editor/counts";
-  import { shrinkImage } from "$lib/editor/imageSize";
   import { PageFind } from "$lib/editor/pageFind.svelte";
   import { PersonalWords } from "$lib/editor/personalWords.svelte";
   import { Updates } from "$lib/updates.svelte";
@@ -25,11 +24,11 @@
   import { createAutosave, errorMessage, type SaveStatus } from "$lib/save/autosave";
   import { chaptersToPlain } from "$lib/export/document";
   import { Exports } from "$lib/export/exports";
-  import { readWordFile, type WordImport } from "$lib/export/wordImport";
-  import { byFileName, documentKind, documentName, draftChapters, type DocumentSource } from "$lib/export/importWriting";
+  import { chooseDocuments, documentAt, droppedDocuments } from "$lib/export/documents";
+  import { draftChapters, type DocumentSource } from "$lib/export/importWriting";
   import { createAmbience } from "$lib/ambience";
   import { onPomodoroTurn, pomodoro } from "$lib/pomodoro.svelte";
-  import { chooseDocumentFiles, chooseProjectFile } from "$lib/storage/backup";
+  import { chooseProjectFile } from "$lib/storage/backup";
   import type { BackupContent } from "$lib/storage/backupFile";
   import Particles from "$lib/views/Particles.svelte";
   import Tour from "$lib/views/Tour.svelte";
@@ -42,7 +41,7 @@
   import { chapterTitle } from "$lib/chapters/welcome";
   import { applyPage, chapterBreak, composePage, heldHeading, isLeadLine, leadLines, opensChapter, readPage, startsPart, withoutBreaks } from "$lib/chapters/page";
   import { summarize, summarizeOutline, summarizeProject } from "$lib/chapters/progress";
-  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, lastName, parentFolder, prefsAfterMove, prefsWithoutProject, projectFiles, projectFolders, projectName, rebasePath, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "$lib/chapters/library";
+  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, parentFolder, prefsAfterMove, prefsWithoutProject, projectFiles, projectFolders, projectName, rebasePath, type LibraryActions, type LibraryEntry, type LibraryView } from "$lib/chapters/library";
   import { moveOpen } from "$lib/chapters/treeState.svelte";
   import { notesInChapter } from "$lib/chapters/mentions";
   import { panelNotes, panelOrder } from "$lib/views/panelNotes";
@@ -55,6 +54,7 @@
   import type { ProjectRequest } from "$lib/views/NewProjectWindow.svelte";
   import type { SearchHit, SearchSource } from "$lib/views/searchAll";
   import { otherCards, type IdeaCard } from "$lib/views/ideas";
+  import { everyProject, readEach } from "$lib/views/everyProject";
   import { addWriting, keepSnapshot, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, restoreFromBackup, setShelf, setWritingFields, sqliteStorage, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
   import { NotesStore } from "$lib/notes.svelte";
   import { Session } from "$lib/session.svelte";
@@ -1408,11 +1408,6 @@
     fail: (message) => reportSaveError(message),
   });
 
-  async function shrinkPictures(node: { type?: string; attrs?: Record<string, unknown>; content?: unknown[] }) {
-    if (node.type === "image" && typeof node.attrs?.src === "string") node.attrs.src = await shrinkImage(node.attrs.src);
-    for (const child of node.content ?? []) await shrinkPictures(child as typeof node);
-  }
-
   // Print asked for while the Book view still lays out its pages: it prints once they are all there,
   // and not on a later visit if she leaves before then.
   let printWhenLaidOut = false;
@@ -1862,32 +1857,9 @@
     await autosave.flush().catch(() => undefined);
     await flushNoteSave().catch(() => undefined);
     const open = session.path;
-    const paths: string[] = [];
-    const seen = new Set<string>();
-    const add = (path: string) => {
-      const key = path.trim().toLowerCase();
-      if (key && !seen.has(key)) {
-        seen.add(key);
-        paths.push(path);
-      }
-    };
-    add(open);
-    for (const path of projectFiles(sortEntries(libraryEntries, locale()))) add(path);
-    for (const known of prefs.knownProjects) add(known.path);
-    const sources: SearchSource[] = [];
-    const unread: string[] = [];
-    for (const [index, path] of paths.entries()) {
-      progress(index, paths.length);
-      try {
-        // A project that isn't there any more is left out: opening its file would make an empty one.
-        if (path !== open && !(await invoke<boolean>("project_file_exists", { path }))) continue;
-        sources.push({ path, name: projectName(path), text: await readProjectText(path) });
-      } catch {
-        unread.push(projectName(path));
-      }
-    }
-    progress(paths.length, paths.length);
-    return { sources, unread };
+    const paths = everyProject(libraryEntries, prefs.knownProjects, locale(), { first: open });
+    const read = await readEach(paths, open, async (path, name): Promise<SearchSource[]> => [{ path, name, text: await readProjectText(path) }], progress);
+    return { sources: read.found, unread: read.unread };
   }
 
   /** A place found by the search across projects: it opens as from find's list, a chapter with find on the words. */
@@ -1913,32 +1885,10 @@
 
   /** Every other project's ideas, for the Ideas tab's All projects: only read, and let go at once. */
   async function readOtherIdeas(progress: (done: number, total: number) => void): Promise<{ cards: IdeaCard[]; unread: string[] }> {
-    const open = session.path.toLowerCase();
-    const paths: string[] = [];
-    const seen = new Set<string>([open]);
-    const add = (path: string) => {
-      const key = path.trim().toLowerCase();
-      if (key && !seen.has(key)) {
-        seen.add(key);
-        paths.push(path);
-      }
-    };
-    for (const path of projectFiles(sortEntries(libraryEntries, locale()))) add(path);
-    for (const known of prefs.knownProjects) add(known.path);
-    const cards: IdeaCard[] = [];
-    const unread: string[] = [];
-    for (const [index, path] of paths.entries()) {
-      progress(index, paths.length);
-      try {
-        // A project that isn't there any more is left out: opening its file would make an empty one.
-        if (!(await invoke<boolean>("project_file_exists", { path }))) continue;
-        cards.push(...otherCards(await readProjectIdeas(path), path, projectName(path)));
-      } catch {
-        unread.push(projectName(path));
-      }
-    }
-    progress(paths.length, paths.length);
-    return { cards, unread };
+    const open = session.path;
+    const paths = everyProject(libraryEntries, prefs.knownProjects, locale(), { except: open });
+    const read = await readEach(paths, open, async (path, name) => otherCards(await readProjectIdeas(path), path, name), progress);
+    return { cards: read.found, unread: read.unread };
   }
 
   /** Another project's idea, opened in its project to be written there; the Ideas tab stays. */
@@ -1981,36 +1931,6 @@
     newProjectAsk = { parent: parent || libraryRoot };
     // Its list of folders is the library as it is now.
     void refreshLibrary();
-  }
-
-  /** Word, OpenDocument, text or Markdown files she picks, one or several, in the order Explorer shows them. */
-  async function chooseDocuments(several: boolean, near = ""): Promise<DocumentSource[]> {
-    return byFileName(await chooseDocumentFiles(several, near), locale()).map(documentAt);
-  }
-
-  /** A document on the disk, to bring in. */
-  function documentAt(path: string): DocumentSource {
-    return { name: lastName(path), folder: lastName(parentFolder(path)), read: () => readDocument(path) };
-  }
-
-  /** A Word, text or Markdown file, read into chapters, its pictures made small. */
-  async function readDocument(path: string): Promise<WordImport> {
-    return readDocumentData(await invoke<ArrayBuffer>("read_document_file", { path }), path);
-  }
-
-  /** A document's bytes (`file` names it: Word, OpenDocument, text or Markdown) read into chapters, its pictures made small. */
-  async function readDocumentData(data: ArrayBuffer, file: string): Promise<WordImport> {
-    const name = documentName(file);
-    const kind = documentKind(file);
-    // OpenDocument, text and Markdown are read by code loaded when it is needed, as Word's reader is.
-    const result =
-      kind === "word"
-        ? await readWordFile(data, name)
-        : kind === "opendocument"
-          ? await (await import("$lib/export/odtImport")).readOdtFile(data, name)
-          : (await import("$lib/export/textImport")).readTextFile(data, name, kind === "markdown");
-    for (const chapter of result.chapters) await shrinkPictures(chapter.contentJson);
-    return result;
   }
 
   /**
@@ -2093,13 +2013,7 @@
   function takeDropped(files: File[]) {
     const target = dropTarget();
     if (!target) return;
-    const kept = byFileName(
-      files.filter((file) => documentKind(file.name)).map((file) => file.name),
-      locale(),
-    ).map((name): DocumentSource => {
-      const file = files.find((item) => item.name === name) as File;
-      return { name, read: async () => readDocumentData(await file.arrayBuffer(), name) };
-    });
+    const kept = droppedDocuments(files);
     if (kept.length < files.length) libraryNotice(t("dropOnlyDocuments"));
     if (kept.length === 0) return;
     if (target === "writing") return bringIn("add", kept);
