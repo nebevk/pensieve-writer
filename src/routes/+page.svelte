@@ -12,6 +12,7 @@
   import { wordsFor } from "$lib/editor/counts";
   import { shrinkImage } from "$lib/editor/imageSize";
   import { PageFind } from "$lib/editor/pageFind.svelte";
+  import { PersonalWords } from "$lib/editor/personalWords.svelte";
   import { Updates } from "$lib/updates.svelte";
   import { DriveBackup, WordCopy, copyPathFor } from "$lib/save/copies.svelte";
   import { keptCopiesFolder, listKeptCopies, removeKeptCopy } from "$lib/save/kept";
@@ -53,7 +54,7 @@
   import type { ProjectRequest } from "$lib/views/NewProjectWindow.svelte";
   import type { SearchHit, SearchSource } from "$lib/views/searchAll";
   import { otherCards, type IdeaCard } from "$lib/views/ideas";
-  import { addWriting, copyOpenProject, forgetPersonalWord, keepSnapshot, listPersonalWords, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, rememberPersonalWord, restoreFromBackup, setShelf, setWritingFields, sqliteStorage, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
+  import { addWriting, copyOpenProject, keepSnapshot, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, restoreFromBackup, setShelf, setWritingFields, sqliteStorage, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
   import { NotesStore } from "$lib/notes.svelte";
   import { Session } from "$lib/session.svelte";
   import type { Editor as TiptapEditor } from "@tiptap/core";
@@ -187,7 +188,8 @@
     remember: (path) => (prefs = { ...prefs, projectPath: path }),
     writingId: () => writingId,
   });
-  let dictionary = $state<{ language: WritingLanguage; word: string }[]>([]);
+  // Her own words for the spell checker, in Settings (personalWords.svelte.ts, IMP-28).
+  const personalWords = new PersonalWords({ oneAtATime, say: (message) => (backupMessage = message) });
   let settingsOpen = $state(false);
   // Tutorial tips (owner, 8 October): the first time she reaches Home, Write, Notes or the Book, until
   // she stops them. Not over Settings or in Zen, and a moment after the place appears, so passing
@@ -431,7 +433,7 @@
         await openAtStart();
         if (disposed) return;
         saveStatus = { state: "saved" };
-        await refreshWritingExtras();
+        await personalWords.refresh();
         rememberProject();
       } catch (error) {
         if (disposed) return;
@@ -1615,21 +1617,6 @@
     saveStatus = { state: "error", message };
   }
 
-  async function refreshWritingExtras() {
-    try {
-      dictionary = await listPersonalWords();
-      for (const entry of dictionary) {
-        try {
-          await invoke("add_personal_word", { language: entry.language, word: entry.word });
-        } catch {
-          // The word stays in Pensieve even if Windows cannot store it.
-        }
-      }
-    } catch {
-      // The manuscript is already open.
-    }
-  }
-
   function setChapterLanguage(language: WritingLanguage) {
     if (!activeId) return;
     updateChapterMeta(activeId, { language });
@@ -2544,37 +2531,6 @@
     void autosave.flush().catch(() => undefined);
   }
 
-  async function addDictionaryWord(language: WritingLanguage, word: string) {
-    const cleaned = word.trim();
-    if (!cleaned) return;
-    try {
-      // After any change under way, so the word goes into the open project's file.
-      await oneAtATime(async () => {
-        await invoke("add_personal_word", { language, word: cleaned });
-        await rememberPersonalWord(language, cleaned);
-        dictionary = await listPersonalWords();
-      });
-    } catch (error) {
-      backupMessage = errorMessage(error);
-    }
-  }
-
-  async function removeDictionaryWord(language: WritingLanguage, word: string) {
-    try {
-      await oneAtATime(async () => {
-        await forgetPersonalWord(language, word);
-        dictionary = await listPersonalWords();
-      });
-      try {
-        await invoke("remove_personal_word", { language, word });
-      } catch {
-        // Pensieve has forgotten the word; only Windows' copy is left, and it does no harm.
-      }
-    } catch (error) {
-      backupMessage = errorMessage(error);
-    }
-  }
-
   /**
    * Copies the open project, kept outside the library, into a folder of its own in it, and opens the
    * copy. The old file stays where it was, off the lists, so nobody edits the stale one.
@@ -3175,7 +3131,7 @@
       projectLanguage={writing.language}
       bookGoal={writing.wordGoal}
       onBookGoal={setBookGoal}
-      {dictionary}
+      dictionary={personalWords.list}
       onMoveProject={() => void moveIntoLibrary()}
       libraryFolder={libraryRoot}
       onChooseLibraryFolder={() => void pickLibraryFolder()}
@@ -3184,8 +3140,8 @@
       {writingWords}
       onSplit={(split) => void writingOps.setSplit(writing?.id ?? "", split)}
       onProjectLanguage={setProjectLanguage}
-      onAddWord={(language, word) => void addDictionaryWord(language, word)}
-      onRemoveWord={(language, word) => void removeDictionaryWord(language, word)}
+      onAddWord={(language, word) => void personalWords.add(language, word)}
+      onRemoveWord={(language, word) => void personalWords.remove(language, word)}
       onExport={() => void exporter.word()}
       onExportText={(kind) => void exporter.text(kind)}
       onCopyHtml={() => void exporter.copyHtml()}
