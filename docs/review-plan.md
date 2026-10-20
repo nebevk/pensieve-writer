@@ -75,4 +75,6 @@ same day, after it.
   By hand, on the installed 0.5.1: with Pensieve minimised, start it again from its icon; the open window
   comes back and no second one opens. In the Book view, a link opens in the browser and the window stays.
 - The review's note that a failed note save says nothing unless Notes or Ideas was opened wasn't checked again.
-- The content security policy (ARCH-19) in the installed window, by hand once, as in [backlog.md](backlog.md).
+- ~~The content security policy (ARCH-19) in the installed window, by hand once.~~ Done on 0.5.4 (owner, 19
+  October): a project, typing, pictures from a file and from the web, Word out and in, sounds, the Book view
+  and the update check all as before.

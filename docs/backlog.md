@@ -12,7 +12,7 @@ Each item keeps its ID so it can be asked for by name; a new one gets the next f
 
 | ID | What | Status | Pri |
 |----|------|--------|-----|
-| **IMP-10** Speed on the real laptop | Time typing in a chapter of the long test book on her laptop, in Candlelit with the sparks on, with the panel open and a note pinned; time the start with that book open, and type at the very end of a chapter on sheets too (the checks' Edge, drawing without a GPU, shows frames seconds late there; with a GPU it doesn't). The typing check (processor slowed four times) gave 48 ms from key to paint, the median, and 72 ms for 19 keys in 20 (ARCH-11, 16 October), 40 and 56–64 ms after the first typing fixes; this confirms it on the hardware that matters (Windows 10, 8 GB of memory) | Open | P2 |
+| **IMP-10** Speed on the real laptop | Time typing in a chapter of the long test book on her laptop, in Candlelit with the sparks on, with the panel open and a note pinned; time the start with that book open, and type at the very end of a chapter on sheets too (the checks' Edge, drawing without a GPU, shows frames seconds late there; with a GPU it doesn't). The typing check (processor slowed four times) gave 48 ms from key to paint, the median, and 72 ms for 19 keys in 20 (ARCH-11, 16 October); 24 and 40 ms on 19 October, after the typing fixes; this confirms it on the hardware that matters (Windows 10, 8 GB of memory), and decides ARCH-7 and the rest of ARCH-24 | Open | P2 |
 | **WIN-1** One window bar | The app draws its own window bar (Windows' is off). Check it in the desktop window: dragging, a double-click to maximise, the three buttons, and resizing from the edges | Check | P2 |
 | **WIN-3** Language badge | The design's badge shows the project's writing language; the app's marks the selected text, or the open chapter, as EN or SL. Decide which | Differs | P3 |
 | **IMP-28** Split `+page.svelte` | Find and replace, earlier versions, updates, the folder backup, the Word copy and a project's writings (`writingActions`: made, renamed, deleted and put back, split or joined, put in order, a file brought in as one) have their own modules, and what a folder's move or a project's leaving does to the settings is a tested function, and the open project and every switch to another are the session's (`session.svelte.ts`, ARCH-12): about 4,000 lines, with what was added since. Left: the library's folders and projects on disk (renamed, moved, deleted) and notes from the tree, which change several pieces of the page's state at once; then the windows and Zen | Partial | P3 |
@@ -59,12 +59,9 @@ wait for the laptop's own timings (IMP-10).
 
 - The laptop's real numbers: the typing check's are with the processor slowed four times (IMP-10).
 - How Drive for desktop locks files.
-- The window's content security policy (ARCH-19) in the installed app: the browser checks run under the same
-  policy, but only the real window has Tauri's own scripts and WebView2. By hand, once: open a project, type,
-  put in a picture, export to Word, bring a Word file in, play the ambience and key sounds, and open the Book
-  view; nothing should look or sound different.
-- One pass found that a failed note save says nothing unless Notes or Ideas was opened that session; this
-  wasn't checked again.
+- A note or to-do whose save fails says so only in the Notes and Ideas tabs (checked again 20 October). Her
+  words are safe: a rescue copy keeps them (ARCH-1), and closing asks first. But in the panel beside the page,
+  or on Home, nothing tells her at the time.
 
 ## Known differences from the design system
 
