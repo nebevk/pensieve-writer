@@ -28,7 +28,7 @@
   import { byFileName, documentKind, documentName, draftChapters, type DocumentSource } from "$lib/export/importWriting";
   import { createAmbience } from "$lib/ambience";
   import { onPomodoroTurn, pomodoro } from "$lib/pomodoro.svelte";
-  import { chooseBackupFolder, chooseDocumentFiles, chooseProjectFile } from "$lib/storage/backup";
+  import { chooseDocumentFiles, chooseProjectFile } from "$lib/storage/backup";
   import type { BackupContent } from "$lib/storage/backupFile";
   import Particles from "$lib/views/Particles.svelte";
   import Tour from "$lib/views/Tour.svelte";
@@ -41,7 +41,7 @@
   import { chapterTitle } from "$lib/chapters/welcome";
   import { applyPage, chapterBreak, composePage, heldHeading, isLeadLine, leadLines, opensChapter, readPage, startsPart, withoutBreaks } from "$lib/chapters/page";
   import { summarize, summarizeOutline, summarizeProject } from "$lib/chapters/progress";
-  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, joinPath, lastName, looksSynced, parentFolder, prefsAfterMove, prefsWithoutProject, projectFile, projectFiles, projectFolders, projectName, rebasePath, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "$lib/chapters/library";
+  import { defaultLibraryFolder, firstProject, folderNameProblem, folderOf, isInside, joinPath, lastName, parentFolder, prefsAfterMove, prefsWithoutProject, projectFiles, projectFolders, projectName, rebasePath, sortEntries, type LibraryActions, type LibraryEntry, type LibraryView } from "$lib/chapters/library";
   import { moveOpen } from "$lib/chapters/treeState.svelte";
   import { notesInChapter } from "$lib/chapters/mentions";
   import { panelNotes, panelOrder } from "$lib/views/panelNotes";
@@ -54,7 +54,7 @@
   import type { ProjectRequest } from "$lib/views/NewProjectWindow.svelte";
   import type { SearchHit, SearchSource } from "$lib/views/searchAll";
   import { otherCards, type IdeaCard } from "$lib/views/ideas";
-  import { addWriting, copyOpenProject, keepSnapshot, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, restoreFromBackup, setShelf, setWritingFields, sqliteStorage, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
+  import { addWriting, keepSnapshot, loadWriting, openShelf, readOpenShelf, readProjectIdeas, readProjectText, restoreFromBackup, setShelf, setWritingFields, sqliteStorage, writeSampleProject, type NewProject, type OpenedProject } from "$lib/storage/sqlite";
   import { NotesStore } from "$lib/notes.svelte";
   import { Session } from "$lib/session.svelte";
   import type { Editor as TiptapEditor } from "@tiptap/core";
@@ -1677,7 +1677,7 @@
       fresh = { title: projectName(path), writingTitle: t("untitled"), welcome: !saved };
       if (!path) {
         try {
-          path = await makeProjectFolder(libraryRoot, t("firstProjectName"), true);
+          path = await libraryDisk.makeProjectFolder(libraryRoot, t("firstProjectName"), true);
           fresh = { title: projectName(path), writingTitle: t("untitled"), welcome: !saved };
         } catch (error) {
           // The library folder can't be written to: the project goes in the app folder, and Home says why.
@@ -1730,46 +1730,6 @@
     } catch (error) {
       reportSaveError(errorMessage(error));
     }
-  }
-
-  /** What library.rs says when a folder of that name is there already. */
-  const FOLDER_TAKEN = "Something with that name is already there";
-  /** An error as the Windows side reported it, before it is translated. */
-  const rawError = (error: unknown) => (error instanceof Error ? error.message : String(error));
-
-  /**
-   * Makes a project's folder in `parent` and returns its file. With `reuse`, a project already there under
-   * that name is used, and so is its folder left empty by an earlier try; any other trouble is said.
-   */
-  async function makeProjectFolder(parent: string, name: string, reuse = false): Promise<string> {
-    const problem = folderNameProblem(name);
-    if (problem) throw new Error(t(problem));
-    const target = projectFile(joinPath(parent, name.trim()));
-    if (reuse && (await invoke<boolean>("project_file_exists", { path: target }))) return target;
-    try {
-      return await invoke<string>("new_project_folder", { parent, name: name.trim() });
-    } catch (error) {
-      if (reuse && rawError(error) === FOLDER_TAKEN) return target;
-      throw error;
-    }
-  }
-
-  /**
-   * A folder in `parent` for a project named `name`: the name made fit for a folder, with " (2)", " (3)"…
-   * when one of that name is there already. Returns the folder.
-   */
-  async function freeProjectFolder(parent: string, name: string): Promise<string> {
-    const base = name.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/^[.$\s]+|[.\s]+$/g, "").trim() || t("firstProjectName");
-    const fit = folderNameProblem(base) ? t("firstProjectName") : base;
-    for (let n = 1; n < 100; n += 1) {
-      const candidate = n === 1 ? fit : `${fit} (${n})`;
-      try {
-        return await invoke<string>("create_library_folder", { parent, name: candidate });
-      } catch (error) {
-        if (rawError(error) !== FOLDER_TAKEN) throw error;
-      }
-    }
-    throw new Error(t("nameTaken"));
   }
 
   /** The chapter to show in a writing: the one asked for, else the one open there last, else its first. */
@@ -2063,7 +2023,7 @@
     if (problem) return t(problem);
     try {
       const drafts = request.drafts;
-      const path = await makeProjectFolder(request.parent || libraryRoot, name);
+      const path = await libraryDisk.makeProjectFolder(request.parent || libraryRoot, name);
       const [first, ...rest] = drafts;
       await useProjectFile(path, {}, true, {
         title: name,
@@ -2225,8 +2185,15 @@
   // The library's folders and projects on disk (libraryDisk.ts, IMP-28).
   const libraryDisk = new LibraryDisk({
     libraryRoot: () => libraryRoot,
-    openFile: () => session.path,
+    backupFolder: () => prefs.backupFolder,
+    setLibraryFolder: (folder) => {
+      prefs = { ...prefs, libraryFolder: folder };
+      libraryRoot = folder;
+    },
+    session,
+    openProject: () => (writing && shelf ? { title: shelf.title, writingId } : null),
     oneAtATime,
+    withEditorClosed,
     renamedByFolder: async (file) => {
       if (shelf) shelf = await shelfNamedByFolder(file, shelf);
     },
@@ -2236,6 +2203,14 @@
     refreshLibrary,
     libraryNotice,
     notice,
+    named: (path, opened) => namedByFolder(path, opened),
+    movedIn: (source, opened) => {
+      prefs = { ...prefs, knownProjects: prefs.knownProjects.filter((book) => book.path.toLowerCase() !== source.toLowerCase()) };
+      shelf = opened.shelf;
+      rememberProject();
+    },
+    say: (message) => (backupMessage = message),
+    fail: (message) => reportSaveError(message),
   });
 
   /** A web or e-mail link in her text, opened in her browser or mail program. */
@@ -2284,7 +2259,7 @@
     duplicateNote: (id) => void fromTree(notesStore.duplicate(id)),
     deleteNote: (id) => void fromTree(notesStore.delete(id)),
     moveNote: (id, category) => void fromTree(notesStore.change(id, { category })),
-    moveIntoLibrary: () => void moveIntoLibrary(),
+    moveIntoLibrary: () => void libraryDisk.moveOpenProjectIn(),
     openAnother: () => void openAnotherProject(),
   };
 
@@ -2335,7 +2310,7 @@
             for (const sample of samples) {
               const parent = sample.folder ? joinPath(libraryRoot, sample.folder) : libraryRoot;
               const existing = prefs.samples[sample.slug] && (await invoke<boolean>("project_file_exists", { path: prefs.samples[sample.slug] }));
-              const path = existing ? prefs.samples[sample.slug] : await makeProjectFolder(parent, sample.title, true);
+              const path = existing ? prefs.samples[sample.slug] : await libraryDisk.makeProjectFolder(parent, sample.title, true);
               const fresh = !(await invoke<boolean>("project_file_exists", { path }));
               // Opened only to be written: it never becomes the open project, nor the one that opens at the next start.
               await visit(path);
@@ -2431,32 +2406,6 @@
     openTodos: notesStore.tasks.filter((task) => task.todoState !== "done").length,
   });
 
-  /** The library folder from Settings: never in a synced folder, never with the backups. */
-  async function pickLibraryFolder() {
-    try {
-      const folder = await chooseBackupFolder(t("dialogLibraryFolder"));
-      if (!folder) return;
-      if (looksSynced(folder)) {
-        backupMessage = t("librarySynced");
-        return;
-      }
-      if (prefs.backupFolder && (isInside(folder, prefs.backupFolder) || isInside(prefs.backupFolder, folder))) {
-        backupMessage = t("libraryBackupApart");
-        return;
-      }
-      if (await invoke<boolean>("project_file_exists", { path: projectFile(folder) })) {
-        backupMessage = t("libraryIsProject");
-        return;
-      }
-      prefs = { ...prefs, libraryFolder: folder };
-      libraryRoot = folder;
-      await refreshLibrary();
-      backupMessage = t("libraryMoved", { path: folder });
-    } catch (error) {
-      backupMessage = errorMessage(error);
-    }
-  }
-
   function setBookGoal(words: number) {
     if (!writing) return;
     writing = { ...writing, wordGoal: words };
@@ -2468,45 +2417,6 @@
     writing = { ...writing, language };
     autosave.schedule();
     void autosave.flush().catch(() => undefined);
-  }
-
-  /**
-   * Copies the open project, kept outside the library, into a folder of its own in it, and opens the
-   * copy. The old file stays where it was, off the lists, so nobody edits the stale one.
-   */
-  async function moveIntoLibrary() {
-    if (!writing || !shelf) return;
-    try {
-      await withEditorClosed(async () => {
-        // The project open when this change runs.
-        const source = session.path;
-        if (isInside(source, libraryRoot)) return;
-        const name = shelf?.title.trim() || projectName(source) || t("untitled");
-        let folder = "";
-        // Saves wait from the copy until the copy is the open file: one made in between would stay in the old one.
-        // A copy that won't open goes to the Recycle Bin rather than stay in the library as a project that won't
-        // open, and the project stays where it was, opened there again.
-        const opened = await session.moveTo(
-          async () => {
-            folder = await freeProjectFolder(libraryRoot, name);
-            // A whole copy from SQLite itself, in the save queue: nothing written meanwhile is left behind (ARCH-6).
-            return copyOpenProject(folder);
-          },
-          async (path) => namedByFolder(path, await openShelf(writingId, { title: name, writingTitle: name, welcome: false })),
-          () => invoke("trash_project_folder", { path: folder, library: libraryRoot }),
-        );
-        const destination = session.path;
-        prefs = { ...prefs, knownProjects: prefs.knownProjects.filter((book) => book.path.toLowerCase() !== source.toLowerCase()) };
-        shelf = opened.shelf;
-        rememberProject();
-        backupMessage = t("projectMoved", { path: destination });
-        notice(t("projectMoved", { path: destination }));
-      });
-      await refreshLibrary();
-    } catch (error) {
-      backupMessage = errorMessage(error);
-      reportSaveError(errorMessage(error));
-    }
   }
 
   function statusText(status: SaveStatus): string {
@@ -3071,9 +2981,9 @@
       bookGoal={writing.wordGoal}
       onBookGoal={setBookGoal}
       dictionary={personalWords.list}
-      onMoveProject={() => void moveIntoLibrary()}
+      onMoveProject={() => void libraryDisk.moveOpenProjectIn()}
       libraryFolder={libraryRoot}
-      onChooseLibraryFolder={() => void pickLibraryFolder()}
+      onChooseLibraryFolder={() => void libraryDisk.chooseFolder()}
       insideLibrary={!!libraryRoot && isInside(session.path, libraryRoot)}
       split={writing.split}
       {writingWords}
