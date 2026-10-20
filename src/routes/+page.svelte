@@ -13,7 +13,7 @@
   import { shrinkImage } from "$lib/editor/imageSize";
   import { PageFind } from "$lib/editor/pageFind.svelte";
   import { Updates } from "$lib/updates.svelte";
-  import { DriveBackup, WordCopy, copyPathFor, safeName } from "$lib/save/copies.svelte";
+  import { DriveBackup, WordCopy, copyPathFor } from "$lib/save/copies.svelte";
   import { keptCopiesFolder, listKeptCopies, removeKeptCopy } from "$lib/save/kept";
   import { Rescue, besideItsWriting, type RescueOffer } from "$lib/save/rescue.svelte";
   import { WritingActions } from "$lib/chapters/writingActions.svelte";
@@ -21,9 +21,8 @@
   import { EarlierVersions } from "$lib/views/earlierVersions.svelte";
   import { createChapter, createWriting, effectiveLanguage, type Chapter, type DocumentJson, type Shelf, type Writing, type WritingLanguage } from "$lib/model";
   import { createAutosave, errorMessage, type SaveStatus } from "$lib/save/autosave";
-  import { chaptersToHtml, chaptersToMarkdown, chaptersToPlain } from "$lib/export/document";
-  import { chooseSavePath, writeFileTo, type ExportKind } from "$lib/export/files";
-  import { wordFileFor } from "$lib/export/wordAssets";
+  import { chaptersToPlain } from "$lib/export/document";
+  import { Exports } from "$lib/export/exports";
   import { readWordFile, type WordImport } from "$lib/export/wordImport";
   import { byFileName, documentKind, documentName, draftChapters, type DocumentSource } from "$lib/export/importWriting";
   import { createAmbience } from "$lib/ambience";
@@ -1398,51 +1397,18 @@
     }
   }
 
-  /** Saves pending edits, asks where to save, then writes the export there; gives where it went, or "". */
-  async function saveExport(kind: ExportKind, contents: (book: Writing) => Promise<Uint8Array>): Promise<string> {
-    if (!writing) return "";
-    try {
-      await saveFirst();
-      const book = writing;
-      if (!book) return "";
-      const path = await chooseSavePath(`${safeName(book.title)}.${kind}`, kind);
-      if (!path) return "";
-      const written = await writeFileTo(path, await contents(book));
-      backupMessage = t("savedTo", { path: written.path });
-      return written.path;
-    } catch (error) {
-      backupMessage = errorMessage(error);
-      return "";
-    }
-  }
-
-  function exportWord() {
-    return saveExport("docx", (book) => wordFileFor(book, prefs));
-  }
-
-  function exportText(kind: "markdown" | "plain") {
-    return saveExport(kind === "markdown" ? "md" : "txt", async (book) => {
-      const title = book.title || "Pensieve";
-      const text = kind === "markdown" ? chaptersToMarkdown(title, book.chapters) : chaptersToPlain(title, book.chapters);
-      return new TextEncoder().encode(text);
-    });
-  }
+  // The open writing out of Pensieve, from Settings (exports.ts, IMP-28).
+  const exporter = new Exports({
+    writing: () => writing,
+    prefs: () => prefs,
+    saveFirst,
+    say: (message) => (backupMessage = message),
+    fail: (message) => reportSaveError(message),
+  });
 
   async function shrinkPictures(node: { type?: string; attrs?: Record<string, unknown>; content?: unknown[] }) {
     if (node.type === "image" && typeof node.attrs?.src === "string") node.attrs.src = await shrinkImage(node.attrs.src);
     for (const child of node.content ?? []) await shrinkPictures(child as typeof node);
-  }
-
-  async function copyHtml() {
-    if (!writing) return;
-    try {
-      await saveFirst();
-      if (!writing) return;
-      await navigator.clipboard.writeText(chaptersToHtml(writing.title || "Pensieve", writing.chapters));
-      backupMessage = t("copiedHtml");
-    } catch (error) {
-      saveStatus = { state: "error", message: errorMessage(error) };
-    }
   }
 
   // Print asked for while the Book view still lays out its pages: it prints once they are all there,
@@ -3220,9 +3186,9 @@
       onProjectLanguage={setProjectLanguage}
       onAddWord={(language, word) => void addDictionaryWord(language, word)}
       onRemoveWord={(language, word) => void removeDictionaryWord(language, word)}
-      onExport={() => void exportWord()}
-      onExportText={(kind) => void exportText(kind)}
-      onCopyHtml={() => void copyHtml()}
+      onExport={() => void exporter.word()}
+      onExportText={(kind) => void exporter.text(kind)}
+      onCopyHtml={() => void exporter.copyHtml()}
       onPrint={() => void printBook()}
       backupOffer={backupOffer(pendingBackup)}
       onPickBackup={() => void pickBackup()}
@@ -3320,7 +3286,7 @@
       onClose={() => void closeAfterTrouble()}
       onStay={() => (saveTrouble = null)}
       onCopy={copyPlainText}
-      onSaveWord={exportWord}
+      onSaveWord={() => exporter.word()}
     />
   {:else if rescue.offer && RescueOfferPart.current}
     {@const RescueOffer = RescueOfferPart.current}
