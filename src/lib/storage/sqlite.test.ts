@@ -36,7 +36,8 @@ describe("the project's file, opened again after it failed (ARCH-1)", () => {
     await expect(checkpointDatabase()).rejects.toThrow("disk I/O error");
     expect(load).toHaveBeenCalledTimes(2);
     expect(load).toHaveBeenLastCalledWith(`sqlite:${file}`);
-  });
+    // The first to import storage pays for reading it in, about 2.5 s alone: more than 5 with every test file at once.
+  }, 15_000);
 
   it("a project opened on purpose may make its file: a new project's is made so", async () => {
     const { switchProjectFile } = await import("./sqlite");
