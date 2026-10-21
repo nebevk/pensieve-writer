@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { APP_NAME } from "$lib/edition";
   import type { Editor } from "@tiptap/core";
   import { tick } from "svelte";
   import { fontName, pointSize, type ManuscriptFont, type PaperMode, type PaperSize } from "$lib/prefs";
@@ -559,7 +560,7 @@
         <button type="button" class="tool" class:active={todosOpen} title={t("todosPanel")} aria-label={t("todosPanel")} aria-pressed={todosOpen} onclick={onToggleTodos}><Icon name="todos" /></button>
         <button type="button" class="tool" class:active={goalsOpen} title={t("goalsPanel")} aria-label={t("goalsPanel")} aria-pressed={goalsOpen} onclick={onToggleGoals}><Icon name="target" /></button>
       </div>
-      <p>Pensieve</p>
+      <p>{APP_NAME}</p>
     </section>
     <section class="group">
       <div class="tools">

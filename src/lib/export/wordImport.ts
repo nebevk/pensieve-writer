@@ -1,5 +1,6 @@
 import type { MammothDocument, MammothElement } from "mammoth";
 import { createChapter, emptyDocument, type Chapter, type DocumentJson, type Writing } from "$lib/model";
+import { APP_NAME } from "$lib/edition";
 import { WORD_STYLES } from "./wordStyles";
 import { HIGHLIGHTS, TEXT_COLOURS, highlightFromWord } from "$lib/editor/colours";
 import { fontFromWord } from "./wordFonts";
@@ -81,9 +82,11 @@ function headingLevel(paragraph: MammothElement): number | null {
   return match ? Number(match[1]) : null;
 }
 
-const isBookTitle = (p: MammothElement) => p.styleId === WORD_STYLES.title || p.styleName === "Pensieve Book Title";
-const isOldTitle = (p: MammothElement) => p.styleId === WORD_STYLES.oldTitle || p.styleName === "Pensieve Title";
-const isArticleTitle = (p: MammothElement) => p.styleId === WORD_STYLES.articleTitle || p.styleName === "Pensieve Article Title";
+/** One of Pensieve's styles by its name, as Pensieve names it or as Hushed Tales does (IMP-29); its id is looked at first. */
+const ours = (name: string | null | undefined, style: string) => name === `Pensieve ${style}` || name === `${APP_NAME} ${style}`;
+const isBookTitle = (p: MammothElement) => p.styleId === WORD_STYLES.title || ours(p.styleName, "Book Title");
+const isOldTitle = (p: MammothElement) => p.styleId === WORD_STYLES.oldTitle || ours(p.styleName, "Title");
+const isArticleTitle = (p: MammothElement) => p.styleId === WORD_STYLES.articleTitle || ours(p.styleName, "Article Title");
 const isPensieveTitle = (p: MammothElement) => isBookTitle(p) || isOldTitle(p) || isArticleTitle(p);
 const isTitle = (p: MammothElement) => isPensieveTitle(p) || /^title$/i.test(p.styleName ?? "") || p.styleId === "Title";
 const isLabel = (p: MammothElement) => p.styleId === WORD_STYLES.chapterLabel || p.styleName === "Chapter Label";

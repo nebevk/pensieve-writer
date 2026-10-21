@@ -1,5 +1,6 @@
 <script lang="ts">
   import BrandMark from "$lib/editor/BrandMark.svelte";
+  import { APP_NAME } from "$lib/edition";
   import type { UiKey } from "$lib/i18n";
   import type { ThemeName } from "$lib/prefs";
   import { t } from "$lib/ui.svelte";
@@ -41,7 +42,7 @@
 </script>
 
 <!-- The first time Pensieve opens (owner, 13 October): three steps, then the tips. -->
-<Modal title="Pensieve" size="small" onClose={onDone}>
+<Modal title={APP_NAME} size="small" onClose={onDone}>
   <div class="welcome">
     <img class="art" src={art} width="800" height="480" alt="" />
     <div class="words" aria-live="polite">

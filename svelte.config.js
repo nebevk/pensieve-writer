@@ -5,11 +5,16 @@
 import adapter from "@sveltejs/adapter-static";
 import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 
+// Hushed Tales, the version for the owner's friends (IMP-29), builds into a folder of its own, so the two never mix.
+const out = process.env.VITE_EDITION === "hushed" ? "build-hushed" : "build";
+
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
   preprocess: vitePreprocess(),
   kit: {
     adapter: adapter({
+      pages: out,
+      assets: out,
       fallback: "index.html",
     }),
   },

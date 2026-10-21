@@ -1,0 +1,38 @@
+{
+  "productName": "Hushed Tales",
+  "identifier": "com.hushedtales.app",
+  "build": {
+    "frontendDist": "../build-hushed"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Hushed Tales",
+        "width": 1100,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "decorations": false,
+        "dragDropEnabled": false
+      }
+    ]
+  },
+  "bundle": {
+    "windows": {
+      "nsis": {
+        "customLanguageFiles": {
+          "English": "installer/hushed-English.nsh",
+          "Slovenian": "installer/hushed-Slovenian.nsh"
+        }
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/nebevk/hushed-tales/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}

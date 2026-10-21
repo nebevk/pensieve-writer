@@ -1,3 +1,4 @@
+import { APP_NAME } from "$lib/edition";
 import { chaptersToHtml, chaptersToMarkdown, chaptersToPlain } from "$lib/export/document";
 import { chooseSavePath, writeFileTo, type ExportKind } from "$lib/export/files";
 import { wordFileFor } from "$lib/export/wordAssets";
@@ -53,7 +54,7 @@ export class Exports {
 
   text(kind: "markdown" | "plain"): Promise<string> {
     return this.#save(kind === "markdown" ? "md" : "txt", async (book) => {
-      const title = book.title || "Pensieve";
+      const title = book.title || APP_NAME;
       return new TextEncoder().encode(kind === "markdown" ? chaptersToMarkdown(title, book.chapters) : chaptersToPlain(title, book.chapters));
     });
   }
@@ -66,7 +67,7 @@ export class Exports {
       await host.saveFirst();
       const book = host.writing();
       if (!book) return;
-      await navigator.clipboard.writeText(chaptersToHtml(book.title || "Pensieve", book.chapters));
+      await navigator.clipboard.writeText(chaptersToHtml(book.title || APP_NAME, book.chapters));
       host.say(t("copiedHtml"));
     } catch (error) {
       host.fail(errorMessage(error));

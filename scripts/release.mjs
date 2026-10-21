@@ -5,6 +5,7 @@
 //   npm run release -- 0.5.0 --notes "…" --publish   (all of it: built, committed, tagged, pushed, published)
 //   npm run release -- 0.4.0 --publish               (publishes a version already built and tagged)
 //   npm run release                                  (builds the version already set, again)
+//   npm run release -- --edition hushed --publish    (Hushed Tales, from the Pensieve release checked out)
 //
 // --publish needs the GitHub CLI, signed in once: winget install --id GitHub.cli, then gh auth login.
 // release/v<version>/notes.md, written before, becomes the release's text on GitHub.
@@ -39,6 +40,8 @@ const flag = (name) => {
   return value;
 };
 const notesArg = flag("--notes");
+const edition = flag("--edition") ?? "pensieve";
+if (edition !== "pensieve" && edition !== "hushed") fail(`there is no edition "${edition}": pensieve or hushed`);
 const publish = args.includes("--publish");
 const asked = args.filter((arg) => !arg.startsWith("--"))[0] ?? "";
 
@@ -96,6 +99,11 @@ function publishBuilt() {
   console.log("Installed copies find it within six hours, or at once with Settings → General → Check for updates.");
 }
 
+if (edition === "hushed") {
+  releaseHushed();
+  process.exit(0);
+}
+
 // Publishing asks first what could stop it halfway, before the long build.
 if (publish) {
   const gh = quietly("gh", ["auth", "status"]);
@@ -123,11 +131,7 @@ if (publish) {
 }
 
 // The signing key, kept outside the repository.
-const keyFile = join(homedir(), ".tauri", "pensieve.key");
-const passwordFile = `${keyFile}.password`;
-if (!existsSync(keyFile) || !existsSync(passwordFile)) {
-  fail(`the signing key isn't at ${keyFile} (with ${passwordFile}); without it no installed Pensieve accepts an update`);
-}
+const signing = signingKey();
 
 // The new version, in the three places it lives.
 if (version !== current) {
@@ -156,15 +160,14 @@ const built = spawnSync("npx", ["tauri", "build", "--config", "src-tauri/tauri.r
   shell: true,
   env: {
     ...process.env,
-    TAURI_SIGNING_PRIVATE_KEY: readFileSync(keyFile, "utf8").trim(),
-    TAURI_SIGNING_PRIVATE_KEY_PASSWORD: readFileSync(passwordFile, "utf8").trim(),
+    ...signing,
   },
 });
 if (built.status !== 0) fail("the build didn't finish; see above");
 
-// The installer and its signature.
+// The installer and its signature, by their exact name: Hushed Tales' of the same version may lie beside them.
 const bundle = at("src-tauri", "target", "release", "bundle", "nsis");
-const installer = existsSync(bundle) ? readdirSync(bundle).find((name) => name.endsWith(`_${version}_x64-setup.exe`)) : undefined;
+const installer = existsSync(bundle) ? readdirSync(bundle).find((name) => name === `${conf.productName}_${version}_x64-setup.exe`) : undefined;
 if (!installer || !existsSync(join(bundle, `${installer}.sig`))) fail(`no signed installer for ${version} in ${bundle}`);
 
 // latest.json: what installed copies read, pointing at this release's installer.
@@ -219,3 +222,83 @@ run("git", ["tag", "-a", tag, "-m", `Pensieve ${version}`], "git tag");
 run("git", ["push", "origin", "HEAD"], "pushing the branch");
 run("git", ["push", "origin", tag], "pushing the tag");
 publishBuilt();
+
+/** The signing key and its password, kept outside the repository, for Tauri to sign the installer with. */
+function signingKey() {
+  const keyFile = join(homedir(), ".tauri", "pensieve.key");
+  const passwordFile = `${keyFile}.password`;
+  if (!existsSync(keyFile) || !existsSync(passwordFile)) {
+    fail(`the signing key isn't at ${keyFile} (with ${passwordFile}); without it no installed copy accepts an update`);
+  }
+  return {
+    TAURI_SIGNING_PRIVATE_KEY: readFileSync(keyFile, "utf8").trim(),
+    TAURI_SIGNING_PRIVATE_KEY_PASSWORD: readFileSync(passwordFile, "utf8").trim(),
+  };
+}
+
+/**
+ * Hushed Tales, the version for the owner's friends (IMP-29): the Pensieve release checked out (its tag at HEAD, the
+ * same version, nothing changed), built under its own name into its own folder, signed with the same key, and
+ * published in its own repository, which its installed copies read for updates. Nothing is committed or tagged here,
+ * and master stays where it is. release/hushed/v<version>/notes.md, written before, becomes the release's text.
+ */
+function releaseHushed() {
+  const HUSHED_REPO = "nebevk/hushed-tales";
+  if (asked && asked !== current) fail(`Hushed Tales is built from the Pensieve release checked out, ${current}: release Pensieve ${asked} first`);
+  const out = at("release", "hushed", tag);
+  if (publish) {
+    const gh = quietly("gh", ["auth", "status"]);
+    if (gh.error || gh.status !== 0) fail("the GitHub CLI isn't installed or signed in: winget install --id GitHub.cli, then gh auth login (once)");
+    if (quietly("gh", ["repo", "view", HUSHED_REPO]).status !== 0) fail(`there is no repository ${HUSHED_REPO} on GitHub to publish in`);
+    if (quietly("gh", ["release", "view", tag, "--repo", HUSHED_REPO]).status === 0) fail(`Hushed Tales ${tag} is published already`);
+  }
+  const head = quietly("git", ["describe", "--exact-match", "--tags", "HEAD"]).stdout.trim();
+  if (head !== tag) fail(`Hushed Tales is built from a Pensieve release: check out ${tag}, or release Pensieve ${current} first (HEAD is ${head || "no release"})`);
+  const changed = changedFiles();
+  if (changed.length > 0) fail(`commit your work first, so Hushed Tales is what ${tag} has:\n${changed.map((line) => `  ${line}`).join("\n")}`);
+
+  console.log(`release: building Hushed Tales ${current}…\n`);
+  const built = spawnSync("npx", ["tauri", "build", "--config", "src-tauri/tauri.release.conf.json", "--config", "src-tauri/tauri.hushed.conf.json"], {
+    cwd: root,
+    stdio: "inherit",
+    shell: true,
+    env: { ...process.env, VITE_EDITION: "hushed", ...signingKey() },
+  });
+  if (built.status !== 0) fail("the build didn't finish; see above");
+  const bundle = at("src-tauri", "target", "release", "bundle", "nsis");
+  const installer = `Hushed Tales_${current}_x64-setup.exe`;
+  if (!existsSync(join(bundle, installer)) || !existsSync(join(bundle, `${installer}.sig`))) fail(`no signed installer for Hushed Tales ${current} in ${bundle}`);
+
+  // A name without its space on GitHub, which would make it a dot there, and the update's address with it.
+  const asset = `HushedTales_${current}_x64-setup.exe`;
+  mkdirSync(out, { recursive: true });
+  copyFileSync(join(bundle, installer), join(out, asset));
+  copyFileSync(join(bundle, `${installer}.sig`), join(out, `${asset}.sig`));
+  const latest = {
+    version: current,
+    notes: notesArg || `Hushed Tales ${current}`,
+    pub_date: new Date().toISOString(),
+    platforms: {
+      "windows-x86_64": {
+        signature: readFileSync(join(bundle, `${installer}.sig`), "utf8").trim(),
+        url: `https://github.com/${HUSHED_REPO}/releases/download/${tag}/${asset}`,
+      },
+    },
+  };
+  writeFileSync(join(out, "latest.json"), `${JSON.stringify(latest, null, 2)}\n`);
+  const files = [asset, `${asset}.sig`, "latest.json"].map((name) => join(out, name));
+  console.log(`\nrelease: Hushed Tales ${current} is ready in ${out}:\n${files.map((file) => `  ${file}`).join("\n")}`);
+  if (!publish) {
+    console.log(`\nTo publish it: npm run release -- --edition hushed --publish (it builds again), or attach the three files to a release ${tag} at https://github.com/${HUSHED_REPO}/releases/new`);
+    return;
+  }
+  const notesFile = join(out, "notes.md");
+  console.log(`release: publishing Hushed Tales ${tag} on GitHub…`);
+  run(
+    "gh",
+    ["release", "create", tag, ...files, "--repo", HUSHED_REPO, "--title", `Hushed Tales ${current}`, "--latest", ...(existsSync(notesFile) ? ["--notes-file", notesFile] : ["--notes", latest.notes])],
+    "gh release create",
+  );
+  console.log(`\nrelease: published https://github.com/${HUSHED_REPO}/releases/tag/${tag}`);
+  console.log("Installed copies of Hushed Tales find it within six hours, or at once with Settings → General → Check for updates.");
+}

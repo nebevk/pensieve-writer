@@ -5,6 +5,7 @@
 //   npm run test:browser -- find home     only the checks whose names have these words
 //   npm run test:browser -- --speed       the speed checks too (each takes a few minutes)
 //   npm run test:browser -- --no-build    the build already in build/, as it is
+//   npm run test:browser -- --hushed      Hushed Tales' own checks (*-hushed-check.mjs), against its build (IMP-29)
 import { spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
@@ -16,6 +17,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..", "..");
 const args = process.argv.slice(2);
 const withSpeed = args.includes("--speed");
+// Hushed Tales, the version for the owner's friends: its own build (build-hushed/) and its own checks, which the
+// other runs leave out.
+const hushed = args.includes("--hushed");
+const dist = join(root, hushed ? "build-hushed" : "build");
 // Every line each check says, the passing ones too (their times, say).
 const verbose = args.includes("--verbose");
 const words = args.filter((arg) => !arg.startsWith("--"));
@@ -35,6 +40,7 @@ const freePort = () =>
 const checks = readdirSync(here)
   .filter((name) => name.endsWith("-check.mjs"))
   .filter((name) => withSpeed || !name.includes("speed"))
+  .filter((name) => hushed === name.includes("hushed"))
   .filter((name) => words.length === 0 || words.some((word) => name.includes(word)))
   .sort();
 if (checks.length === 0) {
@@ -43,16 +49,17 @@ if (checks.length === 0) {
 }
 
 if (!args.includes("--no-build")) {
-  console.log("Building Pensieve…");
+  console.log(hushed ? "Building Hushed Tales…" : "Building Pensieve…");
   // Its long log only matters when it fails.
-  const built = spawnSync("npm", ["run", "build"], { cwd: root, encoding: "utf8", shell: true });
+  const env = hushed ? { ...process.env, VITE_EDITION: "hushed" } : process.env;
+  const built = spawnSync("npm", ["run", "build"], { cwd: root, encoding: "utf8", shell: true, env });
   if (built.status !== 0) {
     console.error(`${built.stdout ?? ""}${built.stderr ?? ""}`);
     process.exit(built.status ?? 1);
   }
 }
-if (!existsSync(join(root, "build", "index.html"))) {
-  console.error("There is no build in build/; run without --no-build.");
+if (!existsSync(join(dist, "index.html"))) {
+  console.error(`There is no build in ${dist}; run without --no-build.`);
   process.exit(1);
 }
 
@@ -70,7 +77,7 @@ const cdpPort = await freePort();
 const profile = mkdtempSync(join(tmpdir(), "pensieve-checks-"));
 // The checks run against a copy of the build, so building again meanwhile changes nothing under them.
 const served = join(profile, "app");
-cpSync(join(root, "build"), served, { recursive: true });
+cpSync(dist, served, { recursive: true });
 mkdirSync(join(here, "shots"), { recursive: true });
 const server = spawn(process.execPath, [join(here, "serve.mjs"), served, String(appPort)], { stdio: "ignore" });
 // Muted: headless Edge still plays to the speakers, and the checks start the rain and the keys' sounds. The

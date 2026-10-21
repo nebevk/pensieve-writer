@@ -18,6 +18,7 @@
   import { Restores } from "$lib/save/restores.svelte";
   import { WritingActions } from "$lib/chapters/writingActions.svelte";
   import { LibraryDisk } from "$lib/chapters/libraryDisk";
+  import { APP_NAME } from "$lib/edition";
   import { SampleProjects } from "$lib/samples/sampleProjects";
   import { EarlierVersions } from "$lib/views/earlierVersions.svelte";
   import { createChapter, createWriting, effectiveLanguage, type Chapter, type DocumentJson, type Shelf, type Writing, type WritingLanguage } from "$lib/model";
@@ -1515,7 +1516,7 @@
     const open = writingNow();
     if (!open) return false;
     try {
-      await navigator.clipboard.writeText(chaptersToPlain(open.title || "Pensieve", open.chapters));
+      await navigator.clipboard.writeText(chaptersToPlain(open.title || APP_NAME, open.chapters));
       return true;
     } catch {
       return false;

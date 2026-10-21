@@ -1,3 +1,4 @@
+import { APP_NAME } from "$lib/edition";
 import type { Shelf } from "$lib/model";
 import type { Note, NoteCategory } from "$lib/storage/organize";
 import type { KnownProject, Prefs } from "$lib/prefs";
@@ -132,10 +133,13 @@ export function rebasePath(path: string, from: string, to: string): string {
   return `${to.trim().replace(/[\\/]+$/, "")}${tail}`;
 }
 
-/** Where the library goes unless she chooses: Documents\Pensieve, or her home folder's when Documents is synced. */
+/**
+ * Where the library goes unless she chooses: Documents\Pensieve (Documents\Hushed Tales in that edition), or her home
+ * folder's when Documents is synced.
+ */
 export function defaultLibraryFolder(places: { documents: string; home: string }): string {
   const base = places.documents && !looksSynced(places.documents) ? places.documents : places.home;
-  return joinPath(base, "Pensieve");
+  return joinPath(base, APP_NAME);
 }
 
 /** What is wrong with a name for a new folder or project, as an interface string's key; null when it's fine. */

@@ -179,11 +179,11 @@
       .filter((line) => line.length > 0);
   }
 
-  /** "Good evening, Eva." (HOME-10), by the time of day; late at night it's "Late again, Eva." */
+  /** "Good evening, Eva." (HOME-10), by the time of day; late at night it's "Late again, Eva." Without a name in Hushed Tales. */
   function hello(at: number): string {
     const hour = new Date(at).getHours();
     const word = hour >= 23 || hour < 5 ? t("lateAgain") : hour < 12 ? t("morning") : hour < 18 ? t("afternoon") : t("evening");
-    return `${word}, ${WRITER}.`;
+    return WRITER ? `${word}, ${WRITER}.` : `${word}.`;
   }
 
   function clip(text: string, max = 88): string {

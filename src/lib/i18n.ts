@@ -1,3 +1,5 @@
+import { named } from "./edition";
+
 export type UiLanguage = "en" | "sl";
 
 /**
@@ -1527,7 +1529,8 @@ function fill(text: string, values: Values, language: UiLanguage): string {
 }
 
 export function translate(language: UiLanguage, key: UiKey, values: Values = {}): string {
-  return fill(STRINGS[language][key], values, language);
+  // In this edition's name (IMP-29): the texts are written for Pensieve.
+  return fill(named(STRINGS[language][key], language), values, language);
 }
 
 /**
@@ -1580,7 +1583,7 @@ export function pluralize(language: UiLanguage, key: PluralKey, count: number): 
   } else {
     form = PLURALS[key].en[n === 1 ? 0 : 1];
   }
-  return fill(form, { n: count }, language);
+  return fill(named(form, language), { n: count }, language);
 }
 
 export function dateLocale(language: UiLanguage): string {

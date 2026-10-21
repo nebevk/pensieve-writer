@@ -43,6 +43,23 @@ the link it prints, attach the three files, write what changed, and publish it a
 
 A version must be higher than the one installed, or installed copies won't take it.
 
+## Hushed Tales
+
+Hushed Tales, the version for the owner's friends (IMP-29), is the same code built under its own name, with its own
+identifier, and quotes about writing on Home instead of the Bible verses (`VITE_EDITION=hushed`,
+`src-tauri/tauri.hushed.conf.json`). It is released from a Pensieve release, so friends have what Eva has:
+
+```
+git checkout v0.5.6
+npm run release -- --edition hushed --notes "…" --publish
+```
+
+It builds the Pensieve release checked out (its tag at HEAD, nothing changed) as Hushed Tales, signs it with the same
+key, and publishes the installer (`HushedTales_<version>_x64-setup.exe`, without the space GitHub would make a dot),
+its `.sig` and `latest.json` in the repository `nebevk/hushed-tales`, which its installed copies read for updates.
+Nothing is committed or tagged here, and master stays where it is. `release/hushed/v<version>/notes.md`, written
+before, becomes the release's text. Without `--publish` it builds and signs only.
+
 ## The signing key
 
 Every update is signed, and Pensieve installs only updates signed with this key. It lives outside the

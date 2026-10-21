@@ -1,5 +1,6 @@
 <script lang="ts">
   import BrandMark from "$lib/editor/BrandMark.svelte";
+  import { APP_NAME } from "$lib/edition";
   import Icon from "$lib/editor/Icon.svelte";
   import WindowControls from "$lib/editor/WindowControls.svelte";
   import UpdatePill, { type UpdateOffer } from "$lib/editor/UpdatePill.svelte";
@@ -60,7 +61,7 @@
   <span class="brand">
     <!-- Home's large mark, the one that moves, is beside the greeting (owner, 13 October); here it is small and still. -->
     <BrandMark {appearance} size={22} />
-    <span class="name">Pensieve</span>
+    <span class="name">{APP_NAME}</span>
   </span>
   <span class="spacer"></span>
   <!-- Drawn as a search field, with its shortcut (owner, 13 October); a press opens the search. -->

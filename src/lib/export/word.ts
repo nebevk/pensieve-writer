@@ -22,6 +22,7 @@ import {
   type ICommentOptions,
   type ISectionOptions,
 } from "docx";
+import { APP_NAME } from "$lib/edition";
 import type { Chapter, DocumentJson, WritingLanguage } from "$lib/model";
 import { startsPart } from "$lib/chapters/page";
 import { WORD_STYLES } from "./wordStyles";
@@ -229,8 +230,8 @@ function inlines(nodes: JsonNode[] | undefined, ctx: Context): Inline[] {
         const created = new Date(String(mark.attrs?.createdAt ?? ""));
         ctx.comments.push({
           id: number,
-          author: "Pensieve",
-          initials: "P",
+          author: APP_NAME,
+          initials: APP_NAME.split(" ").map((word) => word[0]).join(""),
           date: Number.isNaN(created.getTime()) ? new Date() : created,
           children: commentBody(mark),
         });
@@ -529,9 +530,9 @@ export function buildWordDocument(book: WordBook, look: WordLook, assets: WordAs
         hyperlink: { run: { color: ACCENT, underline: {} } },
       },
       paragraphStyles: [
-        // Word's Title, under a name that tells the importer this file came from Pensieve.
-        { id: WORD_STYLES.title, name: "Pensieve Book Title", basedOn: "Title", next: "Normal" },
-        { id: WORD_STYLES.articleTitle, name: "Pensieve Article Title", basedOn: "Title", next: "Normal" },
+        // Word's Title, under a name that tells the importer this file came from Pensieve (or Hushed Tales, IMP-29).
+        { id: WORD_STYLES.title, name: `${APP_NAME} Book Title`, basedOn: "Title", next: "Normal" },
+        { id: WORD_STYLES.articleTitle, name: `${APP_NAME} Article Title`, basedOn: "Title", next: "Normal" },
         {
           id: WORD_STYLES.quote,
           name: "Quote",
