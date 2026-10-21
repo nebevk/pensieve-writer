@@ -81,11 +81,13 @@ cpSync(dist, served, { recursive: true });
 mkdirSync(join(here, "shots"), { recursive: true });
 const server = spawn(process.execPath, [join(here, "serve.mjs"), served, String(appPort)], { stdio: "ignore" });
 // Muted: headless Edge still plays to the speakers, and the checks start the rain and the keys' sounds. The
-// sound is still made, so the checks that listen for it still hear it.
+// sound is still made, so the checks that listen for it still hear it. Without Windows' compatibility layer, which
+// some terminals pass on (__COMPAT_LAYER): under one, Edge starts itself again and the one started here leaves, so
+// stopping it left the real one running, a headless Edge for every run.
 const edge = spawn(
   edgePath,
   ["--headless=new", "--mute-audio", `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${profile}`, "--no-first-run", "--disable-gpu", "--restore-last-session=false", "--noerrdialogs", "about:blank"],
-  { stdio: "ignore" },
+  { stdio: "ignore", env: Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toUpperCase() !== "__COMPAT_LAYER")) },
 );
 const stop = () => {
   server.kill();
