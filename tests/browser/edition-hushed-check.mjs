@@ -5,9 +5,10 @@
 import { connect, sleep } from "./cdp.mjs";
 
 const port = Number(process.argv[2] ?? 4176);
+const shots = new URL("./shots/", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 const page = await connect({ width: 1366, height: 768 });
 // The tips on, as on a first start, so the welcome shows; off once it is read.
-await page.harness({ tips: true });
+await page.harness({ tips: true, keep: true });
 const results = [];
 const check = (name, ok, detail = "") => {
   results.push(ok);
@@ -23,6 +24,9 @@ const until = async (expression, tries = 60) => {
 // Where any text on the screen still says Pensieve, with a little around it.
 const PENSIEVE = `(() => { const text = document.body.innerText; const at = text.search(/Pensiev/); return at < 0 ? "" : text.slice(Math.max(0, at - 40), at + 40).replace(/\\s+/g, " "); })()`;
 const GREETING = `(document.querySelector(".home h1.greeting strong")?.textContent.trim() ?? "")`;
+// Home's quote, and whom it is by: words about writing, never a Bible verse's chapter and verse.
+const QUOTE = `(() => { const card = document.querySelector(".home blockquote.verse"); return card ? { text: card.querySelector("p")?.textContent.trim() ?? "", by: card.querySelector("footer")?.textContent.trim() ?? "" } : null; })()`;
+const aboutWriting = (quote) => !!quote && quote.text.length > 0 && /^\p{Lu}/u.test(quote.by) && !/\d+[:,]\d+|\(SSP\)/.test(quote.by);
 const press = (label) =>
   page.run(`(() => { const el = [...document.querySelectorAll(".window footer button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)}); el?.click(); return !!el; })()`);
 
@@ -62,6 +66,9 @@ await sleep(400);
 check("the window's title is Hushed Tales", (await page.run(`document.title`)) === "Hushed Tales", await page.run(`document.title`));
 check("Home's bar says Hushed Tales", (await page.run(`document.querySelector(".home-header .name")?.textContent.trim()`)) === "Hushed Tales");
 check("Home greets without a name", /^[^,]+\.$/.test(await page.run(GREETING)), await page.run(GREETING));
+let quote = await page.run(QUOTE);
+check("Home's quote is about writing, by its author, not a verse (sl)", aboutWriting(quote), JSON.stringify(quote));
+await page.shoot(`${shots}hushed-home-sl.png`);
 check("nothing on Home says Pensieve (sl)", (await page.run(PENSIEVE)) === "", await page.run(PENSIEVE));
 let settings = await settingsSections();
 check("no section of Settings says Pensieve (sl)", settings.count >= 6 && settings.said.length === 0, settings.said.join(" | "));
@@ -80,6 +87,9 @@ await page.open(`http://127.0.0.1:${port}/`, 1500);
 await until(`!!document.querySelector(".home .continue")`);
 await sleep(400);
 check("in English, Home greets without a name", /^(Good morning|Good afternoon|Good evening|Late again)\.$/.test(await page.run(GREETING)), await page.run(GREETING));
+quote = await page.run(QUOTE);
+check("Home's quote is about writing, by its author, not a verse (en)", aboutWriting(quote), JSON.stringify(quote));
+await page.shoot(`${shots}hushed-home-en.png`);
 check("nothing on Home says Pensieve (en)", (await page.run(PENSIEVE)) === "", await page.run(PENSIEVE));
 settings = await settingsSections();
 check("no section of Settings says Pensieve (en)", settings.said.length === 0, settings.said.join(" | "));

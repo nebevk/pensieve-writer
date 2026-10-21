@@ -1,3 +1,4 @@
+import { EDITION } from "./edition";
 import type { UiLanguage } from "./i18n";
 
 export type Quote = {
@@ -174,12 +175,198 @@ const VERSES: Record<UiLanguage, Quote>[] = [
   },
 ];
 
-/** A verse chosen at random, as its place in the list, so it stays the same verse in either language. */
-export function randomVerse(): number {
-  return Math.floor(Math.random() * VERSES.length);
+/**
+ * Hushed Tales' (IMP-29): uplifting words about writing, by authors who died before 1955, so their words are free of
+ * copyright, each found in its book, letter or diary (Project Gutenberg, Wikisource, Wikivir, Internet Archive scans)
+ * and given as the source has it, shortened only with "…". What wasn't written in English or Slovenian is translated
+ * here from its original; Slovenian authors in their own words, in today's spelling.
+ */
+export const WRITING: Record<UiLanguage, Quote>[] = [
+  {
+    en: { text: "So long as you write what you wish to write, that is all that matters; and whether it matters for ages or only for hours, nobody can say.", reference: "Virginia Woolf, A Room of One’s Own" },
+    sl: { text: "Dokler pišete, kar želite pisati, je samo to pomembno; ali bo pomembno stoletja ali le nekaj ur, tega nihče ne ve.", reference: "Virginia Woolf, Lastna soba" },
+  },
+  {
+    en: { text: "Everything is the proper stuff of fiction, every feeling, every thought.", reference: "Virginia Woolf, Modern Fiction" },
+    sl: { text: "Vse je prava snov za prozo, vsak občutek, vsaka misel.", reference: "Virginia Woolf, »Modern Fiction«" },
+  },
+  {
+    en: { text: "I must confess that I think her as delightful a creature as ever appeared in print.", reference: "Jane Austen, of Elizabeth Bennet, in a letter, 1813" },
+    sl: { text: "Priznati moram, da se mi zdi najbolj ljubko bitje, kar jih je kdaj prišlo v tisk.", reference: "Jane Austen o Elizabeth Bennet, v pismu, 1813" },
+  },
+  {
+    en: { text: "Three or four families in a country village is the very thing to work on.", reference: "Jane Austen, to her niece Anna, who was writing a novel, 1814" },
+    sl: { text: "Tri ali štiri družine v podeželski vasi so ravno pravšnja snov za delo.", reference: "Jane Austen nečakinji Anni, ki je pisala roman, 1814" },
+  },
+  {
+    en: { text: "Imagination is a strong, restless faculty, which claims to be heard and exercised.", reference: "Charlotte Brontë, in a letter, 1847" },
+    sl: { text: "Domišljija je močna, nemirna sposobnost, ki zahteva, da jo slišimo in uporabljamo.", reference: "Charlotte Brontë, v pismu, 1847" },
+  },
+  {
+    en: { text: "September, 1856, made a new era in my life, for it was then I began to write fiction.", reference: "George Eliot, journal, 1857" },
+    sl: { text: "September 1856 je v mojem življenju začel novo obdobje, saj sem takrat začela pisati leposlovje.", reference: "George Eliot, dnevnik, 1857" },
+  },
+  {
+    en: { text: "I’d have … rooms piled high with books, and I’d write out of a magic inkstand.", reference: "Louisa May Alcott, Little Women" },
+    sl: { text: "Imela bi … sobe, do stropa polne knjig, in pisala bi iz čarobne črnilnice.", reference: "Louisa May Alcott, Male ženske" },
+  },
+  {
+    en: { text: "I never had a study. Any pen and paper do, and an old atlas on my knee is all I want.", reference: "Louisa May Alcott" },
+    sl: { text: "Nikoli nisem imela delovne sobe. Zadoščata katero koli pero in papir, in star atlas na kolenih je vse, kar potrebujem.", reference: "Louisa May Alcott" },
+  },
+  {
+    en: { text: "Better far write twaddle or anything, anything, than nothing at all.", reference: "Katherine Mansfield, 1922" },
+    sl: { text: "Veliko bolje je pisati neumnosti ali karkoli, karkoli, kot pa nič.", reference: "Katherine Mansfield, 1922" },
+  },
+  {
+    en: { text: "A word is dead / When it is said, / Some say. / I say it just / Begins to live / That day.", reference: "Emily Dickinson" },
+    sl: { text: "Beseda je mrtva, / ko je izrečena, / pravijo nekateri. / Jaz pa pravim, da šele / tisti dan / začne živeti.", reference: "Emily Dickinson" },
+  },
+  {
+    en: { text: "As a child I scribbled; and my favourite pastime, during the hours given me for recreation, was to “write stories.”", reference: "Mary Shelley, introduction to Frankenstein" },
+    sl: { text: "Kot otrok sem ves čas nekaj čečkala; in moja najljubša zabava v urah, ki so mi bile dane za razvedrilo, je bila »pisati zgodbe«.", reference: "Mary Shelley, uvod k Frankensteinu" },
+  },
+  {
+    en: { text: "Everything’s a story. You are a story—I am a story.", reference: "Frances Hodgson Burnett, A Little Princess" },
+    sl: { text: "Vse je zgodba. Ti si zgodba – jaz sem zgodba.", reference: "Frances Hodgson Burnett, Mala princesa" },
+  },
+  {
+    en: { text: "You’ll be able to do something by and by. Something—I don’t know how much—but keep on—keep on.", reference: "L. M. Montgomery, Emily of New Moon" },
+    sl: { text: "Nekoč boš nekaj zmogla. Nekaj – ne vem, koliko – a vztrajaj, vztrajaj.", reference: "L. M. Montgomery, Emily of New Moon" },
+  },
+  {
+    en: { text: "You must find your own quiet centre of life, and write from that to the world.", reference: "Sarah Orne Jewett, to Willa Cather, 1908" },
+    sl: { text: "Poiskati morate svoje tiho središče življenja in iz njega pisati svetu.", reference: "Sarah Orne Jewett Willi Cather, 1908" },
+  },
+  {
+    en: { text: "Write while the heat is in you.", reference: "Henry David Thoreau, journal, 1852" },
+    sl: { text: "Piši, dokler je v tebi žar.", reference: "Henry David Thoreau, dnevnik, 1852" },
+  },
+  {
+    en: { text: "Try to be one of the people on whom nothing is lost!", reference: "Henry James, The Art of Fiction" },
+    sl: { text: "Skušajte biti eden tistih ljudi, ki jim nič ne uide!", reference: "Henry James, »The Art of Fiction«" },
+  },
+  {
+    en: { text: "Every artist was first an amateur.", reference: "Ralph Waldo Emerson" },
+    sl: { text: "Vsak umetnik je bil najprej ljubitelj.", reference: "Ralph Waldo Emerson" },
+  },
+  {
+    en: { text: "I kept always two books in my pocket, one to read, one to write in.", reference: "Robert Louis Stevenson" },
+    sl: { text: "V žepu sem imel vedno dve knjigi: eno za branje, eno za pisanje.", reference: "Robert Louis Stevenson" },
+  },
+  {
+    en: { text: "A small daily task, if it be really daily, will beat the labours of a spasmodic Hercules.", reference: "Anthony Trollope, An Autobiography" },
+    sl: { text: "Majhna vsakdanja naloga, če je res vsakdanja, premaga napore Herkula, ki dela v sunkih.", reference: "Anthony Trollope, Avtobiografija" },
+  },
+  {
+    en: { text: "“Begin at the beginning,” the King said gravely, “and go on till you come to the end: then stop.”", reference: "Lewis Carroll, Alice’s Adventures in Wonderland" },
+    sl: { text: "»Začni na začetku,« je resno rekel Kralj, »in nadaljuj, dokler ne prideš do konca: potem pa nehaj.«", reference: "Lewis Carroll, Alica v čudežni deželi" },
+  },
+  {
+    en: { text: "Don’t loaf and invite inspiration; light out after it with a club.", reference: "Jack London, Getting Into Print" },
+    sl: { text: "Ne lenarite in ne vabite navdiha; pojdite nadenj s kijem.", reference: "Jack London, »Getting Into Print«" },
+  },
+  {
+    en: { text: "The difference between the almost right word and the right word is really a large matter—’tis the difference between the lightning-bug and the lightning.", reference: "Mark Twain, in a letter, 1888" },
+    sl: { text: "Razlika med skoraj pravo besedo in pravo besedo je zares velika: kot razlika med kresnico in strelo.", reference: "Mark Twain, v pismu, 1888" },
+  },
+  {
+    en: { text: "The poet’s pen / Turns them to shapes, and gives to airy nothing / A local habitation and a name.", reference: "William Shakespeare, A Midsummer Night’s Dream" },
+    sl: { text: "Pesnikovo pero / jim da podobo in zračnemu ničemur / prebivališče in ime.", reference: "William Shakespeare, Sen kresne noči" },
+  },
+  {
+    en: { text: "Poetry is the record of the best and happiest moments of the happiest and best minds.", reference: "Percy Bysshe Shelley, A Defence of Poetry" },
+    sl: { text: "Poezija je zapis najboljših in najsrečnejših trenutkov najsrečnejših in najboljših duhov.", reference: "Percy Bysshe Shelley, Zagovor poezije" },
+  },
+  {
+    en: {
+      text: "Being an artist means not reckoning and counting; ripening like the tree, which does not force its sap and stands confident in the storms of spring, without fear that no summer might come after. It does come.",
+      reference: "Rainer Maria Rilke, Letters to a Young Poet",
+    },
+    sl: {
+      text: "Biti umetnik pomeni ne računati in ne šteti; zoreti kakor drevo, ki ne priganja svojih sokov in spokojno stoji v pomladnih viharjih, brez strahu, da za njimi ne bi prišlo poletje. Saj pride.",
+      reference: "Rainer Maria Rilke, Pisma mlademu pesniku",
+    },
+  },
+  {
+    en: { text: "One ought every day at least to hear a little song, read a good poem, see a fine painting and, if it could be managed, speak a few sensible words.", reference: "Johann Wolfgang von Goethe, Wilhelm Meister’s Apprenticeship" },
+    sl: { text: "Vsak dan bi morali slišati vsaj kakšno pesmico, prebrati dobro pesem, videti odlično sliko in, če bi se le dalo, izreči nekaj pametnih besed.", reference: "Johann Wolfgang von Goethe, Učna leta Wilhelma Meistra" },
+  },
+  {
+    en: { text: "Good or bad, it is a delicious thing to write, to be no longer yourself, but to move through the whole creation you are telling of.", reference: "Gustave Flaubert, in a letter, 1853" },
+    sl: { text: "Dobro ali slabo, pisati je nekaj čudovitega: ne biti več sam svoj, ampak se gibati po vsem stvarstvu, o katerem pripoveduješ.", reference: "Gustave Flaubert, v pismu, 1853" },
+  },
+  {
+    en: { text: "For the word, let it be known, is a living being.", reference: "Victor Hugo, Les Contemplations" },
+    sl: { text: "Kajti beseda, naj se ve, je živo bitje.", reference: "Victor Hugo, Kontemplacije" },
+  },
+  {
+    en: { text: "The smallest thing holds a little of the unknown. Let us find it.", reference: "Guy de Maupassant, preface to Pierre and Jean" },
+    sl: { text: "Tudi najmanjša stvar skriva nekaj neznanega. Poiščimo ga.", reference: "Guy de Maupassant, predgovor k Pierru in Jeanu" },
+  },
+  {
+    en: { text: "I have no more made my book than my book has made me.", reference: "Michel de Montaigne, Essays" },
+    sl: { text: "Svoje knjige nisem naredil nič bolj, kot je moja knjiga naredila mene.", reference: "Michel de Montaigne, Eseji" },
+  },
+  {
+    en: {
+      text: "There are perhaps no days of our childhood that we lived so fully as those we thought we had let pass without living them, those we spent with a favourite book.",
+      reference: "Marcel Proust, On Reading",
+    },
+    sl: {
+      text: "Morda ni dni našega otroštva, ki bi jih živeli tako polno kot tiste, za katere smo mislili, da so minili, ne da bi jih živeli: tiste, ki smo jih preživeli z najljubšo knjigo.",
+      reference: "Marcel Proust, O branju",
+    },
+  },
+  {
+    en: { text: "And thoughts stir boldly in my head, / and light rhymes run out to meet them, / and fingers ask for the pen, the pen for paper; / a minute, and the verses freely flow.", reference: "Alexander Pushkin, Autumn" },
+    sl: { text: "In misli v glavi drzno valovijo, / lahke rime jim tečejo naproti, / prsti prosijo za pero, pero za papir; / še minuta in verzi svobodno stečejo.", reference: "Aleksander Puškin, Jesen" },
+  },
+  {
+    en: { text: "Don’t lick it smooth, don’t polish it; be clumsy and bold. Brevity is the sister of talent.", reference: "Anton Chekhov, in a letter to his brother, 1889" },
+    sl: { text: "Ne gladi in ne brusi, ampak bodi neroden in drzen. Kratkost je sestra talenta.", reference: "Anton Čehov, v pismu bratu, 1889" },
+  },
+  {
+    en: { text: "My heart will come to life again, anew; / the flowers of clear poems will grow in it / and put forth new blossom, more gladly.", reference: "France Prešeren, A Wreath of Sonnets" },
+    sl: { text: "Na novo bo srce spet oživelo, / v njem rasle jasnih poezij cvetlice / in gnale bodo nov cvet bolj veselo.", reference: "France Prešeren, Sonetni venec" },
+  },
+  {
+    en: { text: "That is remembrance enough: my songs sing of me.", reference: "Valentin Vodnik, My Monument" },
+    sl: { text: "Dovolj je spomina: me pesmi pojo.", reference: "Valentin Vodnik, Moj spominik" },
+  },
+  {
+    en: { text: "The Slovenian word is a word of holidays, of song and of shouts of joy.", reference: "Ivan Cankar, Kurent" },
+    sl: { text: "Slovenska beseda je beseda praznika, petja in vriskanja.", reference: "Ivan Cankar, Kurent" },
+  },
+  {
+    en: { text: "The whole world was in me; and I give it all my beauty and create it anew.", reference: "Ivan Cankar, Strangers" },
+    sl: { text: "Ves svet je bil v meni; in dam mu vso svojo lepoto in ga ustvarim iznova.", reference: "Ivan Cankar, Tujci" },
+  },
+  {
+    en: { text: "One word I would like to say, / that like a spring wind / it might come softly into your hearts, / one word I would like to say.", reference: "Srečko Kosovel, One Word" },
+    sl: { text: "Eno besedo bi rekel rad, / da bi kot veter pomladni / mehka v vaša srca prišla, / eno besedo bi rekel rad.", reference: "Srečko Kosovel, Eno besedo" },
+  },
+  {
+    en: {
+      text: "Once again I believe in my strength, my ability and my will, and I know I shall not falter before the goal! I took a deep breath, lit the lamp and wrote this sketch.",
+      reference: "Zofka Kveder, Sketches",
+    },
+    sl: {
+      text: "Zopet verujem v svojo moč, v svojo zmožnost in v svojo voljo in vem, da ne omagam pred ciljem! Oddihnila sem se globoko, nažgala luč in napisala to črtico.",
+      reference: "Zofka Kveder, Črtice",
+    },
+  },
+];
+
+// Home shows the verses in Pensieve, and the words about writing in Hushed Tales.
+const QUOTES = EDITION === "hushed" ? WRITING : VERSES;
+
+/** A quote chosen at random, as its place in the list, so it stays the same one in either language. */
+export function randomQuote(): number {
+  return Math.floor(Math.random() * QUOTES.length);
 }
 
-/** The verse at `index` in the interface language. */
-export function verse(index: number, language: UiLanguage): Quote {
-  return (VERSES[index] ?? VERSES[0])[language];
+/** The quote at `index` in the interface language: a verse in Pensieve, words about writing in Hushed Tales. */
+export function homeQuote(index: number, language: UiLanguage): Quote {
+  return (QUOTES[index] ?? QUOTES[0])[language];
 }

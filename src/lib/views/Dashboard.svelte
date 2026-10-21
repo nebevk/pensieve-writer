@@ -12,7 +12,7 @@
   import { ago, agoCapital, locale, num, plural, t, ui } from "$lib/ui.svelte";
   import Icon from "$lib/editor/Icon.svelte";
   import { WRITER } from "$lib/writer";
-  import { randomVerse, verse } from "$lib/quotes";
+  import { homeQuote, randomQuote } from "$lib/quotes";
   import { encouragementFor } from "$lib/encouragement";
   import type { Task } from "$lib/storage/organize";
   import ChecklistItem from "./ChecklistItem.svelte";
@@ -82,9 +82,10 @@
     appearance?: Exclude<ThemeName, "sunset">;
   } = $props();
 
-  // A short verse for Eva under her greeting, a different one each time Home opens, in her language.
-  const verseAt = randomVerse();
-  const quote = $derived(verse(verseAt, ui.language));
+  // A short verse for Eva under her greeting (words about writing in Hushed Tales), a different one each time Home
+  // opens, in her language.
+  const quoteAt = randomQuote();
+  const quote = $derived(homeQuote(quoteAt, ui.language));
   // A few words of encouragement after her greeting, for the time of day, a different line each time Home opens.
   const cheer = encouragementFor(new Date().getHours());
   const SOUNDS: Record<Exclude<AmbienceName, "off">, { key: UiKey; icon: string }> = {
