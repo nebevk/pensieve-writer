@@ -1,7 +1,7 @@
 {
   "name": "pensieve",
   "private": true,
-  "version": "0.5.5",
+  "version": "0.5.6",
   "description": "A cozy desktop writing app",
   "type": "module",
   "scripts": {
