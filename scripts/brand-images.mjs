@@ -1,11 +1,13 @@
 // Draws Pensieve's Windows icons and the installer's picture from the design system's Basin mark (owner, 16 October):
 // the mark alone, filling the square, as Windows' own icons are drawn, every size drawn from the vector rather than
-// shrunk from a large one; and the installer's first and last page, the mark and the name on the app's paper.
+// shrunk from a large one; and the installer's first and last page, the mark and the name on the app's paper, for
+// Pensieve and for Hushed Tales (IMP-29), whose installer has the same mark under its own name.
 //
 //   node --experimental-websocket scripts/brand-images.mjs
 //
-// Writes src-tauri/icons (icon.ico with 16 to 256, the PNGs) and src-tauri/installer/sidebar.bmp, or into the
-// folder given (`icons` and `installer` in it), to look at first. Uses headless Edge, muted, on a profile of its own.
+// Writes src-tauri/icons (icon.ico with 16 to 256, the PNGs) and src-tauri/installer/sidebar.bmp and
+// hushed-sidebar.bmp, or into the folder given (`icons` and `installer` in it), to look at first. Uses headless Edge,
+// muted, on a profile of its own.
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,7 +31,12 @@ const edge = ["ProgramFiles(x86)", "ProgramFiles"].map((name) => process.env[nam
 if (!edge) throw new Error("Microsoft Edge wasn't found");
 const profile = mkdtempSync(join(tmpdir(), "pensieve-brand-"));
 const port = 9471;
-const browser = spawn(edge, ["--headless=new", "--mute-audio", "--disable-gpu", `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, "about:blank"], { stdio: "ignore" });
+// Without Windows' compatibility layer some terminals pass on: under one, Edge starts itself again, and the one
+// stopped at the end would not be the one running.
+const browser = spawn(edge, ["--headless=new", "--mute-audio", "--disable-gpu", `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, "about:blank"], {
+  stdio: "ignore",
+  env: Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toUpperCase() !== "__COMPAT_LAYER")),
+});
 
 try {
   let socketUrl = "";
@@ -129,8 +136,9 @@ try {
   };
   for (const [name, size] of Object.entries(pngs)) writeFileSync(join(icons, name), await png(size));
 
-  // The installer's first and last page: 164 × 314, the mark and the name on the app's paper, with its glow.
-  const sidebar = await run(`(async () => {
+  // The installer's first and last page: 164 × 314, the mark and the name on the app's paper, with its glow; a name
+  // too wide for one line, as Hushed Tales is, on two.
+  const sidebar = (name) => run(`(async () => {
     const width = 164, height = 314;
     const canvas = document.createElement("canvas");
     canvas.width = width;
@@ -150,7 +158,9 @@ try {
     context.fillStyle = "#3a2e26";
     context.font = '26px "Young Serif"';
     context.textAlign = "center";
-    context.fillText("Pensieve", width / 2, 204);
+    const label = ${JSON.stringify(name)};
+    const lines = context.measureText(label).width <= width - 24 ? [label] : label.split(" ");
+    lines.forEach((line, index) => context.fillText(line, width / 2, 204 + index * 32));
     const pixels = context.getImageData(0, 0, width, height).data;
     // A 24-bit BMP, as the installer takes it: rows from the bottom up, each padded to four bytes.
     const row = Math.ceil((width * 3) / 4) * 4;
@@ -182,11 +192,12 @@ try {
     return btoa(binary);
   })()`);
   mkdirSync(installer, { recursive: true });
-  writeFileSync(join(installer, "sidebar.bmp"), Buffer.from(sidebar, "base64"));
-  console.log(`icons: icon.ico (${icoSizes.join(", ")}) and ${Object.keys(pngs).length} PNGs; installer: sidebar.bmp`);
+  writeFileSync(join(installer, "sidebar.bmp"), Buffer.from(await sidebar("Pensieve"), "base64"));
+  writeFileSync(join(installer, "hushed-sidebar.bmp"), Buffer.from(await sidebar("Hushed Tales"), "base64"));
+  console.log(`icons: icon.ico (${icoSizes.join(", ")}) and ${Object.keys(pngs).length} PNGs; installer: sidebar.bmp, hushed-sidebar.bmp`);
   ws.close();
 } finally {
   browser.kill();
   await sleep(500);
-  rmSync(profile, { recursive: true, force: true });
+  rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 }

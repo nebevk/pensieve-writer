@@ -1,5 +1,6 @@
 {
   "productName": "Hushed Tales",
+  "mainBinaryName": "hushed-tales",
   "identifier": "com.hushedtales.app",
   "build": {
     "frontendDist": "../build-hushed"
@@ -21,6 +22,7 @@
   "bundle": {
     "windows": {
       "nsis": {
+        "sidebarImage": "installer/hushed-sidebar.bmp",
         "customLanguageFiles": {
           "English": "installer/hushed-English.nsh",
           "Slovenian": "installer/hushed-Slovenian.nsh"

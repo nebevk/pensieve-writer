@@ -13,7 +13,8 @@ app is built and run is in [SETUP.md](SETUP.md).
 A calm place to write and finish long texts (novels, story collections, non-fiction) and short ones (blog
 posts, articles), in English and Slovenian. Editing feels as familiar as Microsoft Word, with far fewer
 features. It borrows the best organising ideas of Scrivener and Atticus (chapters, notes, a whole-book
-view) without their complexity. It is for personal use and is not distributed.
+view) without their complexity. It is for personal use and is not distributed; a few friends get the same app
+under another name, Hushed Tales (§11).
 
 ## 2. Goals and non-goals
 
@@ -340,6 +341,10 @@ design system said.
 **Pensieve:** in Harry Potter, the basin where thoughts and memories are kept and looked at again, which
 is what the app does with ideas and text. It is a trademarked term from the books, which is fine for a
 personal gift; a public release would need another name.
+
+**Hushed Tales:** the version for the owner's friends (IMP-29), the same code built under a name of its own,
+with quotes about writing on Home instead of the Bible verses and a greeting without a name. It installs
+beside Pensieve as an app of its own and updates from its own releases (`docs/releasing.md`).
 
 ## 12. Success
 
