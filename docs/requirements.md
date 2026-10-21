@@ -259,6 +259,9 @@ Coziness is the top product priority, within the performance budget in Section 5
 The owner's decisions that shaped the app, newest first. Each replaced what the original plan or the
 design system said.
 
+- **21 Oct:** A version for friends, **Hushed Tales** (IMP-29): the same app with a name of its own, uplifting
+  quotes about writing on Home instead of the Bible verses, a greeting without a name, and updates like Pensieve's
+  from releases of its own.
 - **20 Oct:** Settings shows what Pensieve's backups take in the backup folder, in all and for each project, and
   not Drive's free space. The language badge stays as it is: the selected text's language, or the open chapter's (WIN-3). Smooth typing's ink stays as it is: it costs only the slowest keys (with the processor
   slowed four times, 19 in 20 within 40 ms instead of 32), and is checked on Eva's laptop (IMP-10) first.
